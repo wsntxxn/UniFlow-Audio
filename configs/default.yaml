@@ -1,0 +1,46 @@
+defaults:
+  - basic
+  - model: diffusion
+  - data@train_dataloader.dataset.datasets: train
+  - data@val_dataloader.dataset.datasets: val
+  - _self_
+
+sample_rate: 24000
+
+train_dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  dataset:
+    _target_: data_module.dataset.AudioGenConcatDataset
+  batch_size: 2
+  shuffle: True
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys: ["waveform"]
+
+val_dataloader:
+  _target_: torch.utils.data.DataLoader
+  dataset:
+    _target_: data_module.dataset.AudioGenConcatDataset
+  batch_size: 2
+  shuffle: False
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys: ["waveform"]
+
+
+loss_fn:
+  _target_: torch.nn.Identity
+
+trainer:
+  _target_: audio_generation_trainer.AudioGenerationTrainer
+  project_dir: ${exp_dir}
+  logging_file: ${logging_file}
+  gradient_accumulation_steps: ${gradient_accumulation_steps}
+  epochs: 100
+  epoch_length: ${epoch_length}
+  save_last_k: 3
+  wandb_config:
+    _target_: trainer.WandbConfig
+    project: x_to_audio_generation
+    save_dir: ${exp_dir}
+    name: test
