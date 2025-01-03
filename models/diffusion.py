@@ -74,7 +74,7 @@ class DiffusionMixin:
         else:
             # validation on half of the total timesteps
             timesteps = (
-                self.training_noise_scheduler.num_train_timesteps // 2
+                self.training_noise_scheduler.config.num_train_timesteps // 2
             ) * torch.ones((batch_size, ), dtype=torch.int64, device=device)
 
         timesteps = timesteps.long()
@@ -153,7 +153,7 @@ class AudioDiffusion(nn.Module, DiffusionMixin):
         waveform: torch.Tensor, waveform_lengths: torch.Tensor
     ):
         device = self.dummy_param.device
-        num_train_timesteps = self.training_noise_scheduler.num_train_timesteps
+        num_train_timesteps = self.training_noise_scheduler.config.num_train_timesteps
         self.training_noise_scheduler.set_timesteps(
             num_train_timesteps, device=device
         )

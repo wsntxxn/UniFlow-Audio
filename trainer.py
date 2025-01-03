@@ -37,6 +37,7 @@ class CheckpointMixin(ABC):
 
 @dataclass(kw_only=True)
 class Trainer(CheckpointMixin):
+    config_dict: dict | None = None
     project_dir: str | Path
     checkpoint_dir: str | Path = None
     wandb_config: WandbConfig
@@ -194,18 +195,6 @@ class Trainer(CheckpointMixin):
                     # TODO check whether `gradient_accumulation_steps` works
                     self.lr_scheduler.step()
                 self.optimizer.zero_grad()
-
-            # loss = self.training_step(batch, batch_idx)
-            # self.accelerator.log({"train/loss": loss}, step=self.step)
-
-            # loss = loss / self.gradient_accumulation_steps
-            # self.accelerator.backward(loss)
-            # if self.step % self.gradient_accumulation_steps == 0:
-            #     self.optimizer.step()
-            #     if self.lr_scheduler_interval == LRSchedulerInterval.STEP:
-            #         # TODO check whether `gradient_accumulation_steps` works
-            #         self.lr_scheduler.step()
-            #     self.optimizer.zero_grad()
 
             self.step += 1
 

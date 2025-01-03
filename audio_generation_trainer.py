@@ -3,7 +3,7 @@ import datetime
 from pathlib import Path
 import yaml
 
-from trainer import Trainer, WandbConfig
+from trainer import Trainer
 from utils.logging import LoggingLogger
 
 
@@ -11,7 +11,6 @@ from utils.logging import LoggingLogger
 class AudioGenerationTrainer(Trainer):
 
     logging_file: str | Path
-    config_dict: dict | None = None
 
     def on_train_start(self):
         super().on_train_start()

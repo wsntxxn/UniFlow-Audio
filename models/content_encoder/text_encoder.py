@@ -35,6 +35,13 @@ class T5TextEncoder(TransformersTextEncoderBase):
         nn.Module.__init__(self)
         self.tokenizer = T5Tokenizer.from_pretrained(model_name)
         self.model = T5EncoderModel.from_pretrained(model_name)
+        self.eval()
+
+    def forward(self, text):
+        with torch.no_grad(), torch.amp.autocast(
+            device_type="cuda", enabled=False
+        ):
+            return super().forward(text)
 
 
 if __name__ == '__main__':

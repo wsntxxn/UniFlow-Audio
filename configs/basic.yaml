@@ -19,3 +19,8 @@ lr_scheduler:
   num_training_steps: 100
 
 seed: 42
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
