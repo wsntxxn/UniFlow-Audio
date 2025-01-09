@@ -114,14 +114,14 @@ class MnistTrainer(Trainer):
             self.logger.info(f"training epoch {self.epoch} ended")
 
 
-gradient_accumulation_steps = 16
+gradient_accumulation_steps = 4
 
 # dl_train, dl_val = create_dataloaders(32 * 32)
-dl_train, dl_val = create_dataloaders(32)
+dl_train, dl_val = create_dataloaders(128)
 
 model = create_net()
 lr = 1e-4
-epochs = 10
+epochs = 5
 optimizer = torch.optim.AdamW(params=model.parameters(), lr=lr)
 lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer=optimizer,

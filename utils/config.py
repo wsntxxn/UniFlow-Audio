@@ -7,22 +7,6 @@ import hydra
 import omegaconf
 
 
-def get_warmup_iterations(
-    iterations: Union[int, None] = None,
-    epochs: Union[float, None] = None,
-    epoch_length: Union[int, None] = None
-) -> int:
-    """
-    Derive warmup iterations according to iteration or epoch number.
-    """
-    if iterations is None and epochs is None:
-        raise Exception("Either warmup iterations or epochs must be provided")
-    if epochs is None:
-        return iterations
-    else:
-        return int(epoch_length * epochs)
-
-
 def multiply(*args):
     result = 1
     for arg in args:
@@ -36,9 +20,6 @@ def register_omegaconf_resolvers() -> None:
     files for dynamically setting values
     """
     omegaconf.OmegaConf.clear_resolvers()
-    omegaconf.OmegaConf.register_new_resolver(
-        "get_warmup_iterations", get_warmup_iterations, replace=True
-    )
     omegaconf.OmegaConf.register_new_resolver("len", len, replace=True)
     omegaconf.OmegaConf.register_new_resolver(
         "multiply", multiply, replace=True

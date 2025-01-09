@@ -20,6 +20,6 @@ io_channels: 1
 latent_dim: 128
 downsampling_ratio: 480
 sample_rate: 24000
-pretrained_ckpt: /mnt/cloudstorfs/sjtu_home/xuenan.xu/workspace/text_to_audio_generation/ezaudio/ckpts/vae/1m.pt
+pretrained_ckpt: /hpc_stor03/sjtu_home/xuenan.xu/workspace/text_to_audio_generation/ezaudio/ckpts/vae/1m.pt
 bottleneck:
   _target_: models.autoencoder.waveform.stable_vae.VAEBottleneck

@@ -11,8 +11,9 @@ train_dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader
   dataset:
     _target_: data_module.dataset.AudioGenConcatDataset
-  batch_size: 2
+  batch_size: 24 # per device batch size
   shuffle: True
+  num_workers: 8
   collate_fn:
     _target_: data_module.collate_function.PaddingCollate
     pad_keys: ["waveform"]
@@ -21,8 +22,9 @@ val_dataloader:
   _target_: torch.utils.data.DataLoader
   dataset:
     _target_: data_module.dataset.AudioGenConcatDataset
-  batch_size: 2
+  batch_size: 24 # per device batch size
   shuffle: False
+  num_workers: 8
   collate_fn:
     _target_: data_module.collate_function.PaddingCollate
     pad_keys: ["waveform"]
@@ -36,7 +38,7 @@ trainer:
   project_dir: ${exp_dir}
   logging_file: ${logging_file}
   gradient_accumulation_steps: ${gradient_accumulation_steps}
-  epochs: 100
+  epochs: ${epochs}
   epoch_length: ${epoch_length}
   save_last_k: 3
   wandb_config:

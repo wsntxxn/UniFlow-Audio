@@ -1,10 +1,18 @@
 import logging
 import json
+import math
 
 import hydra
-from omegaconf import OmegaConf, DictConfig
+from omegaconf import OmegaConf
+from accelerate import Accelerator
 
 from utils.config import register_omegaconf_resolvers
+from utils.lr_scheduler_utilities import (
+    get_warmup_steps, get_dataloader_one_pass_outside_steps,
+    get_total_training_steps, get_steps_inside_accelerator_from_outside_steps,
+    get_dataloader_one_pass_steps_inside_accelerator,
+    lr_scheduler_param_adapter
+)
 from trainer import Trainer
 
 logger = logging.Logger(__file__)
@@ -27,6 +35,9 @@ def main():
     logger.info("config: ")
     logger.info(json.dumps(config, indent=2))
 
+    # helper instance for accessing information about the current training environment
+    helper_accelerator = Accelerator()
+
     model = hydra.utils.instantiate(config["model"])
     train_dataloader = hydra.utils.instantiate(
         config["train_dataloader"], _convert_="all"
@@ -37,8 +48,52 @@ def main():
     optimizer = hydra.utils.instantiate(
         config["optimizer"], params=model.parameters(), _convert_="all"
     )
+    num_warmup_steps = get_warmup_steps(
+        **config["warmup_params"], train_dataloader=train_dataloader
+    )
+
+    # `accelerator.prepare` is very confusing for multi-gpu, gradient accumulation scenario:
+    # For more information: see https://github.com/huggingface/diffusers/issues/4387,
+    # https://github.com/huggingface/diffusers/issues/9633, and
+    # https://github.com/huggingface/diffusers/issues/3954
+    dataloader_one_pass_outside_steps = get_dataloader_one_pass_outside_steps(
+        train_dataloader, helper_accelerator.num_processes
+    )
+    total_training_steps = get_total_training_steps(
+        train_dataloader, config["epochs"], helper_accelerator.num_processes,
+        config["epoch_length"]
+    )
+    dataloader_one_pass_steps_inside_accelerator = (
+        get_dataloader_one_pass_steps_inside_accelerator(
+            dataloader_one_pass_outside_steps,
+            config["gradient_accumulation_steps"],
+            helper_accelerator.num_processes
+        )
+    )
+    num_training_updates = get_steps_inside_accelerator_from_outside_steps(
+        total_training_steps, dataloader_one_pass_outside_steps,
+        dataloader_one_pass_steps_inside_accelerator,
+        config["gradient_accumulation_steps"], helper_accelerator.num_processes
+    )
+    num_warmup_updates = get_steps_inside_accelerator_from_outside_steps(
+        num_warmup_steps, dataloader_one_pass_outside_steps,
+        dataloader_one_pass_steps_inside_accelerator,
+        config["gradient_accumulation_steps"], helper_accelerator.num_processes
+    )
+
+    print(
+        "num_training_updates: ", num_training_updates, "num_warmup_updates: ",
+        num_warmup_updates
+    )
+
+    lr_scheduler_config = lr_scheduler_param_adapter(
+        config_dict=config["lr_scheduler"],
+        num_training_steps=num_training_updates,
+        num_warmup_steps=num_warmup_updates
+    )
+
     lr_scheduler = hydra.utils.instantiate(
-        config["lr_scheduler"], optimizer=optimizer, _convert_="all"
+        lr_scheduler_config, optimizer=optimizer, _convert_="all"
     )
     loss_fn = hydra.utils.instantiate(config["loss_fn"], _convert_="all")
 

@@ -71,10 +71,19 @@ To specify the config YAML file:
 ```bash
 accelerate launch train.py --config-path path/to/config/dir --config-name conf 
 ```
-This will use `path/to/config/dir/conf.yaml` as the configuration entrypoint.
+This will use `path/to/config/dir/conf.yaml` as the configuration entrypoint, and `${HF_HOME}/accelerate/default_config.yaml` for accelerate configuration.
+
+It supports convenient override via hydra grammar, e.g.
+```bash
+accelerate launch --config_file configs/accelerate/8gpus.yaml train.py \
+    warmup_params.warmup_steps=500 \
+    train_dataloader.batch_size=12 \
+    val_dataloader.batch_size=12 \
+    epochs=100
+```
 
 ## TODO
-- [ ] Design the derivation of `total_training_steps`, determine whether it can be obtained before dataloader instantiation
+- [x] Design the derivation of `total_training_steps`, determine whether it can be obtained before dataloader instantiation
 - [ ] Add loss mask to support variable length target
 - [ ] Add duration adapter to the model to support TTS
 - [ ] Add `PhonemeEncoder` to implement TTS

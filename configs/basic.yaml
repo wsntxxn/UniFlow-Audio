@@ -1,22 +1,26 @@
 exp_dir: experiments/base
 logging_file: ${exp_dir}/train.log
 
-epoch_length: 500
-warmup_iterations: 0
-warmup_epochs: 1
-warmup_iters: ${get_warmup_iterations:${.warmup_iterations}, ${.warmup_epochs}, ${.epoch_length}}
+epochs: 40
+epoch_length: Null
+
+warmup_params:
+  warmup_steps: 1000
+  warmup_epochs: Null
+  epoch_length: ${epoch_length}
+
+# training_step_params:
+  # epochs: ${epochs}
 
 gradient_accumulation_steps: 4
 
 optimizer:
   _target_: torch.optim.AdamW
-  lr: !!float 1e-4
+  lr: !!float 2e-5
 
 lr_scheduler:
   _target_: "transformers.get_scheduler"
   name: "linear"
-  num_warmup_steps: ${multiply:${warmup_iters},${gradient_accumulation_steps}}
-  num_training_steps: 100
 
 seed: 42
 

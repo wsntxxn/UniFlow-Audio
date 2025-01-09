@@ -13,6 +13,10 @@ import torchvision
 def read_jsonl_to_mapping(
     jsonl_file: str | Path, key_col: str, value_col: str
 ) -> dict[str, str]:
+    """
+    Read two columns, indicated by `key_col` and `value_col`, from the
+    given jsonl file to return the mapping dict
+    """
     mapping = {}
     with open(jsonl_file, 'r') as file:
         for line in file.readlines():
@@ -47,17 +51,24 @@ class HDF5DatasetMixin:
 
 
 class AudioWaveformDataset(HDF5DatasetMixin):
-    def __init__(self, target_sr: int | None = None):
+    def __init__(
+        self, target_sr: int | None = None, use_h5_cache: bool = True
+    ):
         super().__init__()
         self.target_sr = target_sr
         self.h5_src_sr_map = {}
+        self.use_h5_cache = use_h5_cache
 
     def load_waveform(self, audio_id: str, audio_path: str):
         if audio_path.endswith(".hdf5") or audio_path.endswith(".h5"):
-            waveform = read_from_h5(audio_id, audio_path, self.h5_cache)
+            # on guizhou file system, using cached h5py.File will cause OOM error
+            if self.use_h5_cache:
+                waveform = read_from_h5(audio_id, audio_path, self.h5_cache)
+            else:
+                waveform = read_from_h5(audio_id, audio_path)
             if audio_path not in self.h5_src_sr_map:
-                self.h5_src_sr_map[audio_path] = self.h5_cache[audio_path][
-                    "sample_rate"][()]
+                with File(audio_path, "r") as hf:
+                    self.h5_src_sr_map[audio_path] = hf["sample_rate"][()]
             orig_sr = self.h5_src_sr_map[audio_path]
             waveform = torch.as_tensor(waveform, dtype=torch.float32)
         else:
@@ -88,8 +99,9 @@ class AudioGenerationDataset(AudioWaveformDataset):
         # TODO how to add instructions of the condition, like `condition_name` or `task_name`
         # and then map `xx_name` to specific prompts?
         sample_rate: int | None = None,
+        use_h5_cache: bool = True
     ):
-        AudioWaveformDataset.__init__(self, sample_rate)
+        AudioWaveformDataset.__init__(self, sample_rate, use_h5_cache)
         id_col_in_content = id_col_in_content or id_col
         self.id_to_content = read_jsonl_to_mapping(
             content, id_col_in_content, content_col
@@ -161,14 +173,16 @@ class TextToAudioDataset(AudioGenerationDataset):
         caption: str | Path,
         audio: str | Path,
         condition: str | Path | None = None,
-        sample_rate: int | None = None
+        sample_rate: int | None = None,
+        use_h5_cache: bool = True
     ):
         super().__init__(
             caption,
             audio,
             condition,
             content_col="caption",
-            sample_rate=sample_rate
+            sample_rate=sample_rate,
+            use_h5_cache=use_h5_cache
         )
 
     @property
@@ -189,13 +203,15 @@ class VideoToAudioDataset(AudioGenerationDataset):
         video_fps: int | None = None,
         video_size: tuple[int, int] = (256, 256),
         audio_sample_rate: int | None = None,
+        use_h5_cache: bool = True
     ):
         super().__init__(
             video,
             audio,
             condition,
             content_col="video",
-            sample_rate=audio_sample_rate
+            sample_rate=audio_sample_rate,
+            use_h5_cache=use_h5_cache
         )
         self.target_fps = video_fps
         self.resize_transform = torchvision.transforms.Resize(video_size)

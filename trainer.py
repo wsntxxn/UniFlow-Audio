@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from accelerate.utils import set_seed
 from accelerate import Accelerator, DistributedDataParallelKwargs
+import wandb
 
 
 @dataclass
@@ -247,6 +248,9 @@ class Trainer(CheckpointMixin):
     def on_train_end(self) -> None:
         self.accelerator.print(f"training end ............")
         self.accelerator.end_training()
+        # wandb sometimes stuck in finishing
+        if wandb.run is not None:
+            wandb.finish()
 
     def train(self, seed: int) -> None:
         set_seed(seed)
