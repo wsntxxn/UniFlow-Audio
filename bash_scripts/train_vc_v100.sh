@@ -5,6 +5,6 @@ vc submit --image docker.v2.aispeech.com/sjtu/sjtu_wumengyue-xnxpy310:0.0.3 \
     --job x_to_audio_generation \
     --cpu-per-task 8 \
     --mem-per-task 48G \
-    --gpu-per-task 8 \
+    --gpu-per-task 4 \
     JOB=1:1 logs/vc/log_v100.JOB.log \
-    --cmd "accelerate launch --config_file --config_file configs/accelerate/8gpus.yaml train.py"
+    --cmd "accelerate launch --config_file configs/accelerate/4gpus.yaml train.py"

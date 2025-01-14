@@ -8,13 +8,26 @@ class ContentEncoder(nn.Module):
         super().__init__()
         self.text_encoder = text_encoder
 
-    def encode_content(self, batch_content: list[Any], batch_task: list[str]):
+    def encode_content(
+        self,
+        batch_content: list[Any],
+        batch_task: list[str],
+        unconditional: bool = False,
+        max_length: int | None = None
+    ):
         batch_output = []
         batch_mask = []
 
         for content, task in zip(batch_content, batch_task):
             if task == "text_to_audio":
-                output_dict = self.text_encoder([content])
+                if unconditional:
+                    content = ""
+                    padding = "max_length"
+                else:
+                    padding = True
+                output_dict = self.text_encoder([content],
+                                                max_length=max_length,
+                                                padding=padding)
                 batch_output.append(output_dict["output"][0])
                 batch_mask.append(output_dict["mask"][0])
 

@@ -5,11 +5,9 @@ vc submit --image docker.v2.aispeech.com/sjtu/sjtu_wumengyue-xnxpy310:0.0.3 \
     --job x_to_audio_generation \
     --cpu-per-task 8 \
     --mem-per-task 48G \
-    --gpu-per-task 8 \
+    --gpu-per-task 4 \
     JOB=1:1 logs/vc/log_a10.JOB.log \
-    --cmd "accelerate launch --config_file configs/accelerate/8gpus.yaml train.py \
-           warmup_params.warmup_steps=25 \
-           train_dataloader.dataset.datasets.0.caption=data/audiocaps/train/caption_toy.jsonl \
-           val_dataloader.dataset.datasets.0.caption=data/audiocaps/val/caption_toy.jsonl \
+    --cmd "accelerate launch --config_file configs/accelerate/4gpus.yaml train.py \
            train_dataloader.batch_size=12 \
-           val_dataloader.batch_size=12"
+           val_dataloader.batch_size=12 \
+           exp_dir=experiments/waveform_vae_udit_diffusion_epoch100_lr1e-4/audiocaps"

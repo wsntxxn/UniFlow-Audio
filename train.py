@@ -1,6 +1,5 @@
 import logging
 import json
-import math
 
 import hydra
 from omegaconf import OmegaConf
@@ -24,7 +23,9 @@ def main():
 
     configs = []
 
-    @hydra.main(config_path="configs", config_name="default")
+    @hydra.main(
+        version_base=None, config_path="configs", config_name="default"
+    )
     def parse_config_from_command_line(config):
         config = OmegaConf.to_container(config, resolve=True)
         configs.append(config)
@@ -47,9 +48,6 @@ def main():
     )
     optimizer = hydra.utils.instantiate(
         config["optimizer"], params=model.parameters(), _convert_="all"
-    )
-    num_warmup_steps = get_warmup_steps(
-        **config["warmup_params"], train_dataloader=train_dataloader
     )
 
     # `accelerator.prepare` is very confusing for multi-gpu, gradient accumulation scenario:
@@ -75,15 +73,15 @@ def main():
         dataloader_one_pass_steps_inside_accelerator,
         config["gradient_accumulation_steps"], helper_accelerator.num_processes
     )
+
+    num_warmup_steps = get_warmup_steps(
+        **config["warmup_params"],
+        dataloader_one_pass_outside_steps=dataloader_one_pass_outside_steps
+    )
     num_warmup_updates = get_steps_inside_accelerator_from_outside_steps(
         num_warmup_steps, dataloader_one_pass_outside_steps,
         dataloader_one_pass_steps_inside_accelerator,
         config["gradient_accumulation_steps"], helper_accelerator.num_processes
-    )
-
-    print(
-        "num_training_updates: ", num_training_updates, "num_warmup_updates: ",
-        num_warmup_updates
     )
 
     lr_scheduler_config = lr_scheduler_param_adapter(
@@ -107,7 +105,7 @@ def main():
         loss_fn=loss_fn,
         _convert_="all"
     )
-    trainer.config_dict = config,  # assign here, don't instantiate it
+    trainer.config_dict = config  # assign here, don't instantiate it
     trainer.train(seed=config["seed"])
 
 

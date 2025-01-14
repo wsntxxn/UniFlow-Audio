@@ -8,8 +8,6 @@ content_encoder:
   text_encoder:
     _target_: models.content_encoder.text_encoder.T5TextEncoder
     model_name: google/flan-t5-large
-training_noise_scheduler_name: "stabilityai/stable-diffusion-2-1"
-inference_noise_scheduler_type: DDIMScheduler
-inference_noise_scheduler_name: "stabilityai/stable-diffusion-2-1"
+noise_scheduler_name: "stabilityai/stable-diffusion-2-1"
 snr_gamma: 5.0
 classifier_free_guidance: True

@@ -1,7 +1,7 @@
 exp_dir: experiments/base
 logging_file: ${exp_dir}/train.log
 
-epochs: 40
+epochs: 100
 epoch_length: Null
 
 warmup_params:
@@ -16,7 +16,8 @@ gradient_accumulation_steps: 4
 
 optimizer:
   _target_: torch.optim.AdamW
-  lr: !!float 2e-5
+  lr: !!float 1e-4
+  weight_decay: !!float 1e-2
 
 lr_scheduler:
   _target_: "transformers.get_scheduler"

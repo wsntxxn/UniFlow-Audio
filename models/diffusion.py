@@ -1,40 +1,38 @@
+from typing import Sequence
 import random
 from typing import Any
 
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import diffusers.schedulers as noise_schedulers
+from diffusers.schedulers.scheduling_utils import SchedulerMixin
+from diffusers.utils.torch_utils import randn_tensor
 
 from models.content_encoder.content_encoder import ContentEncoder
+from models.common import LoadPretrainedBase
 
 
 class DiffusionMixin:
     def __init__(
         self,
-        training_noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
-        inference_noise_scheduler_type: str = "DDIMScheduler",
-        inference_noise_scheduler_name:
-        str = "stabilityai/stable-diffusion-2-1",
+        noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
         snr_gamma: float = None,
         classifier_free_guidance: bool = True
     ) -> None:
-        self.training_noise_scheduler = noise_schedulers.DDPMScheduler.from_pretrained(
-            training_noise_scheduler_name, subfolder="scheduler"
-        )
-        self.inference_noise_scheduler = getattr(
-            noise_schedulers, inference_noise_scheduler_type
-        ).from_pretrained(
-            inference_noise_scheduler_name, subfolder="scheduler"
-        )
+        self.noise_scheduler_name = noise_scheduler_name
         self.snr_gamma = snr_gamma
         self.classifier_free_guidance = classifier_free_guidance
+        self.noise_scheduler = noise_schedulers.DDPMScheduler.from_pretrained(
+            self.noise_scheduler_name, subfolder="scheduler"
+        )
 
     def compute_snr(self, timesteps) -> torch.Tensor:
         """
         Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
         """
-        alphas_cumprod = self.training_noise_scheduler.alphas_cumprod
+        alphas_cumprod = self.noise_scheduler.alphas_cumprod
         sqrt_alphas_cumprod = alphas_cumprod**0.5
         sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod)**0.5
 
@@ -67,15 +65,16 @@ class DiffusionMixin:
         if training:
             timesteps = torch.randint(
                 0,
-                self.training_noise_scheduler.config.num_train_timesteps,
+                self.noise_scheduler.config.num_train_timesteps,
                 (batch_size, ),
                 device=device
             )
         else:
             # validation on half of the total timesteps
-            timesteps = (
-                self.training_noise_scheduler.config.num_train_timesteps // 2
-            ) * torch.ones((batch_size, ), dtype=torch.int64, device=device)
+            timesteps = (self.noise_scheduler.config.num_train_timesteps //
+                         2) * torch.ones((batch_size, ),
+                                         dtype=torch.int64,
+                                         device=device)
 
         timesteps = timesteps.long()
         return timesteps
@@ -87,15 +86,15 @@ class DiffusionMixin:
         """
         Get the target for loss depending on the prediction type
         """
-        if self.training_noise_scheduler.config.prediction_type == "epsilon":
+        if self.noise_scheduler.config.prediction_type == "epsilon":
             target = noise
-        elif self.training_noise_scheduler.config.prediction_type == "v_prediction":
-            target = self.training_noise_scheduler.get_velocity(
+        elif self.noise_scheduler.config.prediction_type == "v_prediction":
+            target = self.noise_scheduler.get_velocity(
                 latent, noise, timesteps
             )
         else:
             raise ValueError(
-                f"Unknown prediction type {self.training_noise_scheduler.config.prediction_type}"
+                f"Unknown prediction type {self.noise_scheduler.config.prediction_type}"
             )
         return target
 
@@ -120,24 +119,19 @@ class DiffusionMixin:
         return loss
 
 
-class AudioDiffusion(nn.Module, DiffusionMixin):
+class AudioDiffusion(LoadPretrainedBase, DiffusionMixin):
     def __init__(
         self,
         autoencoder: nn.Module,
         content_encoder: ContentEncoder,
         backbone: nn.Module,
-        training_noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
-        inference_noise_scheduler_type: str = "DDIMScheduler",
-        inference_noise_scheduler_name:
-        str = "stabilityai/stable-diffusion-2-1",
+        noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
         snr_gamma: float = None,
         classifier_free_guidance: bool = True,
     ):
         nn.Module.__init__(self)
         DiffusionMixin.__init__(
-            self, training_noise_scheduler_name,
-            inference_noise_scheduler_type, inference_noise_scheduler_name,
-            snr_gamma, classifier_free_guidance
+            self, noise_scheduler_name, snr_gamma, classifier_free_guidance
         )
 
         self.autoencoder = autoencoder
@@ -153,10 +147,8 @@ class AudioDiffusion(nn.Module, DiffusionMixin):
         waveform: torch.Tensor, waveform_lengths: torch.Tensor
     ):
         device = self.dummy_param.device
-        num_train_timesteps = self.training_noise_scheduler.config.num_train_timesteps
-        self.training_noise_scheduler.set_timesteps(
-            num_train_timesteps, device=device
-        )
+        num_train_timesteps = self.noise_scheduler.config.num_train_timesteps
+        self.noise_scheduler.set_timesteps(num_train_timesteps, device=device)
 
         self.autoencoder.eval()
         with torch.no_grad():
@@ -178,9 +170,7 @@ class AudioDiffusion(nn.Module, DiffusionMixin):
         batch_size = latent.shape[0]
         timesteps = self.get_timesteps(batch_size, device, self.training)
         noise = torch.randn_like(latent)
-        noisy_latent = self.training_noise_scheduler.add_noise(
-            latent, noise, timesteps
-        )
+        noisy_latent = self.noise_scheduler.add_noise(latent, noise, timesteps)
 
         target = self.get_target(latent, noise, timesteps)
 
@@ -195,154 +185,121 @@ class AudioDiffusion(nn.Module, DiffusionMixin):
 
         return loss
 
-    # @torch.no_grad()
-    # def inference(
-    #     self,
-    #     prompt,
-    #     inference_scheduler,
-    #     num_steps=20,
-    #     guidance_scale=3,
-    #     num_samples_per_prompt=1,
-    #     disable_progress=True
-    # ):
-    #     device = self.text_encoder.device
-    #     classifier_free_guidance = guidance_scale > 1.0
-    #     batch_size = len(prompt) * num_samples_per_prompt
+    @torch.no_grad()
+    def inference(
+        self,
+        content: list[Any],
+        condition: list[Any],
+        task: list[str],
+        scheduler: SchedulerMixin,
+        latent_shape: Sequence[int],
+        num_steps: int = 20,
+        guidance_scale: float = 3.0,
+        num_samples_per_content: int = 1,
+        disable_progress: bool = True,
+        **kwargs
+    ):
+        device = self.dummy_param.device
+        classifier_free_guidance = guidance_scale > 1.0
+        batch_size = len(content) * num_samples_per_content
 
-    #     if classifier_free_guidance:
-    #         prompt_embeds, boolean_prompt_mask = self.encode_text_classifier_free(
-    #             prompt, num_samples_per_prompt
-    #         )
-    #     else:
-    #         prompt_embeds, boolean_prompt_mask = self.encode_text(prompt)
-    #         prompt_embeds = prompt_embeds.repeat_interleave(
-    #             num_samples_per_prompt, 0
-    #         )
-    #         boolean_prompt_mask = boolean_prompt_mask.repeat_interleave(
-    #             num_samples_per_prompt, 0
-    #         )
+        if classifier_free_guidance:
+            content, content_mask = self.encode_content_classifier_free(
+                content, task, num_samples_per_content
+            )
+        else:
+            content, content_mask = self.content_encoder.encode_content(
+                content, task
+            )
+            content = content.repeat_interleave(num_samples_per_content, 0)
+            content_mask = content_mask.repeat_interleave(
+                num_samples_per_content, 0
+            )
 
-    #     inference_scheduler.set_timesteps(num_steps, device=device)
-    #     timesteps = inference_scheduler.timesteps
+        scheduler.set_timesteps(num_steps, device=device)
+        timesteps = scheduler.timesteps
 
-    #     num_channels_latents = self.unet.config.in_channels
-    #     latents = self.prepare_latents(
-    #         batch_size, inference_scheduler, num_channels_latents,
-    #         prompt_embeds.dtype, device
-    #     )
+        latent = self.prepare_latent(
+            batch_size, scheduler, latent_shape, content.dtype, device
+        )
 
-    #     num_warmup_steps = len(
-    #         timesteps
-    #     ) - num_steps * inference_scheduler.order
-    #     progress_bar = tqdm(range(num_steps), disable=disable_progress)
+        num_warmup_steps = len(timesteps) - num_steps * scheduler.order
+        progress_bar = tqdm(range(num_steps), disable=disable_progress)
 
-    #     for i, t in enumerate(timesteps):
-    #         # expand the latents if we are doing classifier free guidance
-    #         latent_model_input = torch.cat(
-    #             [latents] * 2
-    #         ) if classifier_free_guidance else latents
-    #         latent_model_input = inference_scheduler.scale_model_input(
-    #             latent_model_input, t
-    #         )
+        for i, timestep in enumerate(timesteps):
+            # expand the latent if we are doing classifier free guidance
+            latent_input = torch.cat([latent, latent]
+                                    ) if classifier_free_guidance else latent
+            latent_input = scheduler.scale_model_input(latent_input, timestep)
 
-    #         noise_pred = self.unet(
-    #             latent_model_input,
-    #             t,
-    #             encoder_hidden_states=prompt_embeds,
-    #             encoder_attention_mask=boolean_prompt_mask
-    #         ).sample
+            noise_pred = self.backbone(
+                x=latent_input,
+                timesteps=timestep,
+                context=content,
+                context_mask=content_mask
+            )
 
-    #         # perform guidance
-    #         if classifier_free_guidance:
-    #             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-    #             noise_pred = noise_pred_uncond + guidance_scale * (
-    #                 noise_pred_text-noise_pred_uncond
-    #             )
+            # perform guidance
+            if classifier_free_guidance:
+                noise_pred_uncond, noise_pred_content = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance_scale * (
+                    noise_pred_content-noise_pred_uncond
+                )
 
-    #         # compute the previous noisy sample x_t -> x_t-1
-    #         latents = inference_scheduler.step(
-    #             noise_pred, t, latents
-    #         ).prev_sample
+            # compute the previous noisy sample x_t -> x_t-1
+            latent = scheduler.step(noise_pred, timestep, latent).prev_sample
 
-    #         # call the callback, if provided
-    #         if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and
-    #                                        (i+1) % inference_scheduler.order
-    #                                        == 0):
-    #             progress_bar.update(1)
+            # call the callback, if provided
+            if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and
+                                           (i+1) % scheduler.order == 0):
+                progress_bar.update(1)
 
-    #     if self.set_from == "pre-trained":
-    #         latents = self.group_out(latents.permute(0, 2, 3, 1).contiguous()
-    #                                 ).permute(0, 3, 1, 2).contiguous()
-    #     return latents
+        waveform = self.autoencoder.decode(latent)
 
-    # def prepare_latents(
-    #     self, batch_size, inference_scheduler, num_channels_latents, dtype,
-    #     device
-    # ):
-    #     shape = (batch_size, num_channels_latents, 256, 16)
-    #     latents = randn_tensor(
-    #         shape, generator=None, device=device, dtype=dtype
-    #     )
-    #     # scale the initial noise by the standard deviation required by the scheduler
-    #     latents = latents * inference_scheduler.init_noise_sigma
-    #     return latents
+        return waveform
 
-    # def encode_text_classifier_free(self, prompt, num_samples_per_prompt):
-    #     device = self.text_encoder.device
-    #     batch = self.tokenizer(
-    #         prompt,
-    #         max_length=self.tokenizer.model_max_length,
-    #         padding=True,
-    #         truncation=True,
-    #         return_tensors="pt"
-    #     )
-    #     input_ids, attention_mask = batch.input_ids.to(
-    #         device
-    #     ), batch.attention_mask.to(device)
+    def prepare_latent(
+        self, batch_size: int, scheduler: SchedulerMixin,
+        latent_shape: Sequence[int], dtype: torch.dtype, device: str
+    ):
+        shape = (batch_size, *latent_shape)
+        latent = randn_tensor(
+            shape, generator=None, device=device, dtype=dtype
+        )
+        # scale the initial noise by the standard deviation required by the scheduler
+        latent = latent * scheduler.init_noise_sigma
+        return latent
 
-    #     with torch.no_grad():
-    #         prompt_embeds = self.text_encoder(
-    #             input_ids=input_ids, attention_mask=attention_mask
-    #         )[0]
+    def encode_content_classifier_free(
+        self,
+        content: list[Any],
+        task: list[str],
+        num_samples_per_content: int = 1
+    ):
+        content, content_mask = self.content_encoder.encode_content(
+            content, task
+        )
 
-    #     prompt_embeds = prompt_embeds.repeat_interleave(
-    #         num_samples_per_prompt, 0
-    #     )
-    #     attention_mask = attention_mask.repeat_interleave(
-    #         num_samples_per_prompt, 0
-    #     )
+        content = content.repeat_interleave(num_samples_per_content, 0)
+        content_mask = content_mask.repeat_interleave(
+            num_samples_per_content, 0
+        )
 
-    #     # get unconditional embeddings for classifier free guidance
-    #     uncond_tokens = [""] * len(prompt)
+        # get unconditional embeddings for classifier free guidance
+        uncond_content, uncond_content_mask = self.content_encoder.encode_content(
+            content, task, unconditional=True, max_length=content.shape[1]
+        )
 
-    #     max_length = prompt_embeds.shape[1]
-    #     uncond_batch = self.tokenizer(
-    #         uncond_tokens,
-    #         max_length=max_length,
-    #         padding="max_length",
-    #         truncation=True,
-    #         return_tensors="pt",
-    #     )
-    #     uncond_input_ids = uncond_batch.input_ids.to(device)
-    #     uncond_attention_mask = uncond_batch.attention_mask.to(device)
+        uncond_content = uncond_content.repeat_interleave(
+            num_samples_per_content, 0
+        )
+        uncond_content_mask = uncond_content_mask.repeat_interleave(
+            num_samples_per_content, 0
+        )
 
-    #     with torch.no_grad():
-    #         negative_prompt_embeds = self.text_encoder(
-    #             input_ids=uncond_input_ids,
-    #             attention_mask=uncond_attention_mask
-    #         )[0]
+        # For classifier free guidance, we need to do two forward passes.
+        # We concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes
+        content = torch.cat([uncond_content, content])
+        content_mask = torch.cat([uncond_content_mask, content_mask])
 
-    #     negative_prompt_embeds = negative_prompt_embeds.repeat_interleave(
-    #         num_samples_per_prompt, 0
-    #     )
-    #     uncond_attention_mask = uncond_attention_mask.repeat_interleave(
-    #         num_samples_per_prompt, 0
-    #     )
-
-    #     # For classifier free guidance, we need to do two forward passes.
-    #     # We concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes
-    #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-    #     prompt_mask = torch.cat([uncond_attention_mask, attention_mask])
-    #     boolean_prompt_mask = (prompt_mask == 1).to(device)
-
-    #     return prompt_embeds, boolean_prompt_mask
+        return content, content_mask

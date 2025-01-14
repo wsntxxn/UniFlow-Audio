@@ -84,6 +84,8 @@ accelerate launch --config_file configs/accelerate/8gpus.yaml train.py \
 
 ## TODO
 - [x] Design the derivation of `total_training_steps`, determine whether it can be obtained before dataloader instantiation
+- [ ] Implement best checkpoint hook
+- [x] Implement inference for diffusion models
 - [ ] Add loss mask to support variable length target
 - [ ] Add duration adapter to the model to support TTS
 - [ ] Add `PhonemeEncoder` to implement TTS

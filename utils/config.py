@@ -5,6 +5,7 @@ import os
 
 import hydra
 import omegaconf
+from omegaconf import OmegaConf
 
 
 def multiply(*args):

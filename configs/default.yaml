@@ -5,6 +5,8 @@ defaults:
   - data@val_dataloader.dataset.datasets: val
   - _self_
 
+exp_dir: experiments/waveform_vae_udit_diffusion/audiocaps/
+
 sample_rate: 24000
 
 train_dataloader:
@@ -45,4 +47,4 @@ trainer:
     _target_: trainer.WandbConfig
     project: x_to_audio_generation
     save_dir: ${exp_dir}
-    name: test
+    name: audiocaps_waveform_vae_udit_diffusion

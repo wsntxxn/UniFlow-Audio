@@ -1,0 +1,24 @@
+test_dataloader:
+  _target_: torch.utils.data.DataLoader
+  dataset:
+    _target_: data_module.dataset.TextToAudioDataset
+    caption: data/audiocaps/test/caption.jsonl
+  batch_size: 1 # per device batch size
+  shuffle: False
+  num_workers: 4
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys: []
+
+noise_scheduler:
+  type: DDPMScheduler
+  name: stabilityai/stable-diffusion-2-1
+
+latent_shape: [128, 500]
+num_steps: 200
+guidance_scale: 1.0
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .

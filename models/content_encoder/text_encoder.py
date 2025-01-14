@@ -10,12 +10,17 @@ class TransformersTextEncoderBase(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name)
 
-    def forward(self, text: list[str]):
+    def forward(
+        self,
+        text: list[str],
+        max_length: int | None = None,
+        padding: bool | str = True,
+    ):
         device = self.model.device
         batch = self.tokenizer(
             text,
-            max_length=self.tokenizer.model_max_length,
-            padding=True,
+            max_length=max_length or self.tokenizer.model_max_length,
+            padding=padding,
             truncation=True,
             return_tensors="pt"
         )
@@ -37,11 +42,16 @@ class T5TextEncoder(TransformersTextEncoderBase):
         self.model = T5EncoderModel.from_pretrained(model_name)
         self.eval()
 
-    def forward(self, text):
+    def forward(
+        self,
+        text: list[str],
+        max_length: int | None = None,
+        padding: bool | str = True
+    ):
         with torch.no_grad(), torch.amp.autocast(
             device_type="cuda", enabled=False
         ):
-            return super().forward(text)
+            return super().forward(text, max_length, padding)
 
 
 if __name__ == '__main__':

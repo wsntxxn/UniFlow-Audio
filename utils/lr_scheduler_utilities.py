@@ -5,10 +5,10 @@ from torch.utils.data import DataLoader
 
 
 def get_warmup_steps(
+    dataloader_one_pass_outside_steps: int,
     warmup_steps: int | None = None,
     warmup_epochs: float | None = None,
     epoch_length: int | None = None,
-    train_dataloader: DataLoader | None = None,
 ) -> int:
     """
     Derive warmup steps according to step number or epoch number.
@@ -19,8 +19,7 @@ def get_warmup_steps(
         return warmup_steps
     else:
         if epoch_length is None:
-            assert train_dataloader is not None, "dataloader must be provided to derive the warmup steps"
-            epoch_length = len(train_dataloader)
+            epoch_length = dataloader_one_pass_outside_steps
         assert warmup_epochs is not None, "warmup_steps and warmup_epochs cannot be both None"
         return int(epoch_length * warmup_epochs)
 

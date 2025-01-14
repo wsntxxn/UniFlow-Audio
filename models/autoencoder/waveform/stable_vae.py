@@ -522,9 +522,7 @@ if __name__ == '__main__':
         latent, latent_length = autoencoder.encode(
             waveform, torch.as_tensor([waveform.shape[-1]])
         )
-        print(
-            "latent: ", latent.shape, "latent length: ", latent_length.tolist()
-        )
+        print("latent: ", latent.shape)
         reconstructed = autoencoder.decode(latent)
         print("reconstructed: ", reconstructed.shape)
     import soundfile as sf

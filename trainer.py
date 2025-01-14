@@ -193,7 +193,6 @@ class Trainer(CheckpointMixin):
                 self.accelerator.backward(loss)
                 self.optimizer.step()
                 if self.lr_scheduler_interval == LRSchedulerInterval.STEP:
-                    # TODO check whether `gradient_accumulation_steps` works
                     self.lr_scheduler.step()
                 self.optimizer.zero_grad()
 

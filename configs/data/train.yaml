@@ -1,5 +1,5 @@
 - _target_: data_module.dataset.TextToAudioDataset
-  caption: data/audiocaps/train/caption.jsonl
+  content: data/audiocaps/train/caption.jsonl
   audio: data/audiocaps/train/audio.jsonl
-  sample_rate: ${sample_rate}
+  target_sr: ${sample_rate}
   use_h5_cache: False
