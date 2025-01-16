@@ -90,7 +90,9 @@ accelerate launch --config_file configs/accelerate/8gpus.yaml train.py \
 - [ ] Add duration adapter to the model to support TTS
 - [ ] Add `PhonemeEncoder` to implement TTS
 - [ ] Implement singing voice synthesis
-- [ ] Implement speech enhancement and audio super-resolution
+- [ ] Implement speech enhancement, search and find current SOTA of speech enhancement
+- [ ] Implement audio super-resolution, search and find current SOTA of audio super-resolution
 - [ ] Add instruction-tuned large language model encoder to encode instruction and concat with content  
 - [ ] Implement `flow_matching.py`
 - [ ] Implement the fusion of time-independent and time-varying condition
+- [ ] Implement evaluation metrics of several tasks
