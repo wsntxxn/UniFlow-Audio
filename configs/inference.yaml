@@ -2,7 +2,7 @@ test_dataloader:
   _target_: torch.utils.data.DataLoader
   dataset:
     _target_: data_module.dataset.TextToAudioDataset
-    caption: data/audiocaps/test/caption.jsonl
+    content: data/audiocaps/test/caption.jsonl
   batch_size: 1 # per device batch size
   shuffle: False
   num_workers: 4
@@ -11,12 +11,12 @@ test_dataloader:
     pad_keys: []
 
 noise_scheduler:
-  type: DDPMScheduler
+  type: DDIMScheduler
   name: stabilityai/stable-diffusion-2-1
 
 latent_shape: [128, 500]
-num_steps: 200
-guidance_scale: 1.0
+num_steps: 50
+guidance_scale: 3.5
 
 hydra:
   output_subdir: null

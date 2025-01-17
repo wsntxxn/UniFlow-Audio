@@ -31,7 +31,9 @@ def main():
     exp_config = OmegaConf.load(exp_dir / "config.yaml")
 
     model: LoadPretrainedBase = hydra.utils.instantiate(exp_config["model"])
-    state_dict = load_file(exp_dir / "checkpoints/epoch_40/model.safetensors")
+    ckpt_path: Path = sorted((exp_dir / "checkpoints").iterdir()
+                            )[-1] / "model.safetensors"
+    state_dict = load_file(ckpt_path)
     model.load_pretrained(state_dict)
 
     model = model.to(device)

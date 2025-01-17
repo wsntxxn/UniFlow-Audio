@@ -286,9 +286,8 @@ class AudioDiffusion(LoadPretrainedBase, DiffusionMixin):
         )
 
         # get unconditional embeddings for classifier free guidance
-        uncond_content, uncond_content_mask = self.content_encoder.encode_content(
-            content, task, unconditional=True, max_length=content.shape[1]
-        )
+        uncond_content = torch.zeros_like(content)
+        uncond_content_mask = content_mask.detach().clone()
 
         uncond_content = uncond_content.repeat_interleave(
             num_samples_per_content, 0
