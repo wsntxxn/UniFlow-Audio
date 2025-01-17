@@ -38,6 +38,21 @@ class LoadPretrainedBase(nn.Module):
 class CountParamsBase(nn.Module):
     def count_params(self):
         num_params = 0
+        trainable_params = 0
         for param in self.parameters():
             num_params += param.numel()
-        return num_params
+            if param.requires_grad:
+                trainable_params += param.numel()
+        return num_params, trainable_params
+
+
+class SaveTrainableParamsBase(nn.Module):
+    @property
+    def param_names_to_save(self):
+        names = []
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                names.append(name)
+        for name, _ in self.named_buffers():
+            names.append(name)
+        return names

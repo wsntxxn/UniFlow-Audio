@@ -8,7 +8,7 @@ import torchvision
 from torchvision import transforms
 from torchdata.stateful_dataloader import StatefulDataLoader
 
-from trainer import Trainer, WandbConfig
+from trainer import Trainer, WandbConfig, MetricMonitor
 from utils.logging import LoggingLogger
 
 
@@ -97,6 +97,13 @@ class MnistTrainer(Trainer):
         self.validation_stats["accurate"] += accurate_preds.long().sum()
         self.validation_stats["num_elems"] += accurate_preds.shape[0]
 
+    def get_val_metrics(self):
+        return {
+            "accuracy":
+                self.validation_stats["accurate"].item() /
+                self.validation_stats["num_elems"]
+        }
+
     def on_validation_end(self):
         eval_metric = self.validation_stats["accurate"].item(
         ) / self.validation_stats["num_elems"]
@@ -151,6 +158,7 @@ trainer = MnistTrainer(
     save_every_n_epochs=1,
     save_every_n_steps=500,
     save_last_k=3,
+    metric_monitor=MetricMonitor(metric_name="accuracy", mode="max")
     # resume_from_checkpoint="experiments/mnist/checkpoints/step_2000"
 )
 trainer.train(42)

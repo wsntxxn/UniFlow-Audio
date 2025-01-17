@@ -11,7 +11,7 @@ from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from diffusers.utils.torch_utils import randn_tensor
 
 from models.content_encoder.content_encoder import ContentEncoder
-from models.common import LoadPretrainedBase
+from models.common import LoadPretrainedBase, CountParamsBase, SaveTrainableParamsBase
 
 
 class DiffusionMixin:
@@ -119,7 +119,10 @@ class DiffusionMixin:
         return loss
 
 
-class AudioDiffusion(LoadPretrainedBase, DiffusionMixin):
+class AudioDiffusion(
+    LoadPretrainedBase, CountParamsBase, SaveTrainableParamsBase,
+    DiffusionMixin
+):
     def __init__(
         self,
         autoencoder: nn.Module,

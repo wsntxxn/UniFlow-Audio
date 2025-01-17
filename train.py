@@ -1,4 +1,3 @@
-import logging
 import json
 
 import hydra
@@ -12,9 +11,8 @@ from utils.lr_scheduler_utilities import (
     get_dataloader_one_pass_steps_inside_accelerator,
     lr_scheduler_param_adapter
 )
+from models.common import CountParamsBase
 from trainer import Trainer
-
-logger = logging.Logger(__file__)
 
 register_omegaconf_resolvers()
 
@@ -33,13 +31,10 @@ def main():
     parse_config_from_command_line()
     config = configs[0]
 
-    logger.info("config: ")
-    logger.info(json.dumps(config, indent=2))
-
     # helper instance for accessing information about the current training environment
     helper_accelerator = Accelerator()
 
-    model = hydra.utils.instantiate(config["model"])
+    model: CountParamsBase = hydra.utils.instantiate(config["model"])
     train_dataloader = hydra.utils.instantiate(
         config["train_dataloader"], _convert_="all"
     )

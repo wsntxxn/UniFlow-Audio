@@ -40,6 +40,8 @@ class T5TextEncoder(TransformersTextEncoderBase):
         nn.Module.__init__(self)
         self.tokenizer = T5Tokenizer.from_pretrained(model_name)
         self.model = T5EncoderModel.from_pretrained(model_name)
+        for param in self.model.parameters():
+            param.requires_grad = False
         self.eval()
 
     def forward(

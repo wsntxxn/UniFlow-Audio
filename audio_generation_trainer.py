@@ -20,6 +20,11 @@ class AudioGenerationTrainer(Trainer):
             with open(self.project_dir / "config.yaml", "w") as writer:
                 OmegaConf.save(self.config_dict, writer)
 
+        num_params, trainable_params = self.model.count_params()
+        self.logger.info(
+            f"parameter number: {num_params}, trainable parameter number: {trainable_params}"
+        )
+
     def training_step(self, batch, batch_idx):
         loss = self.model(**batch)
         lr = self.optimizer.param_groups[0]["lr"]
@@ -36,6 +41,9 @@ class AudioGenerationTrainer(Trainer):
         loss = self.model(**batch)
         self.val_loss += loss.item()
         self.val_batch_num += 1
+
+    def get_val_metrics(self):
+        return {"loss": self.val_loss / self.val_batch_num}
 
     def on_train_epoch_end(self):
         train_loss = self.train_loss / self.train_batch_num

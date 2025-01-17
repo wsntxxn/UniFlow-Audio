@@ -1,17 +1,21 @@
 from abc import abstractmethod, ABC
 from enum import Enum
+from typing import Literal, Any
 import shutil
 from pathlib import Path
 from dataclasses import dataclass, field
 
+import numpy as np
 from tqdm import trange
 from torchdata.stateful_dataloader import StatefulDataLoader
 from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
 from accelerate.utils import set_seed
-from accelerate import Accelerator, DistributedDataParallelKwargs
+from accelerate import DistributedDataParallelKwargs
 import wandb
+
+from utils.accelerate_utilities import AcceleratorSaveTrainableParams
 
 
 @dataclass
@@ -36,6 +40,39 @@ class CheckpointMixin(ABC):
         ...
 
 
+@dataclass
+class MetricMonitor(CheckpointMixin):
+
+    metric_name: str = "loss"
+    mode: Literal["min", "max"] = "min"
+
+    def __post_init__(self):
+        if self.mode not in ("min", "max"):
+            raise ValueError("Mode must be 'min' or 'max'.")
+        self.best_value = np.inf if self.mode == "min" else -np.inf
+
+    def compare(self, x: float, best_x: float) -> bool:
+        """Compares the current value with the best value based on mode."""
+        return x < best_x if self.mode == "min" else x > best_x
+
+    def __call__(self, metric_dict: dict[str, Any]) -> bool:
+        """Checks if the new value is better and updates best_value if so."""
+        metric_value = metric_dict[self.metric_name]
+        if self.compare(metric_value, self.best_value):
+            self.best_value = metric_value
+            return True
+        return False
+
+    def state_dict(self) -> dict:
+        """Returns the state of the object as a dictionary."""
+        return {"mode": self.mode, "best_value": self.best_value}
+
+    def load_state_dict(self, state_dict: dict):
+        """Loads the state from a dictionary."""
+        self.mode = state_dict["mode"]
+        self.best_value = state_dict["best_value"]
+
+
 @dataclass(kw_only=True)
 class Trainer(CheckpointMixin):
     config_dict: dict | None = None
@@ -49,7 +86,6 @@ class Trainer(CheckpointMixin):
     optimizer: torch.optim.Optimizer
     lr_scheduler: torch.optim.lr_scheduler.LRScheduler
     loss_fn: nn.Module
-    checkpoint_objects: list[CheckpointMixin] = field(default_factory=list)
 
     epochs: int
     epoch_length: int | None = None
@@ -59,10 +95,11 @@ class Trainer(CheckpointMixin):
     save_every_n_steps: int | None = None
     save_every_n_epochs: int | None = 1
     save_last_k: int | None = 1
+    metric_monitor: MetricMonitor | None = None
 
     def setup_accelerator(self) -> None:
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
-        self.accelerator = Accelerator(
+        self.accelerator = AcceleratorSaveTrainableParams(
             log_with="wandb",
             gradient_accumulation_steps=self.gradient_accumulation_steps,
             project_dir=self.project_dir,
@@ -92,7 +129,6 @@ class Trainer(CheckpointMixin):
             self.accelerator.print(
                 f"resume from checkpoint: {self.resume_from_checkpoint}"
             )
-            # TODO load epoch and dataloader state
             self.accelerator.load_state(self.resume_from_checkpoint)
 
     @abstractmethod
@@ -122,16 +158,25 @@ class Trainer(CheckpointMixin):
     def on_validation_end(self) -> None:
         pass
 
+    def get_val_metrics(self) -> dict[str, Any]:
+        return {}
+
     def on_train_epoch_start(self) -> None:
         pass
 
     def on_train_epoch_end(self) -> None:
         pass
 
+    @property
+    def checkpoint_objects(self) -> list[CheckpointMixin]:
+        return []
+
     def state_dict(self) -> dict:
         state_dict = {"epoch": self.epoch, "step": self.step}
         if isinstance(self.train_dataloader, StatefulDataLoader):
             state_dict["train_dataloader"] = self.train_dataloader.state_dict()
+        if self.metric_monitor is not None:
+            state_dict["metric_monitor"] = self.metric_monitor.state_dict()
         return state_dict
 
     def load_state_dict(self, state_dict: dict) -> None:
@@ -141,12 +186,17 @@ class Trainer(CheckpointMixin):
             self.train_dataloader.load_state_dict(
                 state_dict["train_dataloader"]
             )
+        if "metric_monitor" in state_dict:
+            self.metric_monitor.load_state_dict(state_dict["metric_monitor"])
 
     def clean_checkpoints_to_k(
         self, checkpoints_dir: Path | str, k: int
     ) -> None:
         checkpoints_dir = Path(checkpoints_dir)
-        checkpoints = list(checkpoints_dir.iterdir())
+        checkpoints = (
+            list(checkpoints_dir.glob("epoch_*")) +
+            list(checkpoints_dir.glob("step_*"))
+        )
         # sort `checkpoints` by their last modified timestamp (ascending order)
         checkpoints.sort(key=lambda x: x.stat().st_mtime)
         to_delete = checkpoints[:-k] if len(checkpoints) > k else []
@@ -203,6 +253,14 @@ class Trainer(CheckpointMixin):
 
         self.val_loop()
 
+        # save checkpoint if the monitored metric improves
+        metric_dict: dict = self.get_val_metrics()
+        if (
+            self.metric_monitor is not None and
+            self.metric_monitor(metric_dict)
+        ):
+            self.save_checkpoint(self.checkpoint_dir / "best")
+
         if self.lr_scheduler_interval == LRSchedulerInterval.EPOCH:
             self.lr_scheduler.step()
 
@@ -230,9 +288,11 @@ class Trainer(CheckpointMixin):
         if not hasattr(self, "step"):
             self.step = 0
 
+        # set up `epoch_length` and training data iterator
         if self.epoch_length is None:
             self.epoch_length = len(self.train_dataloader)
         self.train_data_iterator = iter(self.train_dataloader)
+
         self.accelerator.print(f"training start ............")
         self.accelerator.init_trackers(
             self.wandb_config.project,

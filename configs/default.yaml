@@ -48,3 +48,7 @@ trainer:
     project: x_to_audio_generation
     save_dir: ${exp_dir}
     name: audiocaps_waveform_vae_udit_diffusion
+  metric_monitor:
+    _target_: trainer.MetricMonitor
+    metric_name: loss
+    mode: min
