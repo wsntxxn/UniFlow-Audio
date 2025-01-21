@@ -78,7 +78,7 @@ class Trainer(CheckpointMixin):
     config_dict: dict | None = None
     project_dir: str | Path
     checkpoint_dir: str | Path = None
-    wandb_config: WandbConfig
+    wandb_config: WandbConfig | None = None
 
     train_dataloader: StatefulDataLoader | DataLoader
     val_dataloader: StatefulDataLoader | DataLoader
@@ -129,7 +129,9 @@ class Trainer(CheckpointMixin):
             self.accelerator.print(
                 f"resume from checkpoint: {self.resume_from_checkpoint}"
             )
-            self.accelerator.load_state(self.resume_from_checkpoint)
+            self.accelerator.load_state(
+                self.resume_from_checkpoint, strict=False
+            )
 
     @abstractmethod
     def training_step(self, batch, batch_idx) -> torch.Tensor:
@@ -294,15 +296,16 @@ class Trainer(CheckpointMixin):
         self.train_data_iterator = iter(self.train_dataloader)
 
         self.accelerator.print(f"training start ............")
-        self.accelerator.init_trackers(
-            self.wandb_config.project,
-            init_kwargs={
-                "wandb": {
-                    "name": self.wandb_config.name,
-                    "dir": self.wandb_config.save_dir
+        if self.wandb_config is not None:
+            self.accelerator.init_trackers(
+                self.wandb_config.project,
+                init_kwargs={
+                    "wandb": {
+                        "name": self.wandb_config.name,
+                        "dir": self.wandb_config.save_dir
+                    }
                 }
-            }
-        )
+            )
 
     def on_train_end(self) -> None:
         self.accelerator.print(f"training end ............")

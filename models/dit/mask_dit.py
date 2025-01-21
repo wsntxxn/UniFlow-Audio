@@ -737,17 +737,17 @@ class UDiT(nn.Module):
 class MaskDiT(nn.Module):
     def __init__(
         self,
+        model: UDiT,
         mae=False,
         mae_prob=0.5,
         mask_ratio=[0.25, 1.0],
         mask_span=10,
-        **kwargs
     ):
         super().__init__()
-        self.model = UDiT(**kwargs)
+        self.model = model
         self.mae = mae
         if self.mae:
-            out_channel = kwargs.pop('out_chans', None)
+            out_channel = model.out_chans
             self.mask_embed = nn.Parameter(torch.zeros((out_channel)))
             self.mae_prob = mae_prob
             self.mask_ratio = mask_ratio

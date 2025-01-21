@@ -56,3 +56,12 @@ class SaveTrainableParamsBase(nn.Module):
         for name, _ in self.named_buffers():
             names.append(name)
         return names
+
+    def load_state_dict(self, state_dict, strict=True, assign=False):
+        for key in self.param_names_to_save:
+            if key not in state_dict:
+                raise Exception(
+                    f"{key} not found in either pre-trained models (e.g. BERT)"
+                    " or resumed checkpoints (e.g. epoch_40/model.pt)"
+                )
+        return super().load_state_dict(state_dict, strict, assign)

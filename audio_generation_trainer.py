@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from torch.nn.parallel import DistributedDataParallel
 from omegaconf import OmegaConf, DictConfig
 from trainer import Trainer
 from utils.logging import LoggingLogger
@@ -20,10 +21,15 @@ class AudioGenerationTrainer(Trainer):
             with open(self.project_dir / "config.yaml", "w") as writer:
                 OmegaConf.save(self.config_dict, writer)
 
-        num_params, trainable_params = self.model.count_params()
-        self.logger.info(
-            f"parameter number: {num_params}, trainable parameter number: {trainable_params}"
-        )
+        if isinstance(self.model, DistributedDataParallel):
+            num_params, trainable_params = self.model.module.count_params()
+        else:
+            num_params, trainable_params = self.model.count_params()
+
+        if self.accelerator.is_main_process:
+            self.logger.info(
+                f"parameter number: {num_params}, trainable parameter number: {trainable_params}"
+            )
 
     def training_step(self, batch, batch_idx):
         loss = self.model(**batch)
