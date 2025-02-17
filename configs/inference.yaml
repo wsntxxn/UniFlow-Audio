@@ -1,14 +1,19 @@
+defaults:
+  - data@test_data_dict: test
+
+sample_rate: 24000 # for training dataset config parsing
+
 test_dataloader:
   _target_: torch.utils.data.DataLoader
-  dataset:
-    _target_: data_module.dataset.TextToAudioDataset
-    content: data/audiocaps/test/caption.jsonl
+  dataset: ${test_data_dict.data_list.0}
   batch_size: 1 # per device batch size
   shuffle: False
   num_workers: 4
   collate_fn:
     _target_: data_module.collate_function.PaddingCollate
     pad_keys: []
+
+wav_dir: inference
 
 noise_scheduler:
   type: DDIMScheduler
@@ -17,6 +22,7 @@ noise_scheduler:
 latent_shape: [128, 500]
 num_steps: 50
 guidance_scale: 3.5
+use_gt_duration: true
 
 hydra:
   output_subdir: null

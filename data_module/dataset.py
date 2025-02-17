@@ -1,14 +1,19 @@
 from pathlib import Path
 from dataclasses import dataclass
 from abc import abstractmethod
-from typing import Any
+from typing import Any, Sequence
 import json
+import pickle
+
+from tqdm import tqdm
 import numpy as np
 from h5py import File
 import torch
 from torch.utils.data import Dataset
 import torchaudio
 import torchvision
+
+from utils.diffsinger_utilities import norm_interp_f0
 
 
 def read_jsonl_to_mapping(
@@ -145,12 +150,17 @@ class AudioGenerationDataset(AudioWaveformDataset):
         ...
 
     @abstractmethod
-    def load_content(self, content_or_path: str) -> Any:
+    def load_content(self, audio_id: str, content_or_path: str) -> Any:
+        ...
+
+    @abstractmethod
+    def load_duration(self, content: Any,
+                      waveform: torch.Tensor) -> Sequence[float]:
         ...
 
     def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
         content_or_path = self.id_to_content[audio_id]
-        content = self.load_content(content_or_path)
+        content = self.load_content(audio_id, content_or_path)
 
         if self.id_to_audio:  # training, audio is the target
             audio_path = self.id_to_audio[audio_id]
@@ -158,11 +168,13 @@ class AudioGenerationDataset(AudioWaveformDataset):
         else:  # inference, only content is available
             waveform = None
 
-        return content, waveform
+        duration = self.load_duration(content, waveform)
+
+        return content, waveform, duration
 
     def __getitem__(self, index) -> dict[str, Any]:
         audio_id = self.audio_ids[index]
-        content, waveform = self.load_content_waveform(audio_id)
+        content, waveform, duration = self.load_content_waveform(audio_id)
 
         if self.id_to_condition:
             condition_path = self.id_to_condition[audio_id]
@@ -171,9 +183,11 @@ class AudioGenerationDataset(AudioWaveformDataset):
             condition = None
 
         return {
+            "audio_id": audio_id,
             "content": content,
             "waveform": waveform,
             "condition": condition,
+            "duration": duration,
             "task": self.task
         }
 
@@ -187,7 +201,11 @@ class TextToAudioDataset(AudioGenerationDataset):
     def task(self):
         return "text_to_audio"
 
-    def load_content(self, content_or_path: str):
+    def load_duration(self, content: Any,
+                      waveform: torch.Tensor) -> Sequence[float]:
+        return [1.0]  # dummy duration sequence for batchify
+
+    def load_content(self, audio_id: str, content_or_path: str):
         # text-to-audio / text-to-music, directly use text as the content input
         return content_or_path
 
@@ -244,8 +262,91 @@ class SpeechEnhancementDataset(AudioWaveformDataset):
     ...
 
 
-class SingingSynthesisDataset(AudioWaveformDataset):
-    ...
+@dataclass
+class OpenCpopSingingDataset(AudioGenerationDataset):
+
+    content_col: str = "midi"
+
+    @property
+    def task(self):
+        return "singing_voice_synthesis"
+
+    def load_content(self, audio_id: str, content_or_path: str):
+        with open(content_or_path, "rb") as file:
+            midi = pickle.load(file)[audio_id]
+        return midi
+
+    def load_duration(self, content: Any,
+                      waveform: torch.Tensor) -> Sequence[float]:
+        return content["phoneme_duration"]
+
+
+@dataclass(kw_only=True)
+class PopCsSingingDataset(AudioGenerationDataset):
+
+    content_col: str = "phone_pitch"
+    f0_stats: str
+    pitch_norm: str = "log"
+    use_uv: bool = True
+    max_duration: float | None = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.f0_mean, self.f0_std = np.load(self.f0_stats)
+        self.f0_mean = float(self.f0_mean)
+        self.f0_std = float(self.f0_std)
+
+    @property
+    def task(self):
+        return "singing_acoustic_modeling"
+
+    def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
+        content_or_path = self.id_to_content[audio_id]
+        with File(content_or_path, "r") as hf:
+            phoneme = hf["phoneme"][audio_id][()]
+            phoneme_duration = hf["phoneme_duration"][audio_id][()]
+            f0 = hf["f0"][audio_id][()]
+
+        if self.id_to_audio:  # training, audio is the target
+            audio_path = self.id_to_audio[audio_id]
+            waveform = self.load_waveform(audio_id, audio_path)
+        else:  # inference, only content is available
+            waveform = None
+
+        f0, uv = norm_interp_f0(
+            f0, self.f0_mean, self.f0_std, self.pitch_norm, self.use_uv
+        )
+        if self.max_duration is not None:
+            cumsum_phone_duration = np.cumsum(phoneme_duration)
+            overlength_idxs = np.where(
+                cumsum_phone_duration >= self.max_duration
+            )[0]
+            if len(overlength_idxs) > 0:
+                trunc_idx = overlength_idxs[0]
+                phoneme = phoneme[:trunc_idx]
+                phoneme_duration = phoneme_duration[:trunc_idx]
+                trunc_duration = cumsum_phone_duration[trunc_idx - 1]
+                orig_duration = cumsum_phone_duration[-1]
+                f0 = f0[:int(trunc_duration / orig_duration * f0.shape[0])]
+                uv = uv[:int(trunc_duration / orig_duration * uv.shape[0])]
+                if waveform is not None:
+                    waveform = waveform[:int(
+                        trunc_duration / orig_duration * waveform.shape[0]
+                    )]
+
+        content = {
+            "phoneme": phoneme,
+            "phoneme_duration": phoneme_duration,
+            "f0": f0,
+            "uv": uv
+        }
+        duration = self.load_duration(content, waveform)
+
+        return content, waveform, duration
+
+    def load_duration(self, content: Any,
+                      waveform: torch.Tensor) -> Sequence[float]:
+        return content["phoneme_duration"]
 
 
 class AudioSuperResolutionDataset(AudioWaveformDataset):
@@ -277,23 +378,31 @@ if __name__ == '__main__':
 
     dataset = AudioGenConcatDataset(
         datasets=[
-            TextToAudioDataset(
-                content="./data/audiocaps/test/caption.jsonl",
-                audio="./data/audiocaps/test/audio.jsonl",
-                target_sr=24000
-            ),
-            TextToAudioDataset(
-                content="./data/audiocaps/val/caption.jsonl",
-                audio="./data/audiocaps/val/audio.jsonl",
-                target_sr=16000
-            ),
-            VideoToAudioDataset(
-                content="./data/vggsound_toy.jsonl",
-                audio="./data/vggsound_toy.jsonl",
-                content_col="video",
+            # TextToAudioDataset(
+            #     content="./data/audiocaps/test/caption.jsonl",
+            #     audio="./data/audiocaps/test/audio.jsonl",
+            #     target_sr=24000
+            # ),
+            PopCsSingingDataset(
+                content="./data/popcs/train/phone_pitch.jsonl",
+                audio="./data/popcs/train/audio.jsonl",
+                target_sr=24000,
+                f0_stats="./data/popcs/train/f0_mean_std.npy",
+                pitch_norm="log",
+                use_uv=True,
+                max_duration=20.0
             )
         ]
     )
 
+    from data_module.collate_function import PaddingCollate
+
+    collate_fn = PaddingCollate(pad_keys=["waveform", "duration", "f0", "uv"])
+    dataloader = torch.utils.data.DataLoader(
+        dataset, collate_fn=collate_fn, batch_size=4
+    )
+
     for item in tqdm(dataset):
+        # for batch in tqdm(dataloader):
+        duration = item["duration"]
         pass

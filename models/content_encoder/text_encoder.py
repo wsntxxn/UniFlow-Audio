@@ -13,14 +13,12 @@ class TransformersTextEncoderBase(nn.Module):
     def forward(
         self,
         text: list[str],
-        max_length: int | None = None,
-        padding: bool | str = True,
     ):
         device = self.model.device
         batch = self.tokenizer(
             text,
-            max_length=max_length or self.tokenizer.model_max_length,
-            padding=padding,
+            max_length=self.tokenizer.model_max_length,
+            padding=True,
             truncation=True,
             return_tensors="pt"
         )
@@ -47,13 +45,11 @@ class T5TextEncoder(TransformersTextEncoderBase):
     def forward(
         self,
         text: list[str],
-        max_length: int | None = None,
-        padding: bool | str = True
     ):
         with torch.no_grad(), torch.amp.autocast(
             device_type="cuda", enabled=False
         ):
-            return super().forward(text, max_length, padding)
+            return super().forward(text)
 
 
 if __name__ == '__main__':

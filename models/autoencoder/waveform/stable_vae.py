@@ -9,6 +9,7 @@ import torchaudio
 from alias_free_torch import Activation1d
 
 from models.common import LoadPretrainedBase
+from models.autoencoder.autoencoder_base import AutoEncoderBase
 from utils.torch_utilities import remove_key_prefix_factory, create_mask_from_length
 
 
@@ -437,7 +438,7 @@ class Pretransform(nn.Module):
         raise NotImplementedError
 
 
-class StableVAE(LoadPretrainedBase):
+class StableVAE(LoadPretrainedBase, AutoEncoderBase):
     def __init__(
         self,
         encoder,
@@ -453,10 +454,13 @@ class StableVAE(LoadPretrainedBase):
         soft_clip=False,
         pretrained_ckpt: str | Path = None
     ):
-        super().__init__()
-
-        self.downsampling_ratio = downsampling_ratio
-        self.sample_rate = sample_rate
+        LoadPretrainedBase.__init__(self)
+        AutoEncoderBase.__init__(
+            self,
+            downsampling_ratio=downsampling_ratio,
+            sample_rate=sample_rate,
+            latent_shape=(latent_dim, None)
+        )
 
         self.latent_dim = latent_dim
         self.io_channels = io_channels
@@ -512,7 +516,7 @@ if __name__ == '__main__':
     autoencoder.eval()
 
     waveform, sr = torchaudio.load(
-        "/hpc_stor03/public/shared/data/raa/DCASE2021/task6/audio/val/Oven fan, kitchen appliance.wav"
+        "/hpc_stor03/sjtu_home/xuenan.xu/workspace/singing_voice_synthesis/diffsinger/data/raw/opencpop/segments/wavs/2007000230.wav"
     )
     waveform = torchaudio.functional.resample(
         waveform, sr, model_config["sample_rate"]

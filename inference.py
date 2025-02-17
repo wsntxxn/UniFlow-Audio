@@ -27,12 +27,17 @@ def main():
     parse_config_from_command_line()
     config = configs[0]
 
-    exp_dir = Path(config["exp_dir"])
-    exp_config = OmegaConf.load(exp_dir / "config.yaml")
+    if "exp_dir" in config:
+        exp_dir = Path(config["exp_dir"])
+        ckpt_path: Path = sorted((exp_dir / "checkpoints").iterdir()
+                                )[-1] / "model.safetensors"
+    elif "ckpt_dir" in config:
+        ckpt_dir = Path(config["ckpt_dir"])
+        ckpt_path = ckpt_dir / "model.safetensors"
+        exp_dir = ckpt_dir.parent.parent
 
+    exp_config = OmegaConf.load(exp_dir / "config.yaml")
     model: LoadPretrainedBase = hydra.utils.instantiate(exp_config["model"])
-    ckpt_path: Path = sorted((exp_dir / "checkpoints").iterdir()
-                            )[-1] / "model.safetensors"
     state_dict = load_file(ckpt_path)
     model.load_pretrained(state_dict)
 
@@ -50,7 +55,7 @@ def main():
         subfolder="scheduler",
     )
 
-    audio_output_dir = exp_dir / "inference"
+    audio_output_dir = exp_dir / config["wav_dir"]
     audio_output_dir.mkdir(parents=True, exist_ok=True)
 
     with torch.no_grad():
@@ -63,14 +68,22 @@ def main():
 
             waveform = model.inference(
                 scheduler=scheduler,
-                latent_shape=config["latent_shape"],
+                # latent_shape=config["latent_shape"],
                 num_steps=config["num_steps"],
                 guidance_scale=config["guidance_scale"],
+                use_gt_duration=config["use_gt_duration"],
                 **batch
             )
 
+            if isinstance(batch["content"][0], str):
+                out_file: str = batch["content"][0]
+            else:
+                out_file: str = batch["audio_id"][0]
+            if not out_file.endswith(".wav"):
+                out_file = f"{out_file}.wav"
+
             sf.write(
-                audio_output_dir / f'{batch["content"][0]}.wav',
+                audio_output_dir / out_file,
                 waveform[0, 0].cpu().numpy(),
                 samplerate=exp_config["sample_rate"],
             )

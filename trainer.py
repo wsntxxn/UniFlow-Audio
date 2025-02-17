@@ -50,6 +50,7 @@ class MetricMonitor(CheckpointMixin):
         if self.mode not in ("min", "max"):
             raise ValueError("Mode must be 'min' or 'max'.")
         self.best_value = np.inf if self.mode == "min" else -np.inf
+        self.worse_count = 0
 
     def compare(self, x: float, best_x: float) -> bool:
         """Compares the current value with the best value based on mode."""
@@ -58,19 +59,28 @@ class MetricMonitor(CheckpointMixin):
     def __call__(self, metric_dict: dict[str, Any]) -> bool:
         """Checks if the new value is better and updates best_value if so."""
         metric_value = metric_dict[self.metric_name]
+        if isinstance(metric_value, torch.Tensor):
+            metric_value = metric_value.item()
         if self.compare(metric_value, self.best_value):
             self.best_value = metric_value
+            self.worse_count = 0
             return True
+        self.worse_count += 1
         return False
 
     def state_dict(self) -> dict:
         """Returns the state of the object as a dictionary."""
-        return {"mode": self.mode, "best_value": self.best_value}
+        return {
+            "mode": self.mode,
+            "best_value": self.best_value,
+            "worse_count": self.worse_count
+        }
 
     def load_state_dict(self, state_dict: dict):
         """Loads the state from a dictionary."""
         self.mode = state_dict["mode"]
         self.best_value = state_dict["best_value"]
+        self.worse_count = state_dict["worse_count"]
 
 
 @dataclass(kw_only=True)
@@ -96,6 +106,7 @@ class Trainer(CheckpointMixin):
     save_every_n_epochs: int | None = 1
     save_last_k: int | None = 1
     metric_monitor: MetricMonitor | None = None
+    early_stop: int | None = None
 
     def setup_accelerator(self) -> None:
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
@@ -201,7 +212,10 @@ class Trainer(CheckpointMixin):
         )
         # sort `checkpoints` by their last modified timestamp (ascending order)
         checkpoints.sort(key=lambda x: x.stat().st_mtime)
-        to_delete = checkpoints[:-k] if len(checkpoints) > k else []
+        if k > 0:
+            to_delete = checkpoints[:-k] if len(checkpoints) > k else []
+        elif k == 0:
+            to_delete = checkpoints
         for checkpoint in to_delete:
             shutil.rmtree(checkpoint)
 
@@ -254,21 +268,25 @@ class Trainer(CheckpointMixin):
                 self.save_checkpoint(self.checkpoint_dir / f"step_{self.step}")
 
         self.val_loop()
-
-        # save checkpoint if the monitored metric improves
-        metric_dict: dict = self.get_val_metrics()
-        if (
-            self.metric_monitor is not None and
-            self.metric_monitor(metric_dict)
-        ):
-            self.save_checkpoint(self.checkpoint_dir / "best")
+        self.epoch += 1
 
         if self.lr_scheduler_interval == LRSchedulerInterval.EPOCH:
             self.lr_scheduler.step()
 
-        self.epoch += 1
         if self.save_every_n_epochs and self.epoch % self.save_every_n_epochs == 0:
             self.save_checkpoint(self.checkpoint_dir / f"epoch_{self.epoch}")
+
+        metric_dict: dict = self.get_val_metrics()
+        if self.metric_monitor is not None:
+            # save checkpoint if the monitored metric improves
+            if self.metric_monitor(metric_dict):
+                self.save_checkpoint(self.checkpoint_dir / "best")
+
+            if self.early_stop is not None and self.metric_monitor.worse_count >= self.early_stop:
+                self.should_stop_training = True
+        else:
+            assert self.early_stop is None, "early stop does not have metrics to monitor!"
+
         self.on_train_epoch_end()
 
     def on_train_start(self) -> None:
@@ -289,6 +307,7 @@ class Trainer(CheckpointMixin):
             self.epoch = 0
         if not hasattr(self, "step"):
             self.step = 0
+        self.should_stop_training = False
 
         # set up `epoch_length` and training data iterator
         if self.epoch_length is None:
@@ -322,5 +341,7 @@ class Trainer(CheckpointMixin):
 
         for _ in range(self.epoch, self.epochs):
             self.train_loop()
+            if self.should_stop_training:
+                break
 
         self.on_train_end()

@@ -1,0 +1,4 @@
+_target_: losses.base.LossSumWrapper
+weights:
+  diff_loss: 1.0
+  local_duration_loss: 0.1

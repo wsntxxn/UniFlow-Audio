@@ -1,5 +1,8 @@
-- _target_: data_module.dataset.TextToAudioDataset
-  content: data/audiocaps/train/caption.jsonl
-  audio: data/audiocaps/train/audio.jsonl
-  target_sr: ${sample_rate}
-  use_h5_cache: False
+defaults:
+  - audiocaps@audiocaps
+  - opencpop@opencpop
+  - popcs@popcs
+
+data_list:
+  # - ${..audiocaps.train}
+  - ${..popcs.train}
