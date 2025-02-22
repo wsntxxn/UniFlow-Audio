@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file configs/accelerate/1gpu.yaml train.py \
+CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file configs/accelerate/nvidia/1gpu.yaml train.py \
     epoch_length=1000 \
     epochs=100 \
     train_dataloader.batch_size=12 \

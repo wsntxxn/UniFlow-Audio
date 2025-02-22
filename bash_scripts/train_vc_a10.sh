@@ -7,4 +7,4 @@ vc submit --image docker.v2.aispeech.com/sjtu/sjtu_wumengyue-xnxpy310:0.0.3 \
     --mem-per-task 24G \
     --gpu-per-task 1 \
     JOB=1:1 logs/vc/log_a10.JOB.log \
-    --cmd "bash bash_scripts/train_singing.sh"
+    --cmd "bash bash_scripts/train_tta.sh"
