@@ -3,6 +3,11 @@ import torch.nn as nn
 from transformers import AutoTokenizer, AutoModel, T5Tokenizer, T5EncoderModel
 from transformers.modeling_outputs import BaseModelOutput
 
+if torch.cuda.is_available():
+    DEVICE_TYPE = "cuda"
+elif hasattr(torch, "npu") and torch.npu.is_available():
+    DEVICE_TYPE = "npu"
+
 
 class TransformersTextEncoderBase(nn.Module):
     def __init__(self, model_name: str):
@@ -47,7 +52,7 @@ class T5TextEncoder(TransformersTextEncoderBase):
         text: list[str],
     ):
         with torch.no_grad(), torch.amp.autocast(
-            device_type="cuda", enabled=False
+            device_type=DEVICE_TYPE, enabled=False
         ):
             return super().forward(text)
 

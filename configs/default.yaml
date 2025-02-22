@@ -1,8 +1,7 @@
 defaults:
   - basic
   - model: diffusion
-  - data@train_data_dict: train
-  - data@val_data_dict: val
+  - data@data_dict: tta_audiocaps
   - loss@loss_fn: identity
   - _self_
 
@@ -14,7 +13,7 @@ train_dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader
   dataset:
     _target_: data_module.dataset.AudioGenConcatDataset
-    datasets: ${train_data_dict.data_list}
+    datasets: ${data_dict.train_data_list}
   batch_size: 24 # per device batch size
   shuffle: True
   num_workers: 4
@@ -26,7 +25,7 @@ val_dataloader:
   _target_: torch.utils.data.DataLoader
   dataset:
     _target_: data_module.dataset.AudioGenConcatDataset
-    datasets: ${val_data_dict.data_list}
+    datasets: ${data_dict.val_data_list}
   batch_size: 24 # per device batch size
   shuffle: False
   num_workers: 4

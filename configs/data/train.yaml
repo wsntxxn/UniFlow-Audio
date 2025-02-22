@@ -1,8 +1,0 @@
-defaults:
-  - audiocaps@audiocaps
-  - opencpop@opencpop
-  - popcs@popcs
-
-data_list:
-  # - ${..audiocaps.train}
-  - ${..popcs.train}

@@ -1,7 +1,6 @@
 defaults:
-  - audiocaps@audiocaps
-  - opencpop@opencpop
-
+  - default
+  - _self_
 
 data_list:
   # - ${..audiocaps.test}

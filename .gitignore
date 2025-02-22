@@ -172,6 +172,7 @@ cython_debug/
 
 # Experiment logs and checkpoints
 experiments/
+checkpoints/
 
 # Raw / processed data file
 data/*

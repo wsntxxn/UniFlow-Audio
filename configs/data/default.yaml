@@ -1,0 +1,10 @@
+defaults:
+  - datasets@audiocaps: audiocaps
+  - datasets@opencpop: opencpop
+  - datasets@popcs: popcs
+
+train_data_list:
+  - ${..audiocaps.train}
+
+val_data_list:
+  - ${..audiocaps.val}

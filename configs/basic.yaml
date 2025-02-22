@@ -17,7 +17,7 @@ gradient_accumulation_steps: 4
 optimizer:
   _target_: torch.optim.AdamW
   lr: !!float 1e-4
-  weight_decay: !!float 1e-2
+  weight_decay: !!float 1e-6
 
 lr_scheduler:
   _target_: "transformers.get_scheduler"
