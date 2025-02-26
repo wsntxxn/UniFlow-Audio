@@ -682,6 +682,111 @@ class SameLengthAudioDiffusion(VariableLengthAudioDiffusion):
             "local_duration_loss": local_duration_loss
         }
 
+    @torch.no_grad()
+    def inference(
+        self,
+        content: list[Any],
+        condition: list[Any],
+        task: list[str],
+        scheduler: SchedulerMixin,
+        num_steps: int = 20,
+        guidance_scale: float = 3.0,
+        disable_progress: bool = True,
+        use_gt_duration: bool = False,
+        **kwargs
+    ):
+        device = self.dummy_param.device
+
+        content_input = content
+        content, content_mask = self.content_encoder.encode_content(
+            content_input, task, device=device
+        )
+        (
+            content,
+            content_mask,
+            global_duration_pred,
+            local_duration_pred,  # log(n_frames)
+        ) = self.content_adapter(content, content_mask)
+
+        scheduler.set_timesteps(num_steps, device=device)
+        timesteps = scheduler.timesteps
+
+        local_duration = torch.round(
+            torch.as_tensor(kwargs["duration"]) *
+            self.autoencoder.latent_token_rate
+        ).to(device)
+
+        # --------------------------------------------------------------------
+        # duration adapter
+        # --------------------------------------------------------------------
+        # content_mask: [B, L], latent_mask: [B, T]
+        global_duration = local_duration.sum(1)
+        latent_mask = create_mask_from_length(global_duration).to(
+            content_mask.device
+        )
+        attn_mask = content_mask.unsqueeze(-1) * latent_mask.unsqueeze(1)
+        # attn_mask: [B, L, T]
+        align_path = create_alignment_path(local_duration_pred, attn_mask)
+        time_aligned_content1 = torch.matmul(
+            align_path.transpose(1, 2), content
+        )  # (B, T, L) x (B, L, E) -> (B, T, E)
+        time_aligned_content2 = self.content_encoder.encode_time_aligned_content(
+            content_input, task, device=device
+        )
+        time_aligned_content2 = trim_or_pad_length(
+            time_aligned_content2, time_aligned_content1.size(1), 1
+        )
+        time_aligned_content = time_aligned_content1 + time_aligned_content2
+
+        # --------------------------------------------------------------------
+        # prepare input to the backbone
+        # --------------------------------------------------------------------
+        batch_size = content.size(0)
+        latent_shape = tuple(
+            int(global_duration.max().item()) if dim is None else dim
+            for dim in self.autoencoder.latent_shape
+        )
+        shape = (batch_size, *latent_shape)
+        latent = randn_tensor(
+            shape, generator=None, device=device, dtype=content.dtype
+        )
+        # scale the initial noise by the standard deviation required by the scheduler
+        latent = latent * scheduler.init_noise_sigma
+
+        num_warmup_steps = len(timesteps) - num_steps * scheduler.order
+        progress_bar = tqdm(range(num_steps), disable=disable_progress)
+
+        # --------------------------------------------------------------------
+        # iteratively denoising
+        # --------------------------------------------------------------------
+        for i, timestep in enumerate(timesteps):
+
+            latent_input = scheduler.scale_model_input(latent, timestep)
+
+            context = self.dummy_nta_embed[(None, ) * (content.ndim - 1) +
+                                           (..., )].expand_as(content)
+            context_mask = torch.ones(batch_size, context.size(1)).to(device)
+
+            noise_pred = self.backbone(
+                x=latent_input,
+                x_mask=latent_mask,
+                timesteps=timestep,
+                time_aligned_context=time_aligned_content,
+                context=context,
+                context_mask=context_mask
+            )
+
+            # compute the previous noisy sample x_t -> x_t-1
+            latent = scheduler.step(noise_pred, timestep, latent).prev_sample
+
+            # call the callback, if provided
+            if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and
+                                           (i+1) % scheduler.order == 0):
+                progress_bar.update(1)
+
+        waveform = self.autoencoder.decode(latent)
+        return waveform
+
 
 class DiffSingerDiffusion(VariableLengthAudioDiffusion):
     def forward(

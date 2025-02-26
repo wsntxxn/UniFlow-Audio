@@ -4,6 +4,8 @@ defaults:
 
 train_dataloader:
   num_workers: 0
+val_dataloader:
+  num_workers: 0
 
 trainer:
   wandb_config:

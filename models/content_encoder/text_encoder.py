@@ -3,10 +3,12 @@ import torch.nn as nn
 from transformers import AutoTokenizer, AutoModel, T5Tokenizer, T5EncoderModel
 from transformers.modeling_outputs import BaseModelOutput
 
-if torch.cuda.is_available():
-    DEVICE_TYPE = "cuda"
-elif hasattr(torch, "npu") and torch.npu.is_available():
+try:
+    import torch_npu
+    from torch_npu.contrib import transfer_to_npu
     DEVICE_TYPE = "npu"
+except ModuleNotFoundError:
+    DEVICE_TYPE = "cuda"
 
 
 class TransformersTextEncoderBase(nn.Module):

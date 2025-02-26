@@ -11,9 +11,11 @@ from tqdm import tqdm
 from utils.config import register_omegaconf_resolvers
 from models.common import LoadPretrainedBase
 
-if hasattr(torch, "npu") and torch.npu.is_available():
+try:
     import torch_npu
     from torch_npu.contrib import transfer_to_npu
+except:
+    pass
 
 register_omegaconf_resolvers()
 

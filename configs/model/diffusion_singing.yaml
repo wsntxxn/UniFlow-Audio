@@ -25,7 +25,6 @@ content_encoder:
     num_layers: 4
     num_heads: 2
     ffn_kernel_size: 9
-    pitch_downsample_ratio: ${get_pitch_downsample_ratio:${...autoencoder}, 0.005}
     d_out: 256
 content_adapter:
   _target_: models.content_adapter.ContentAdapter

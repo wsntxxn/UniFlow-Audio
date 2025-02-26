@@ -464,7 +464,6 @@ class FastSpeech2PitchEncoder(FastSpeech2EncoderBase):
     def __init__(
         self,
         phone_vocab_size,
-        pitch_downsample_ratio,
         d_model,
         num_layers,
         num_heads,
@@ -484,14 +483,6 @@ class FastSpeech2PitchEncoder(FastSpeech2EncoderBase):
         )
         self.phone_embed = nn.Embedding(phone_vocab_size, d_model)
         self.pitch_embed = nn.Embedding(300, d_model)
-        # self.pitch_conv = nn.Conv1d(
-        #     in_channels=d_model,
-        #     out_channels=d_out,
-        #     kernel_size=pitch_downsample_ratio,
-        #     stride=pitch_downsample_ratio,
-        #     padding=pitch_downsample_ratio // 2
-        # )
-        self.pitch_downsample_ratio = pitch_downsample_ratio
 
     def forward(self, phoneme: torch.Tensor, lengths: Sequence[int]):
         x = self.embed_scale * self.phone_embed(phoneme)
@@ -510,11 +501,4 @@ class FastSpeech2PitchEncoder(FastSpeech2EncoderBase):
         f0_denorm = denorm_f0(f0, uv)
         pitch = f0_to_coarse(f0_denorm)
         pitch_embed = self.pitch_embed(pitch)
-        # pitch_embed = self.pitch_conv(pitch_embed.transpose(1, 2)
-        #                              ).transpose(1, 2)
-        pitch_embed = nn.functional.avg_pool1d(
-            pitch_embed.transpose(1, 2),
-            kernel_size=self.pitch_downsample_ratio,
-            stride=self.pitch_downsample_ratio
-        ).transpose(1, 2)
         return {"output": pitch_embed}

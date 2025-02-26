@@ -86,15 +86,23 @@ class ContentAdapter(nn.Module):
         super().__init__()
         self.d_out = d_out
         self.cls_embed = nn.Parameter(torch.zeros((d_model)))
+        if hasattr(torch, "npu") and torch.npu.is_available():
+            enable_nested_tensor = False
+        else:
+            enable_nested_tensor = True
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=num_heads,
             dim_feedforward=4 * d_model,
             dropout=dropout,
             activation="gelu",
-            batch_first=True
+            batch_first=True,
         )
-        self.encoder_layers = nn.TransformerEncoder(encoder_layer, num_layers)
+        self.encoder_layers = nn.TransformerEncoder(
+            encoder_layer=encoder_layer,
+            num_layers=num_layers,
+            enable_nested_tensor=enable_nested_tensor
+        )
         self.duration_predictor = duration_predictor
         self.content_proj = torch.nn.Conv1d(d_model, d_out, 1)
 

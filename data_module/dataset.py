@@ -278,7 +278,7 @@ class OpenCpopSingingDataset(AudioGenerationDataset):
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
-        return content["phoneme_duration"]
+        return content["phoneme_duration"].astype(np.float32)
 
 
 @dataclass(kw_only=True)
@@ -304,8 +304,10 @@ class PopCsSingingDataset(AudioGenerationDataset):
         content_or_path = self.id_to_content[audio_id]
         with File(content_or_path, "r") as hf:
             phoneme = hf["phoneme"][audio_id][()]
-            phoneme_duration = hf["phoneme_duration"][audio_id][()]
-            f0 = hf["f0"][audio_id][()]
+            phoneme_duration = hf["phoneme_duration"][audio_id][()].astype(
+                np.float32
+            )
+            f0 = hf["f0"][audio_id][()].astype(np.float32)
 
         if self.id_to_audio:  # training, audio is the target
             audio_path = self.id_to_audio[audio_id]
