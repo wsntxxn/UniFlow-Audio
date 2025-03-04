@@ -67,14 +67,16 @@ class AudioGenerationTrainer(Trainer):
         self.val_batch_num += 1
 
     def get_val_metrics(self):
-        return {"loss": self.val_loss_dict["diff_loss"] / self.val_batch_num}
+        # return {"loss": self.val_loss_dict["diff_loss"] / self.val_batch_num}
+        return {"loss": self.val_loss_dict["loss"] / self.val_batch_num}
 
     def on_train_epoch_end(self):
         train_loss = self.train_loss / self.train_batch_num
         val_loss = self.val_loss_dict["loss"] / self.val_batch_num
         log_dict = {}
         for loss_name in self.val_loss_dict:
-            log_dict[f"val/{loss_name}"] = self.val_loss_dict[loss_name] / self.val_batch_num
+            log_dict[f"val/{loss_name}"
+                    ] = self.val_loss_dict[loss_name] / self.val_batch_num
         self.accelerator.log(
             log_dict,
             step=self.step,

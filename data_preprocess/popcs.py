@@ -18,7 +18,7 @@ TEST_PREFIXES = [
     'popcs-隐形的翅膀',
 ]
 SAMPLE_RATE = 24000
-FRAME_SHIFT = 0.005
+FRAME_SHIFT = 0.020
 
 
 def load_meta_data():
@@ -79,10 +79,13 @@ def main():
         with open(TARGET_POPCS_DIR / split / "audio.jsonl", "w") as writer:
             for item_name in item_names[split]:
                 writer.write(
-                    json.dumps({
-                        "audio_id": item_name,
-                        "audio": item_to_data[item_name]["wav"].__str__()
-                    }) + "\n"
+                    json.dumps(
+                        {
+                            "audio_id": item_name,
+                            "audio": item_to_data[item_name]["wav"].__str__(),
+                        },
+                        ensure_ascii=False,
+                    ) + "\n"
                 )
 
         phone_pitch_file = TARGET_POPCS_DIR / split / "phone_pitch.h5"
@@ -125,10 +128,13 @@ def main():
         ) as writer:
             for item_name in filtered_item_names:
                 writer.write(
-                    json.dumps({
-                        "audio_id": item_name,
-                        "phone_pitch": phone_pitch_file.resolve().__str__()
-                    }) + "\n"
+                    json.dumps(
+                        {
+                            "audio_id": item_name,
+                            "phone_pitch": phone_pitch_file.resolve().__str__()
+                        },
+                        ensure_ascii=False,
+                    ) + "\n"
                 )
 
 

@@ -22,3 +22,9 @@ test:
   f0_stats: data/popcs/test/f0_mean_std.npy
   pitch_norm: "log"
   use_uv: true
+train_for_infer:
+  _target_: data_module.dataset.PopCsSingingDataset
+  content: data/popcs/train/phone_pitch.jsonl
+  f0_stats: data/popcs/train/f0_mean_std.npy
+  pitch_norm: "log"
+  use_uv: true

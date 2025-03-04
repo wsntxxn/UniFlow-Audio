@@ -666,7 +666,6 @@ class SameLengthAudioDiffusion(VariableLengthAudioDiffusion):
                                        (..., )].expand_as(content)
         context_mask = torch.ones(batch_size, context.size(1)).to(device)
         pred: torch.Tensor = self.backbone(
-            # x=latent_input,
             x=noisy_latent,
             timesteps=timesteps,
             time_aligned_context=time_aligned_content,
@@ -726,7 +725,7 @@ class SameLengthAudioDiffusion(VariableLengthAudioDiffusion):
         )
         attn_mask = content_mask.unsqueeze(-1) * latent_mask.unsqueeze(1)
         # attn_mask: [B, L, T]
-        align_path = create_alignment_path(local_duration_pred, attn_mask)
+        align_path = create_alignment_path(local_duration, attn_mask)
         time_aligned_content1 = torch.matmul(
             align_path.transpose(1, 2), content
         )  # (B, T, L) x (B, L, E) -> (B, T, E)

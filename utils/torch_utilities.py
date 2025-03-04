@@ -154,7 +154,7 @@ def trim_or_pad_length(x: torch.Tensor, target_length: int, length_dim: int):
         return x[tuple(slices)]
 
     elif current_length < target_length:
-        # Pad the tensor with zeros
+        # Pad the tensor
         pad_shape = list(x.shape)
         pad_length = target_length - current_length
 

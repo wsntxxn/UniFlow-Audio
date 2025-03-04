@@ -8,7 +8,7 @@ class ContentEncoder(nn.Module):
         self,
         text_encoder: nn.Module,
         midi_encoder: nn.Module = None,
-        pitch_encoder: nn.Module = None
+        pitch_encoder: nn.Module = None,
     ):
         super().__init__()
         self.text_encoder = text_encoder

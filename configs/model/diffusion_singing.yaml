@@ -1,6 +1,10 @@
 defaults:
   - autoencoder: stable_vae
   - backbone: audio_udit
+  - _self_ 
+
+backbone:
+  context_dim: 256
 
 _target_: models.diffusion.SameLengthAudioDiffusion
 content_encoder:
