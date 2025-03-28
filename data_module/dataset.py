@@ -12,6 +12,7 @@ import torch
 from torch.utils.data import Dataset
 import torchaudio
 import torchvision
+import random
 
 from utils.diffsinger_utilities import norm_interp_f0
 
@@ -352,7 +353,119 @@ class PopCsSingingDataset(AudioGenerationDataset):
 
 
 class AudioSuperResolutionDataset(AudioWaveformDataset):
-    ...
+       
+
+    # lowpass audio in content.jsonl，audio_id+caption
+    content: str | Path
+    audio: str | Path | None = None
+    downsampling_ratio: int | None
+    condition: str | Path | None = None
+    id_col: str = "audio_id"
+    id_col_in_content: str | None = None
+    content_col: str = "caption"
+    id_col_in_audio: str | None = None
+    audio_col: str = "audio"
+    id_col_in_condition: str | None = None
+    condition_col: str = "condition"
+
+    def __post_init__(self, ):
+        super().__post_init__()
+
+        id_col_in_content = self.id_col_in_content or self.id_col
+        self.id_to_content = read_jsonl_to_mapping(
+            self.content, id_col_in_content, self.content_col
+        )
+        # id_to_content: {'id1': '<caption1>', 'id2': '<caption2>'}
+
+        id_col_in_audio = self.id_col_in_audio or self.id_col
+        if self.audio:
+            self.id_to_audio = read_jsonl_to_mapping(
+                self.audio, id_col_in_audio, self.audio_col
+            )
+        else:
+            self.id_to_audio = None
+        # id_to_audio: {'id1': '<audio path1>', 'id2': '<audio path2>'}
+
+        
+        condition = None
+
+        self.audio_ids = list(self.id_to_content.keys())
+
+
+    @property
+    @abstractmethod
+    def task(self):
+        return "audio_super_resolution"
+
+    def __len__(self) -> int:
+        return len(self.audio_ids)
+
+    
+    def load_content(self, audio_id: str, content_or_path: str) -> Any:
+        waveform, sr = torchaudio.load(content_or_path)
+        return waveform
+    
+    def load_duration(self, content: Any, waveform: torch.Tensor) -> Sequence[float]:
+        if content.dim() == 1:
+            duration_time = content.size(0)//self.downsampling_ratio
+        else:
+            duration_time = content.size(1)//self.downsampling_ratio
+        duration_value =   self.downsampling_ratio / self.target_sr 
+        duration = np.full(duration_time, duration_value)
+        return duration
+
+    
+    
+    def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
+        content_or_path = self.id_to_content[audio_id]
+        content = self.load_content(audio_id, content_or_path)
+        content=content.mean(0)
+        max_length = 250 * 480
+
+        # clip can be omitted
+        if len(content) > max_length:
+            start_index = random.randint(0, len(content) - max_length)
+            content = content[start_index:start_index + max_length]
+
+
+        if self.id_to_audio:  # training, audio is the target
+            #audio_path = self.base_path +'/' + self.id_to_audio[audio_id]
+            audio_path = self.id_to_audio[audio_id]
+            waveform = self.load_waveform(audio_id, audio_path)
+            if len(waveform) > max_length:
+                waveform = waveform[start_index:start_index+max_length]
+        else:  # inference, only content is available
+            waveform = None
+        
+        
+        duration = self.load_duration(content, waveform)
+        
+        
+
+        return content, waveform, duration
+    def __getitem__(self, index) -> dict[str, Any]:
+        
+        audio_id = self.audio_ids[index]
+
+
+        low_res_waveform, high_res_waveform, duration= self.load_content_waveform(audio_id)
+        condition= None
+        content_length = torch.tensor(len(low_res_waveform))
+        content_dict = {"content":low_res_waveform, "content_length":content_length}
+        
+        return {
+            "audio_id": audio_id,
+            "content": content_dict,
+            "waveform": high_res_waveform,
+            "condition": condition,
+            "duration": duration,
+            "task": self.task,
+        }
+    
+    def __del__(self):
+        if hasattr(self, 'h5_cache'):
+            for h5_file in self.h5_cache.values():
+                h5_file.close()
 
 
 class AudioGenConcatDataset(Dataset):

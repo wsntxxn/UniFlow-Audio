@@ -1,0 +1,23 @@
+train:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: data/TTS_test/train/content.jsonl   # 低频音频路径（caption 字段）
+  audio: data/TTS_test/train/audio.jsonl        # 高频音频路径
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: False
+
+val:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: data/TTS_test/val/content.jsonl
+  audio: data/TTS_test/val/audio.jsonl
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: False
+
+test:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: data/TTS_test/test/content.jsonl
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: False
+

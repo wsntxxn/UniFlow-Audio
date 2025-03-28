@@ -9,6 +9,8 @@ exp_dir: experiments/waveform_vae_udit_diffusion/audiocaps/
 
 sample_rate: 24000
 
+downsampling_ratio : 480
+
 train_dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader
   dataset:

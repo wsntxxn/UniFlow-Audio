@@ -6,14 +6,16 @@ import torch.nn as nn
 class ContentEncoder(nn.Module):
     def __init__(
         self,
-        text_encoder: nn.Module,
+        text_encoder: nn.Module= None,
         midi_encoder: nn.Module = None,
         pitch_encoder: nn.Module = None,
+        audio_encoder: nn.Module = None
     ):
         super().__init__()
         self.text_encoder = text_encoder
         self.midi_encoder = midi_encoder
         self.pitch_encoder = pitch_encoder
+        self.audio_encoder = audio_encoder
 
     def encode_content(
         self, batch_content: list[Any], batch_task: list[str],
@@ -23,6 +25,15 @@ class ContentEncoder(nn.Module):
         batch_mask = []
 
         for content, task in zip(batch_content, batch_task):
+            
+            if task =="audio_super_resolution":
+                content_dict = content
+                for key in list(content_dict.keys()):
+                    content_dict[key] = content_dict[key].unsqueeze(0).to(
+                        device
+                    )
+                latent, latent_mask = self.audio_encoder.encode(content_dict["content"],content_dict["content_length"])
+                output_dict = {"output": latent.transpose(1, 2), "mask": latent_mask}
             if task == "text_to_audio":
                 output_dict = self.text_encoder([content])
             elif task == "singing_voice_synthesis":
@@ -75,6 +86,12 @@ class ContentEncoder(nn.Module):
         batch_output = []
 
         for content, task in zip(batch_content, batch_task):
+            
+            if task =="audio_super_resolution":
+                non_zero_positions = torch.nonzero(content, as_tuple=True)[0]
+                content_length = non_zero_positions[-1] + 1
+                latent, latent_mask = self.audio_encoder.encode(content.unsqueeze(0), content_length.unsqueeze(0))
+                output_dict = {"output": latent.transpose(1, 2), "mask": latent_mask}
             if task == "text_to_audio":
                 output_dict = {"output": torch.zeros(1, 1, device=device)}
             elif task == "singing_voice_synthesis":

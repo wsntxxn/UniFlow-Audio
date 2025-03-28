@@ -2,6 +2,9 @@ defaults:
   - datasets@audiocaps: audiocaps
   - datasets@opencpop: opencpop
   - datasets@popcs: popcs
+  - datasets@TTSHQ: TTSHQ
+  - datasets@musdb: musdb
+  - datasets@moises: moises
 
 train_data_list:
   - ${..audiocaps.train}

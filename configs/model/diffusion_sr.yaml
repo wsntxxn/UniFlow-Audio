@@ -1,0 +1,53 @@
+defaults:
+  - autoencoder: stable_vae
+  - backbone: audio_udit
+ 
+_target_: models.diffusion.VariableLengthAudioDiffusion
+content_encoder:
+  _target_: models.content_encoder.content_encoder.ContentEncoder
+  audio_encoder:
+    _target_: models.autoencoder.waveform.stable_vae.StableVAE
+    _recursive_: true
+    encoder:
+      _target_: models.autoencoder.waveform.stable_vae.OobleckEncoder
+      in_channels: 1
+      channels: 128
+      c_mults: [1, 2, 4, 8]
+      strides: [2, 4, 6, 10]
+      latent_dim: 256
+      use_snake: True
+    decoder:
+      _target_: models.autoencoder.waveform.stable_vae.OobleckDecoder
+      out_channels: 1
+      channels: 128
+      c_mults: [1, 2, 4, 8]
+      strides: [2, 4, 6, 10]
+      latent_dim: 128
+      use_snake: True
+      final_tanh: False
+    io_channels: 1
+    latent_dim: 128
+    downsampling_ratio: 480
+    sample_rate:  ${sample_rate}
+    pretrained_ckpt: /hpc_stor03/sjtu_home/xuenan.xu/workspace/text_to_audio_generation/ezaudio/ckpts/vae/1m.pt
+    bottleneck:
+      _target_: models.autoencoder.waveform.stable_vae.VAEBottleneck
+
+content_adapter:
+  _target_: models.content_adapter.ContentAdapter
+  d_model: 128
+  d_out: 128
+  num_layers: 2
+  num_heads: 4
+  dropout: 0.1
+  duration_predictor:
+    _target_: models.content_adapter.DurationPredictor
+    in_channels: ${..d_model}
+    filter_channels: 256
+    n_layers: 5
+    kernel_size: 3
+    p_dropout: 0.5
+frame_resolution: 0.02
+noise_scheduler_name: "/hpc_stor03/sjtu_home/yaoyun.zhang/model_ckpts/stabilityai-stable-diffusion-2-1"
+snr_gamma: 5.0
+classifier_free_guidance: True
