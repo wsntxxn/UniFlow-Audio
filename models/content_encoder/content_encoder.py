@@ -26,7 +26,7 @@ class ContentEncoder(nn.Module):
 
         for content, task in zip(batch_content, batch_task):
             
-            if task =="audio_super_resolution":
+            if task == "audio_super_resolution" or task =="speech_enhancement":
                 content_dict = content
                 for key in list(content_dict.keys()):
                     content_dict[key] = content_dict[key].unsqueeze(0).to(
@@ -93,6 +93,8 @@ class ContentEncoder(nn.Module):
                 latent, latent_mask = self.audio_encoder.encode(content.unsqueeze(0), content_length.unsqueeze(0))
                 output_dict = {"output": latent.transpose(1, 2), "mask": latent_mask}
             if task == "text_to_audio":
+                output_dict = {"output": torch.zeros(1, 1, device=device)}
+            elif task == "speech_enhancement":
                 output_dict = {"output": torch.zeros(1, 1, device=device)}
             elif task == "singing_voice_synthesis":
                 output_dict = {"output": torch.zeros(1, 1, device=device)}

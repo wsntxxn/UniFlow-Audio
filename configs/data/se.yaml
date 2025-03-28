@@ -1,0 +1,9 @@
+defaults:
+  - datasets@se: se
+
+train_data_list:
+  - ${..se.train}
+
+val_data_list:
+  - ${..se.val}
+

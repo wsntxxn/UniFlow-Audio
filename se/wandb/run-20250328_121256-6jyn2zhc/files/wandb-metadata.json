@@ -1,0 +1,56 @@
+{
+  "os": "Linux-4.18.0-425.3.1.el8_lustre.x86_64-x86_64-with-glibc2.35",
+  "python": "3.10.14",
+  "startedAt": "2025-03-28T12:12:56.456532Z",
+  "args": [
+    "epoch_length=10000",
+    "epochs=100",
+    "data@data_dict=se",
+    "train_dataloader.batch_size=1",
+    "val_dataloader.batch_size=1",
+    "model=diffusion_se",
+    "exp_dir=se",
+    "optimizer.lr=5e-5",
+    "loss@loss_fn=weighted_sum",
+    "trainer.wandb_config.project=xtoaudio_se",
+    "trainer.wandb_config.name=vae_wave_backbone_audioudit_se"
+  ],
+  "program": "/hpc_stor03/sjtu_home/zihao.zheng/x_to_audio_generation/train.py",
+  "codePath": "train.py",
+  "git": {
+    "remote": "https://gitee.com/wsntxxn/x_to_audio_generation.git",
+    "commit": "61c98de48f3766eca4dc64f9d6a376c1e608e08c"
+  },
+  "email": "1401722682@qq.com",
+  "root": "se",
+  "host": "job-174288609523053011339-zihao-zheng-master-0",
+  "username": "zihao.zheng",
+  "executable": "/opt/conda/bin/python",
+  "codePathLocal": "train.py",
+  "cpu_count": 40,
+  "cpu_count_logical": 80,
+  "gpu": "NVIDIA A10",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "959188172800",
+      "used": "434073034752"
+    }
+  },
+  "memory": {
+    "total": "540406419456"
+  },
+  "cpu": {
+    "count": 40,
+    "countLogical": 80
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A10",
+      "memoryTotal": "25757220864",
+      "cudaCores": 9216,
+      "architecture": "Ampere"
+    }
+  ],
+  "cudaVersion": "12.2"
+}

@@ -259,9 +259,96 @@ class TextToSpeechDataset(AudioWaveformDataset):
     ...
 
 
+@dataclass(kw_only=True)
 class SpeechEnhancementDataset(AudioWaveformDataset):
-    ...
 
+    content: str | Path
+    audio: str | Path | None = None
+    condition: str | Path | None = None
+    downsampling_ratio: int | None
+    id_col: str = "UUID"
+    id_col_in_content: str | None = None
+    content_col: str = "InputPath"
+    id_col_in_audio: str | None = None
+    audio_col: str = "WavPath"
+    id_col_in_condition: str | None = None
+    condition_col: str = "ConditionPath"
+
+    def __post_init__(self, ):
+        super().__post_init__()
+
+        self.base_path = str(Path(self.content).parent)
+
+        id_col_in_content = self.id_col_in_content or self.id_col
+        self.id_to_content = read_jsonl_to_mapping(
+            self.content, id_col_in_content, self.content_col
+        )
+
+        id_col_in_audio = self.id_col_in_audio or self.id_col
+        if self.audio:
+            self.id_to_audio = read_jsonl_to_mapping(
+                self.audio, id_col_in_audio, self.audio_col
+            )
+        else:
+            self.id_to_audio = None
+
+        if self.condition:
+            id_col_in_condition = self.id_col_in_condition or self.id_col
+            self.id_to_condition = read_jsonl_to_mapping(
+                self.condition, id_col_in_condition, self.condition_col
+            )
+        else:
+            self.id_to_condition = None
+
+        self.audio_ids = list(self.id_to_content.keys())
+
+    @property
+    @abstractmethod
+    def task(self):
+        return "speech_enhancement"
+
+    def __len__(self) -> int:
+        return len(self.audio_ids)
+
+    def __getitem__(self, index) -> dict[str, Any]:
+        audio_id = self.audio_ids[index]
+
+        #noisy_audio_path = self.base_path +'/' + self.id_to_content[audio_id]
+        noisy_audio_path = self.id_to_content[audio_id]
+        content = self.load_waveform(audio_id, noisy_audio_path)
+        
+        if self.id_to_audio:  # training, audio is the target
+            #audio_path = self.base_path +'/' + self.id_to_audio[audio_id]
+            audio_path = self.id_to_audio[audio_id]
+            waveform = self.load_waveform(audio_id, audio_path)
+        else:  # inference, only content is available
+            waveform = None
+        
+        if self.id_to_condition:
+            condition_path = self.id_to_condition[audio_id]
+            condition = self.load_waveform(audio_id, condition_path)
+        else:
+            condition = None
+
+        if content.dim() == 1:
+            duration_time = content.size(0)//self.downsampling_ratio
+        else:
+            duration_time = content.size(1)//self.downsampling_ratio
+
+        duration_value =   self.downsampling_ratio / self.target_sr 
+        duration = np.full(duration_time, duration_value)
+        content_length = torch.tensor(len(content))
+        content_dict = {"content":content, "content_length":content_length}
+
+        return {
+            "audio_id": audio_id,
+            "content": content_dict,
+            "waveform": waveform,
+            "condition": condition,
+            "duration": duration,
+            "task": self.task
+        }
+    
 
 @dataclass
 class OpenCpopSingingDataset(AudioGenerationDataset):

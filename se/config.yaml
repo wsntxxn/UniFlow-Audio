@@ -1,0 +1,257 @@
+exp_dir: se
+logging_file: se/train.log
+epochs: 100
+epoch_length: 10000
+warmup_params:
+  warmup_steps: 1000
+  warmup_epochs: null
+  epoch_length: 10000
+gradient_accumulation_steps: 4
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 5.0e-05
+  weight_decay: 1.0e-06
+lr_scheduler:
+  _target_: transformers.get_scheduler
+  name: linear
+seed: 42
+model:
+  autoencoder:
+    _target_: models.autoencoder.waveform.stable_vae.StableVAE
+    encoder:
+      _target_: models.autoencoder.waveform.stable_vae.OobleckEncoder
+      in_channels: 1
+      channels: 128
+      c_mults:
+      - 1
+      - 2
+      - 4
+      - 8
+      strides:
+      - 2
+      - 4
+      - 6
+      - 10
+      latent_dim: 256
+      use_snake: true
+    decoder:
+      _target_: models.autoencoder.waveform.stable_vae.OobleckDecoder
+      out_channels: 1
+      channels: 128
+      c_mults:
+      - 1
+      - 2
+      - 4
+      - 8
+      strides:
+      - 2
+      - 4
+      - 6
+      - 10
+      latent_dim: 128
+      use_snake: true
+      final_tanh: false
+    io_channels: 1
+    latent_dim: 128
+    downsampling_ratio: 480
+    sample_rate: 24000
+    pretrained_ckpt: /hpc_stor03/sjtu_home/xuenan.xu/workspace/text_to_audio_generation/ezaudio/ckpts/vae/1m.pt
+    bottleneck:
+      _target_: models.autoencoder.waveform.stable_vae.VAEBottleneck
+  backbone:
+    _target_: models.dit.audio_dit.AudioUDiT
+    img_size: 1000
+    patch_size: 1
+    in_chans: 128
+    out_chans: 128
+    input_type: 1d
+    embed_dim: 1024
+    depth: 24
+    num_heads: 16
+    mlp_ratio: 4.0
+    qkv_bias: false
+    qk_scale: null
+    qk_norm: layernorm
+    norm_layer: layernorm
+    act_layer: geglu
+    context_norm: true
+    use_checkpoint: true
+    time_fusion: ada_sola_bias
+    ada_sola_rank: 32
+    ada_sola_alpha: 32
+    cls_dim: null
+    ta_context_dim: 128
+    ta_context_fusion: add
+    ta_context_norm: true
+    context_dim: 128
+    context_fusion: cross
+    context_max_length: null
+    context_pe_method: none
+    pe_method: none
+    rope_mode: shared
+    use_conv: true
+    skip: true
+    skip_norm: true
+  _target_: models.diffusion.VariableLengthAudioDiffusion
+  content_encoder:
+    _target_: models.content_encoder.content_encoder.ContentEncoder
+    audio_encoder:
+      _target_: models.autoencoder.waveform.stable_vae.StableVAE
+      _recursive_: true
+      encoder:
+        _target_: models.autoencoder.waveform.stable_vae.OobleckEncoder
+        in_channels: 1
+        channels: 128
+        c_mults:
+        - 1
+        - 2
+        - 4
+        - 8
+        strides:
+        - 2
+        - 4
+        - 6
+        - 10
+        latent_dim: 256
+        use_snake: true
+      decoder:
+        _target_: models.autoencoder.waveform.stable_vae.OobleckDecoder
+        out_channels: 1
+        channels: 128
+        c_mults:
+        - 1
+        - 2
+        - 4
+        - 8
+        strides:
+        - 2
+        - 4
+        - 6
+        - 10
+        latent_dim: 128
+        use_snake: true
+        final_tanh: false
+      io_channels: 1
+      latent_dim: 128
+      downsampling_ratio: 480
+      sample_rate: 24000
+      pretrained_ckpt: /hpc_stor03/sjtu_home/xuenan.xu/workspace/text_to_audio_generation/ezaudio/ckpts/vae/1m.pt
+      bottleneck:
+        _target_: models.autoencoder.waveform.stable_vae.VAEBottleneck
+  content_adapter:
+    _target_: models.content_adapter.ContentAdapter
+    d_model: 128
+    d_out: 128
+    num_layers: 2
+    num_heads: 4
+    dropout: 0.1
+    duration_predictor:
+      _target_: models.content_adapter.DurationPredictor
+      in_channels: 128
+      filter_channels: 256
+      n_layers: 5
+      kernel_size: 3
+      p_dropout: 0.5
+  frame_resolution: 0.005
+  noise_scheduler_name: /hpc_stor03/sjtu_home/yaoyun.zhang/model_ckpts/stabilityai-stable-diffusion-2-1
+  snr_gamma: 5.0
+  classifier_free_guidance: true
+data_dict:
+  se:
+    train:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: data/se/train/metadata_caption.jsonl
+      audio: data/se/train/metadata_audio.jsonl
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+    val:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: data/se/val/metadata_caption.jsonl
+      audio: data/se/val/metadata_audio.jsonl
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+    test:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: data/se/test/metadata_caption.jsonl
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+  train_data_list:
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: data/se/train/metadata_caption.jsonl
+    audio: data/se/train/metadata_audio.jsonl
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+  val_data_list:
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: data/se/val/metadata_caption.jsonl
+    audio: data/se/val/metadata_audio.jsonl
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+loss_fn:
+  _target_: losses.base.LossSumWrapper
+  weights:
+    diff_loss: 1.0
+    local_duration_loss: 0.1
+sample_rate: 24000
+downsampling_ratio: 480
+train_dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  dataset:
+    _target_: data_module.dataset.AudioGenConcatDataset
+    datasets:
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: data/se/train/metadata_caption.jsonl
+      audio: data/se/train/metadata_audio.jsonl
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+  batch_size: 1
+  shuffle: true
+  num_workers: 4
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys:
+    - waveform
+    - duration
+val_dataloader:
+  _target_: torch.utils.data.DataLoader
+  dataset:
+    _target_: data_module.dataset.AudioGenConcatDataset
+    datasets:
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: data/se/val/metadata_caption.jsonl
+      audio: data/se/val/metadata_audio.jsonl
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+  batch_size: 1
+  shuffle: false
+  num_workers: 4
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys:
+    - waveform
+    - duration
+trainer:
+  _target_: audio_generation_trainer.AudioGenerationTrainer
+  project_dir: se
+  logging_file: se/train.log
+  gradient_accumulation_steps: 4
+  epochs: 100
+  epoch_length: 10000
+  save_last_k: 1
+  early_stop: 10
+  wandb_config:
+    _target_: trainer.WandbConfig
+    project: xtoaudio_se
+    save_dir: se
+    name: vae_wave_backbone_audioudit_se
+  metric_monitor:
+    _target_: trainer.MetricMonitor
+    metric_name: loss
+    mode: min

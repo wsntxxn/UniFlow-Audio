@@ -5,6 +5,7 @@ defaults:
   - datasets@TTSHQ: TTSHQ
   - datasets@musdb: musdb
   - datasets@moises: moises
+  - datasets@se: se
 
 train_data_list:
   - ${..audiocaps.train}
