@@ -8,6 +8,9 @@ from safetensors.torch import load_file
 import diffusers.schedulers as noise_schedulers
 from tqdm import tqdm
 
+from moviepy.editor import VideoFileClip, AudioFileClip
+from moviepy.audio.AudioClip import AudioArrayClip
+
 from utils.config import register_omegaconf_resolvers
 from models.common import LoadPretrainedBase
 
@@ -19,6 +22,16 @@ except:
 
 register_omegaconf_resolvers()
 
+def merge_audio_video(waveform_path, audio_id, target_dir):
+    video_id = audio_id
+    video_path = Path("/hpc_stor03/public/shared/data/raa/VGGSound/data") / f"{video_id}"
+    video = VideoFileClip(str(video_path))
+
+    audio = AudioFileClip(waveform_path)
+    audio_clip = audio.subclip(0, min(audio.duration, video.duration))
+
+    video = video.set_audio(audio_clip)
+    video.write_videofile(target_dir)
 
 def main():
 

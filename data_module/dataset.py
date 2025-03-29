@@ -43,6 +43,16 @@ def read_from_h5(key: str, h5_path: str, cache: dict[str, str] | None = None):
         if h5_path not in cache:
             cache[h5_path] = File(h5_path, "r")
         return cache[h5_path][key][()]
+    
+def read_from_h5_tmp(key: str, h5_path: str, cache: dict[str, str] | None = None):
+    if cache is None:
+        # with File(h5_path, "r") as reader:
+        #     return reader
+        return File(h5_path, "r")
+    else:
+        if h5_path not in cache:
+            cache[h5_path] = File(h5_path, "r")
+        return cache[h5_path]
 
 
 @dataclass(kw_only=True)
@@ -214,41 +224,52 @@ class TextToAudioDataset(AudioGenerationDataset):
 @dataclass
 class VideoToAudioDataset(AudioGenerationDataset):
 
-    video_fps: int | None = None
-    video_size: tuple[int, int] = (256, 256)
+    content_col: str = "video"
+    total_duration: int = 10.0
 
     def __post_init__(self, ):
         super().__post_init__()
-        self.resize_transform = torchvision.transforms.Resize(self.video_size)
 
     def load_content_waveform(self, audio_id: str):
         video_path = self.id_to_content[audio_id]
-        video, waveform, meta = torchvision.io.read_video(video_path)
-        # video: T x H x W x C, waveform: C x T
-        orig_sr, fps = meta.get('audio_fps'), meta.get('video_fps')
 
-        # average multi-channel to single-channel
-        waveform = waveform.mean(0)
-        # resample audio
-        if self.target_sr:
-            waveform = torchaudio.functional.resample(
-                waveform, orig_freq=orig_sr, new_freq=self.target_sr
-            )
+        if video_path.endswith(".hdf5") or video_path.endswith(".h5"):
+            # on guizhou file system, using cached h5py. File will cause OOM error
+            if self.use_h5_cache:
+                vggsound = read_from_h5_tmp(audio_id, video_path, self.h5_cache)
+            else:
+                vggsound = read_from_h5_tmp(audio_id, video_path)
 
-        # resample video
-        if self.video_fps:
-            video_resample_ratio = self.video_fps / fps
-            new_length = int(round(video.shape[0] * video_resample_ratio))
-            indices = torch.linspace(0, video.shape[0] - 1,
-                                     steps=new_length).long()
-            video = video[indices]
+            id_set = vggsound["Video_id"][:]
+            idx = np.where(id_set == audio_id.encode())
 
-        # resize video
-        video = self.resize_transform(
-            video.permute(0, 3, 1, 2)
-        )  # T x C x H x W
+            video_features = vggsound["Video"][idx]
+            if video_features.ndim==3:
+                # clip features
+                video_features = torch.as_tensor(video_features, dtype=torch.float32).squeeze(0)
+            elif video_features.ndim==4:
+                # cavp features
+                video_features = torch.as_tensor(video_features, dtype=torch.float32).squeeze(0).squeeze(0)
+            else:
+                raise ValueError("video features n_dim is not supported !")
+            label = vggsound["Label"][idx]
 
-        return video, waveform
+            if self.id_to_audio:
+                waveform = vggsound["Audio"][idx]
+                waveform =  torch.as_tensor(waveform, dtype=torch.float32).squeeze(0)
+            else:  # inference, only content is available
+                waveform = None
+        else:
+            raise NotImplementedError("VGGSound must be load by h5 file !")        
+
+        duration = self.load_duration(video_features, waveform)
+
+        return video_features, waveform, duration, label
+
+    def load_duration(self, content: Any, waveform: torch.Tensor) -> Sequence[float]:
+        L = content.shape[0]
+        duration = torch.full( (L,), self.total_duration) / L
+        return duration
 
     @property
     def task(self):

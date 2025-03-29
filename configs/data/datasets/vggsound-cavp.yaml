@@ -1,0 +1,17 @@
+train:
+  _target_: data_module.dataset.VideoToAudioDataset
+  content: data/vggsound-cavp/train/content.jsonl
+  audio: data/vggsound-cavp/train/audio.jsonl
+  target_sr: ${sample_rate}
+  use_h5_cache: False
+
+val:
+  _target_: data_module.dataset.VideoToAudioDataset
+  content: data/vggsound-cavp/val/content.jsonl
+  audio: data/vggsound-cavp/val/audio.jsonl
+  target_sr: ${sample_rate}
+  use_h5_cache: False
+
+test:
+  _target_: data_module.dataset.VideoToAudioDataset
+  content: data/vggsound-cavp/val/content.jsonl
