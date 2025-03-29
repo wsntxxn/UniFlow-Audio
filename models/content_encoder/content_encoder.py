@@ -7,6 +7,7 @@ class ContentEncoder(nn.Module):
     def __init__(
         self,
         text_encoder: nn.Module= None,
+        vision_encoder: nn.Module = None,
         midi_encoder: nn.Module = None,
         pitch_encoder: nn.Module = None,
         audio_encoder: nn.Module = None
@@ -16,6 +17,7 @@ class ContentEncoder(nn.Module):
         self.midi_encoder = midi_encoder
         self.pitch_encoder = pitch_encoder
         self.audio_encoder = audio_encoder
+        self.vision_encoder = vision_encoder
 
     def encode_content(
         self, batch_content: list[Any], batch_task: list[str],
@@ -36,6 +38,8 @@ class ContentEncoder(nn.Module):
                 output_dict = {"output": latent.transpose(1, 2), "mask": latent_mask}
             if task == "text_to_audio":
                 output_dict = self.text_encoder([content])
+            elif task == "video_to_audio":
+                output_dict = self.vision_encoder(content)
             elif task == "singing_voice_synthesis":
                 content_dict = {
                     "phoneme":
@@ -94,6 +98,8 @@ class ContentEncoder(nn.Module):
                 output_dict = {"output": latent.transpose(1, 2), "mask": latent_mask}
             if task == "text_to_audio":
                 output_dict = {"output": torch.zeros(1, 1, device=device)}
+            elif task == "video_to_audio":
+                output_dict = self.vision_encoder(content)
             elif task == "singing_voice_synthesis":
                 output_dict = {"output": torch.zeros(1, 1, device=device)}
             elif task == "singing_acoustic_modeling":

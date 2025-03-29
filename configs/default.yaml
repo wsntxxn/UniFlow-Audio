@@ -1,7 +1,7 @@
 defaults:
   - basic
-  - model: diffusion
-  - data@data_dict: tta_audiocaps
+  - model: diffusion_v2a
+  - data@data_dict: v2a_vggsound_cavp
   - loss@loss_fn: identity
   - _self_
 

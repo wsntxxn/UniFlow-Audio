@@ -9,7 +9,7 @@ TARGET_VGGSOUND_DIR = Path("./data/vggsound-cavp")
 
 def main():
     waveform_df = pd.read_csv(
-        "/hpc_stor03/sjtu_home/yaoyun.zhang/work/XToAudioGeneration/data/vggsound/vggsound_cavp_metadata.csv"
+        "/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data_preprocess/vggsound/vggsound_cavp_metadata.csv"
     )
 
     for split in ["train", "test", "val"]:

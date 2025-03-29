@@ -185,7 +185,11 @@ class AudioGenerationDataset(AudioWaveformDataset):
 
     def __getitem__(self, index) -> dict[str, Any]:
         audio_id = self.audio_ids[index]
-        content, waveform, duration = self.load_content_waveform(audio_id)
+        if self.task == "video_to_audio":
+            content, waveform, duration, label = self.load_content_waveform(audio_id)
+        else:
+            content, waveform, duration = self.load_content_waveform(audio_id)
+            label = None
 
         if self.id_to_condition:
             condition_path = self.id_to_condition[audio_id]
@@ -196,6 +200,7 @@ class AudioGenerationDataset(AudioWaveformDataset):
         return {
             "audio_id": audio_id,
             "content": content,
+            "label": label,
             "waveform": waveform,
             "condition": condition,
             "duration": duration,
