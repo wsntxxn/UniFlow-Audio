@@ -1,0 +1,25 @@
+_target_: models.autoencoder.waveform.stable_vae.StableVAE
+encoder:
+  _target_: models.autoencoder.waveform.stable_vae.OobleckEncoder
+  in_channels: 1
+  channels: 128
+  c_mults: [1, 2, 4, 8]
+  strides: [2, 4, 6, 10]
+  latent_dim: 256
+  use_snake: True
+decoder:
+  _target_: models.autoencoder.waveform.stable_vae.OobleckDecoder
+  out_channels: 1
+  channels: 128
+  c_mults: [1, 2, 4, 8]
+  strides: [2, 4, 6, 10]
+  latent_dim: 128
+  use_snake: True
+  final_tanh: False
+io_channels: 1
+latent_dim: 128
+downsampling_ratio: 480
+sample_rate: 24000
+pretrained_ckpt: ckpts/vae/1m.pt
+bottleneck:
+  _target_: models.autoencoder.waveform.stable_vae.VAEBottleneck

@@ -1,0 +1,4 @@
+_target_: models.diffsinger_net.DiffSingerNet
+in_dims: 128
+residual_channels: 64
+encoder_hidden: 256

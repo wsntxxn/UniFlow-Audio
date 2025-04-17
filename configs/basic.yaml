@@ -1,0 +1,31 @@
+exp_dir: experiments/base
+logging_file: ${exp_dir}/train.log
+
+epochs: 100
+epoch_length: Null
+
+warmup_params:
+  warmup_steps: 1000
+  warmup_epochs: Null
+  epoch_length: ${epoch_length}
+
+# training_step_params:
+  # epochs: ${epochs}
+
+gradient_accumulation_steps: 4
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: !!float 1e-4
+  weight_decay: !!float 1e-2
+
+lr_scheduler:
+  _target_: "transformers.get_scheduler"
+  name: "linear"
+
+seed: 42
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .

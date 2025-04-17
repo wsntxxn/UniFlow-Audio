@@ -1,0 +1,53 @@
+defaults:
+  - basic
+  - model: diffusion
+  - data@data_dict: tta
+  - loss@loss_fn: identity
+  - _self_
+
+exp_dir: experiments/waveform_vae_udit_diffusion/audiocaps/
+
+sample_rate: 24000
+
+train_dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  dataset:
+    _target_: data_module.dataset.AudioGenConcatDataset
+    datasets: ${data_dict.train_data_list}
+  batch_size: 48 # per device batch size
+  shuffle: True
+  num_workers: 8
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys: ["waveform", "duration"]
+
+val_dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  dataset:
+    _target_: data_module.dataset.AudioGenConcatDataset
+    datasets: ${data_dict.val_data_list}
+  batch_size: 48 # per device batch size
+  shuffle: True
+  num_workers: 8
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys: ["waveform",  "duration"]
+  
+trainer:
+  _target_: audio_generation_trainer.AudioGenerationTrainer
+  project_dir: ${exp_dir}
+  logging_file: ${logging_file}
+  gradient_accumulation_steps: ${gradient_accumulation_steps}
+  epochs: ${epochs}
+  epoch_length: ${epoch_length}
+  save_last_k: 5
+  early_stop: null
+  wandb_config:
+    _target_: trainer.WandbConfig
+    project: x_to_audio_generation
+    save_dir: ${exp_dir}
+    name: audiocaps_waveform_vae_udit_diffusion
+  metric_monitor:
+    _target_: trainer.MetricMonitor
+    metric_name: diff_loss
+    mode: min

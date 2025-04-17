@@ -1,0 +1,36 @@
+defaults:
+  - data@data_dict: tts
+
+sample_rate: 24000 # for training dataset config parsing
+# exp_dir: experiments/waveform_vae_audioudit_layers_24_dim_1024_diffusion/popcs
+
+test_dataloader:
+  _target_: torch.utils.data.DataLoader
+  dataset: 
+      _target_: data_module.dataset.AudioGenConcatDataset
+      datasets: ${data_dict.test_data_list}
+  # dataset: ${data_dict.test_data_list.0}
+  batch_size: 1 # per device batch size
+  shuffle: False
+  num_workers: 4
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys: []
+
+wav_dir: inference
+
+noise_scheduler:
+  type: DDIMScheduler
+  name: stabilityai/stable-diffusion-2-1
+
+#128是vae latent维度，一秒50token
+latent_shape: [128, 500]
+num_steps: 50
+guidance_scale: 3.5
+use_gt_duration: false
+# use_gt_duration: true
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
