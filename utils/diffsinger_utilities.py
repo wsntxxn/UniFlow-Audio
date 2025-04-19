@@ -22,17 +22,17 @@ UNK_ID = RESERVED_TOKENS.index(UNK)  # Normally 2
 F0_BIN = 256
 F0_MAX = 1100.0
 F0_MIN = 50.0
-F0_MEL_MIN = 1127 * np.log(1 + F0_MIN/700)
-F0_MEL_MAX = 1127 * np.log(1 + F0_MAX/700)
+F0_MEL_MIN = 1127 * np.log(1 + F0_MIN / 700)
+F0_MEL_MAX = 1127 * np.log(1 + F0_MAX / 700)
 
 
 def f0_to_coarse(f0):
     is_torch = isinstance(f0, torch.Tensor)
-    f0_mel = 1127 * (1 +
-                     f0/700).log() if is_torch else 1127 * np.log(1 + f0/700)
+    f0_mel = 1127 * (1 + f0 /
+                     700).log() if is_torch else 1127 * np.log(1 + f0 / 700)
     f0_mel[f0_mel > 0
           ] = (f0_mel[f0_mel > 0] -
-               F0_MEL_MIN) * (F0_BIN-2) / (F0_MEL_MAX-F0_MEL_MIN) + 1
+               F0_MEL_MIN) * (F0_BIN - 2) / (F0_MEL_MAX - F0_MEL_MIN) + 1
 
     f0_mel[f0_mel <= 1] = 1
     f0_mel[f0_mel > F0_BIN - 1] = F0_BIN - 1
@@ -54,7 +54,7 @@ def norm_f0(
 ):
     is_torch = isinstance(f0, torch.Tensor)
     if pitch_norm == 'standard':
-        f0 = (f0-f0_mean) / f0_std
+        f0 = (f0 - f0_mean) / f0_std
     if pitch_norm == 'log':
         f0 = torch.log2(f0) if is_torch else np.log2(f0)
     if uv is not None and use_uv:
@@ -98,7 +98,7 @@ def denorm_f0(
     use_uv=True
 ):
     if pitch_norm == 'standard':
-        f0 = f0*f0_std + f0_mean
+        f0 = f0 * f0_std + f0_mean
     if pitch_norm == 'log':
         f0 = 2**f0
     if min is not None:
@@ -121,7 +121,7 @@ def librosa_pad_lr(x, fshift, pad_sides=1):
     if pad_sides == 1:
         return 0, pad
     else:
-        return pad // 2, pad//2 + pad%2
+        return pad // 2, pad // 2 + pad % 2
 
 
 def get_pitch(
@@ -365,8 +365,9 @@ class TokenTextEncoder(TextEncoder):
         )
 
         # _token_to_id is the reverse of _id_to_token
-        self._token_to_id = dict((v, k)
-                                 for k, v in six.iteritems(self._id_to_token))
+        self._token_to_id = dict(
+            (v, k) for k, v in six.iteritems(self._id_to_token)
+        )
 
     def pad(self):
         return self.pad_index
@@ -491,7 +492,7 @@ def read_duration_from_textgrid(
     textgrid = TextGrid(textgrid)
     textgrid = json.loads(textgrid.toJson())
 
-    split = np.ones(len(ph_list) + 1, np.float) * -1
+    split = np.ones(len(ph_list) + 1, np.float32) * -1
     tg_idx = 0
     ph_idx = 0
     tg_align = [x for x in textgrid['tiers'][-1]['items']]
@@ -499,7 +500,7 @@ def read_duration_from_textgrid(
     for x in tg_align:
         x['xmin'] = float(x['xmin'])
         x['xmax'] = float(x['xmax'])
-        if x['text'] in ['sil', 'sp', '', 'SIL', 'PUNC']:
+        if x['text'] in ['sil', 'sp', '', 'SIL', 'PUNC', '<SP>', '<AP>']:
             x['text'] = ''
             if len(tg_align_) > 0 and tg_align_[-1]['text'] == '':
                 tg_align_[-1]['xmax'] = x['xmax']

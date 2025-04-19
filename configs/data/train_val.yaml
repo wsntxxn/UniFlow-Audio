@@ -1,0 +1,17 @@
+defaults:
+  - default
+  - _self_
+
+train_data_list:
+  - ${..audiocaps.train}
+  - ${..m4singer.train}
+  - ${..TTSHQ.train}
+  - ${..musdb.train}
+  - ${..moises.train}
+
+val_data_list:
+  - ${..audiocaps.val}
+  - ${..m4singer.val}
+  - ${..TTSHQ.val}
+  - ${..musdb.val}
+  - ${..moises.val}

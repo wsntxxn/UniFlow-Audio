@@ -28,10 +28,11 @@ def main():
                 "phoneme_duration": [
                     float(x) for x in song_info[5].split(" ")
                 ],
-                "midi": [
-                    librosa.note_to_midi(x.split("/")[0]) if x != 'rest' else 0
-                    for x in song_info[3].split(" ")
-                ],
+                "midi":
+                    [
+                        librosa.note_to_midi(x.split("/")[0])
+                        if x != 'rest' else 0 for x in song_info[3].split(" ")
+                    ],
                 "midi_duration": [float(x) for x in song_info[4].split(" ")],
                 "is_slur": [int(x) for x in song_info[6].split(" ")],
                 "spk": 'opencpop'
@@ -72,10 +73,12 @@ def main():
         with open(TARGET_OPENCPOP_DIR / split / "audio.jsonl", "w") as writer:
             for item_name in item_names[split]:
                 writer.write(
-                    json.dumps({
-                        "audio_id": item_name,
-                        "audio": item_to_data[item_name]["wav"].__str__()
-                    }) + "\n"
+                    json.dumps(
+                        {
+                            "audio_id": item_name,
+                            "audio": item_to_data[item_name]["wav"].__str__()
+                        }
+                    ) + "\n"
                 )
 
         midi_file = TARGET_OPENCPOP_DIR / split / "midi.pkl"
@@ -83,7 +86,7 @@ def main():
         for item_name in item_names[split]:
             raw_item = item_to_data[item_name]
             item_data = {
-                "phoneme": phone_tokenizer.encode(raw_item["phoneme"]),
+                "phoneme": raw_item["phoneme"],
                 "phoneme_duration": raw_item["phoneme_duration"],
                 "midi": raw_item["midi"],
                 "midi_duration": raw_item["midi_duration"],
@@ -95,10 +98,12 @@ def main():
         with open(TARGET_OPENCPOP_DIR / split / "midi.jsonl", "w") as writer:
             for item_name in item_names[split]:
                 writer.write(
-                    json.dumps({
-                        "audio_id": item_name,
-                        "midi": midi_file.resolve().__str__()
-                    }) + "\n"
+                    json.dumps(
+                        {
+                            "audio_id": item_name,
+                            "midi": midi_file.resolve().__str__()
+                        }
+                    ) + "\n"
                 )
 
 

@@ -1,5 +1,7 @@
 from pathlib import Path
+import random
 from dataclasses import dataclass
+from collections import defaultdict
 from abc import abstractmethod
 from typing import Any, Sequence
 import json
@@ -14,7 +16,8 @@ import torchaudio
 import torchvision
 import random
 
-from utils.diffsinger_utilities import norm_interp_f0
+from utils.diffsinger_utilities import norm_interp_f0, TokenTextEncoder
+from constants import TIME_ALIGNED_TASKS, NON_TIME_ALIGNED_TASKS
 
 
 def read_jsonl_to_mapping(
@@ -60,6 +63,40 @@ class HDF5DatasetMixin:
 
 
 @dataclass(kw_only=True)
+class TaskMixin:
+
+    task_instruction: str | Path
+    max_instruction_idx: int | None = None
+    instruction_idx: int | None = None
+
+    @property
+    @abstractmethod
+    def task(self):
+        ...
+
+    def __post_init__(self) -> None:
+        self.task_to_num_instruction = {}
+        with File(self.task_instruction, "r") as hf:
+            for key in hf.keys():
+                task, instruction_idx = key.rsplit("_", maxsplit=1)
+                instruction_idx = int(instruction_idx)
+                if task not in self.task_to_num_instruction:
+                    self.task_to_num_instruction[task] = instruction_idx + 1
+                else:
+                    self.task_to_num_instruction[task] = max(
+                        self.task_to_num_instruction[task], instruction_idx + 1
+                    )
+        if self.task in TIME_ALIGNED_TASKS:
+            self.is_time_aligned = True
+        elif self.task in NON_TIME_ALIGNED_TASKS:
+            self.is_time_aligned = False
+        else:
+            raise Exception(
+                f"Time align property of {self.task} is not defined!"
+            )
+
+
+@dataclass(kw_only=True)
 class AudioWaveformDataset(HDF5DatasetMixin):
 
     target_sr: int | None = None
@@ -94,7 +131,7 @@ class AudioWaveformDataset(HDF5DatasetMixin):
 
 
 @dataclass
-class AudioGenerationDataset(AudioWaveformDataset):
+class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
 
     content: str | Path
     audio: str | Path | None = None
@@ -111,13 +148,14 @@ class AudioGenerationDataset(AudioWaveformDataset):
     # and then map `xx_name` to specific prompts?
 
     def __post_init__(self, ):
-        super().__post_init__()
+        AudioWaveformDataset.__post_init__(self)
+        TaskMixin.__post_init__(self)
 
         id_col_in_content = self.id_col_in_content or self.id_col
         self.id_to_content = read_jsonl_to_mapping(
             self.content, id_col_in_content, self.content_col
         )
-        # id_to_content: {'id1': '<caption1>', 'id2': '<caption2>'}
+        # id_to_content: {'id1': '<content1>', 'id2': '<content2>'}
 
         id_col_in_audio = self.id_col_in_audio or self.id_col
         if self.audio:
@@ -137,11 +175,6 @@ class AudioGenerationDataset(AudioWaveformDataset):
             self.id_to_condition = None
 
         self.audio_ids = list(self.id_to_content.keys())
-
-    @property
-    @abstractmethod
-    def task(self):
-        ...
 
     def __len__(self) -> int:
         return len(self.audio_ids)
@@ -173,6 +206,21 @@ class AudioGenerationDataset(AudioWaveformDataset):
 
         return content, waveform, duration
 
+    def load_instruction(self) -> torch.Tensor:
+        task = self.task
+        if self.instruction_idx is None:  # random sample an instruction during training
+            num_instruction = self.max_instruction_idx or self.task_to_num_instruction[
+                task]
+            instruction_idx = random.randint(0, num_instruction - 1)
+        else:  # use the given instruction index
+            instruction_idx = self.instruction_idx - 1
+
+        h5_cache = self.h5_cache if self.use_h5_cache else None
+        instruction = read_from_h5(
+            f"{task}_{instruction_idx}", self.task_instruction, h5_cache
+        )
+        return instruction
+
     def __getitem__(self, index) -> dict[str, Any]:
         audio_id = self.audio_ids[index]
         content, waveform, duration = self.load_content_waveform(audio_id)
@@ -183,13 +231,17 @@ class AudioGenerationDataset(AudioWaveformDataset):
         else:
             condition = None
 
+        instruction = self.load_instruction()
+
         return {
             "audio_id": audio_id,
             "content": content,
             "waveform": waveform,
             "condition": condition,
             "duration": duration,
-            "task": self.task
+            "task": self.task,
+            "is_time_aligned": self.is_time_aligned,
+            "instruction": instruction
         }
 
 
@@ -263,10 +315,21 @@ class SpeechEnhancementDataset(AudioWaveformDataset):
     ...
 
 
-@dataclass
-class OpenCpopSingingDataset(AudioGenerationDataset):
+@dataclass(kw_only=True)
+class MidiSingingDataset(AudioGenerationDataset):
 
     content_col: str = "midi"
+    phoneme_set: str | Path
+    spk_set: str | Path
+
+    def __post_init__(self):
+        super().__post_init__()
+        phoneme_list = json.load(open(self.phoneme_set, "r"))
+        self.token_encoder = TokenTextEncoder(
+            None, vocab_list=phoneme_list, replace_oov=','
+        )
+        self.spks = json.load(open(self.spk_set, "r"))
+        self.spk_map = {spk: i for i, spk in enumerate(self.spks)}
 
     @property
     def task(self):
@@ -275,11 +338,13 @@ class OpenCpopSingingDataset(AudioGenerationDataset):
     def load_content(self, audio_id: str, content_or_path: str):
         with open(content_or_path, "rb") as file:
             midi = pickle.load(file)[audio_id]
+        midi["phoneme"] = self.token_encoder.encode(midi["phoneme"])
+        midi["spk"] = self.spk_map[midi["spk"]]
         return midi
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
-        return content["phoneme_duration"].astype(np.float32)
+        return np.array(content["phoneme_duration"]).astype(np.float32)
 
 
 @dataclass(kw_only=True)
@@ -352,45 +417,20 @@ class PopCsSingingDataset(AudioGenerationDataset):
         return content["phoneme_duration"]
 
 
-class AudioSuperResolutionDataset(AudioWaveformDataset):
-       
+@dataclass(kw_only=True)
+class AudioSuperResolutionDataset(AudioGenerationDataset):
 
-    # lowpass audio in content.jsonl，audio_id+caption
-    content: str | Path
-    audio: str | Path | None = None
     downsampling_ratio: int | None
-    condition: str | Path | None = None
-    id_col: str = "audio_id"
-    id_col_in_content: str | None = None
     content_col: str = "caption"
-    id_col_in_audio: str | None = None
-    audio_col: str = "audio"
-    id_col_in_condition: str | None = None
-    condition_col: str = "condition"
+    max_duration: float | None = None
+    random_crop: bool = True
 
-    def __post_init__(self, ):
+    def __post_init__(self):
         super().__post_init__()
-
-        id_col_in_content = self.id_col_in_content or self.id_col
-        self.id_to_content = read_jsonl_to_mapping(
-            self.content, id_col_in_content, self.content_col
-        )
-        # id_to_content: {'id1': '<caption1>', 'id2': '<caption2>'}
-
-        id_col_in_audio = self.id_col_in_audio or self.id_col
-        if self.audio:
-            self.id_to_audio = read_jsonl_to_mapping(
-                self.audio, id_col_in_audio, self.audio_col
-            )
+        if self.max_duration is not None:
+            self.max_frame_num = int(self.max_duration * self.target_sr)
         else:
-            self.id_to_audio = None
-        # id_to_audio: {'id1': '<audio path1>', 'id2': '<audio path2>'}
-
-        
-        condition = None
-
-        self.audio_ids = list(self.id_to_content.keys())
-
+            self.max_frame_num = None
 
     @property
     @abstractmethod
@@ -400,76 +440,55 @@ class AudioSuperResolutionDataset(AudioWaveformDataset):
     def __len__(self) -> int:
         return len(self.audio_ids)
 
-    
     def load_content(self, audio_id: str, content_or_path: str) -> Any:
         waveform, sr = torchaudio.load(content_or_path)
+        waveform = waveform.mean(0)
         return waveform
-    
-    def load_duration(self, content: Any, waveform: torch.Tensor) -> Sequence[float]:
+
+    def load_duration(self, content: Any,
+                      waveform: torch.Tensor) -> Sequence[float]:
         if content.dim() == 1:
-            duration_time = content.size(0)//self.downsampling_ratio
+            frame_num = content.size(0) // self.downsampling_ratio
         else:
-            duration_time = content.size(1)//self.downsampling_ratio
-        duration_value =   self.downsampling_ratio / self.target_sr 
-        duration = np.full(duration_time, duration_value)
+            frame_num = content.size(1) // self.downsampling_ratio
+        duration_value = self.downsampling_ratio / self.target_sr
+        duration = np.full(frame_num, duration_value)
         return duration
 
-    
-    
     def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
         content_or_path = self.id_to_content[audio_id]
         content = self.load_content(audio_id, content_or_path)
-        content=content.mean(0)
-        max_length = 250 * 480
 
-        # clip can be omitted
-        if len(content) > max_length:
-            start_index = random.randint(0, len(content) - max_length)
-            content = content[start_index:start_index + max_length]
-
+        # truncate long audio clip
+        if self.max_frame_num is not None and len(
+            content
+        ) > self.max_frame_num:
+            if self.random_crop:
+                start_index = random.randint(
+                    0,
+                    len(content) - self.max_frame_num
+                )
+            else:
+                start_index = 0
+            content = content[start_index:start_index + self.max_frame_num]
+        else:
+            start_index = None
 
         if self.id_to_audio:  # training, audio is the target
-            #audio_path = self.base_path +'/' + self.id_to_audio[audio_id]
             audio_path = self.id_to_audio[audio_id]
             waveform = self.load_waveform(audio_id, audio_path)
-            if len(waveform) > max_length:
-                waveform = waveform[start_index:start_index+max_length]
+            if start_index is not None:
+                waveform = waveform[start_index:start_index +
+                                    self.max_frame_num]
         else:  # inference, only content is available
             waveform = None
-        
-        
+
         duration = self.load_duration(content, waveform)
-        
-        
-
         return content, waveform, duration
-    def __getitem__(self, index) -> dict[str, Any]:
-        
-        audio_id = self.audio_ids[index]
-
-
-        low_res_waveform, high_res_waveform, duration= self.load_content_waveform(audio_id)
-        condition= None
-        content_length = torch.tensor(len(low_res_waveform))
-        content_dict = {"content":low_res_waveform, "content_length":content_length}
-        
-        return {
-            "audio_id": audio_id,
-            "content": content_dict,
-            "waveform": high_res_waveform,
-            "condition": condition,
-            "duration": duration,
-            "task": self.task,
-        }
-    
-    def __del__(self):
-        if hasattr(self, 'h5_cache'):
-            for h5_file in self.h5_cache.values():
-                h5_file.close()
 
 
 class AudioGenConcatDataset(Dataset):
-    def __init__(self, datasets: list[AudioGenerationDataset]):
+    def __init__(self, datasets: list[Dataset]):
         self.datasets = datasets
         self.lengths = np.array([len(d) for d in datasets])
         self.cum_sum_lengths = np.cumsum(self.lengths)
@@ -478,7 +497,7 @@ class AudioGenConcatDataset(Dataset):
         return sum(self.lengths)
 
     def __getitem__(self, idx):
-        dataset_idx = np.searchsorted(self.cum_sum_lengths - 1, idx)
+        dataset_idx = np.searchsorted(self.cum_sum_lengths, idx, side="right")
         if dataset_idx == 0:
             sample_idx = idx
         else:
@@ -487,37 +506,77 @@ class AudioGenConcatDataset(Dataset):
         return dataset[sample_idx]
 
 
+class TaskGroupedAudioGenConcatDataset(Dataset):
+    def __init__(self, datasets: list[AudioGenerationDataset]):
+        self.datasets = datasets
+        task_to_data_sizes = defaultdict(list)
+        self.task_to_datasets = defaultdict(list)
+        for dataset in datasets:
+            task_to_data_sizes[dataset.task].append(len(dataset))
+            self.task_to_datasets[dataset.task].append(dataset)
+        self.tasks = list(task_to_data_sizes.keys())
+        self.task_to_cum_sum_lengths = {
+            task: np.cumsum(sizes)
+            for task, sizes in task_to_data_sizes.items()
+        }
+
+    def __len__(self):
+        return sum(c[-1] for c in self.task_to_cum_sum_lengths.values())
+
+    def __getitem__(self, task_idx_tuple):
+        task, idx = task_idx_tuple
+        cum = self.task_to_cum_sum_lengths[task]
+        dataset_idx = np.searchsorted(cum, idx, side='right')
+        prev = cum[dataset_idx - 1] if dataset_idx > 0 else 0
+        sample_idx = idx - prev
+        dataset = self.task_to_datasets[task][dataset_idx]
+        return dataset[sample_idx]
+
+
 if __name__ == '__main__':
 
     from tqdm import tqdm
+    from data_module.sampler import TaskIteratingSampler
+    from data_module.collate_function import PaddingCollate
 
-    dataset = AudioGenConcatDataset(
+    dataset = TaskGroupedAudioGenConcatDataset(
         datasets=[
-            # TextToAudioDataset(
-            #     content="./data/audiocaps/test/caption.jsonl",
-            #     audio="./data/audiocaps/test/audio.jsonl",
-            #     target_sr=24000
-            # ),
-            PopCsSingingDataset(
-                content="./data/popcs/train/phone_pitch.jsonl",
-                audio="./data/popcs/train/audio.jsonl",
+            TextToAudioDataset(
+                content="./data/audiocaps/test/caption.jsonl",
+                audio="./data/audiocaps/test/audio.jsonl",
+                task_instruction=
+                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
+                max_instruction_idx=3,
+                instruction_idx=1,
+                target_sr=24000
+            ),
+            MidiSingingDataset(
+                content="./data/m4singer/val/midi.jsonl",
+                audio="./data/m4singer/val/audio.jsonl",
+                phoneme_set="./data/m4singer/phone_set.json",
+                spk_set="./data/m4singer/spk_set.json",
                 target_sr=24000,
-                f0_stats="./data/popcs/train/f0_mean_std.npy",
-                pitch_norm="log",
-                use_uv=True,
-                max_duration=20.0
+                task_instruction=
+                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
+                max_instruction_idx=3,
+                instruction_idx=1
             )
         ]
     )
+    sampler = TaskIteratingSampler(dataset, shuffle=True)
 
-    from data_module.collate_function import PaddingCollate
-
-    collate_fn = PaddingCollate(pad_keys=["waveform", "duration", "f0", "uv"])
+    collate_fn = PaddingCollate(
+        pad_keys=["waveform", "duration", "instruction"]
+    )
     dataloader = torch.utils.data.DataLoader(
-        dataset, collate_fn=collate_fn, batch_size=4
+        dataset, collate_fn=collate_fn, batch_size=4, sampler=sampler
     )
 
-    for item in tqdm(dataset):
-        # for batch in tqdm(dataloader):
-        duration = item["duration"]
-        pass
+    # for item in tqdm(dataset):
+    batch_idx = 0
+    for batch in tqdm(dataloader):
+        print(batch["task"])
+        batch_idx += 1
+        if batch_idx == 10:
+            break
+        # pass

@@ -1,27 +1,32 @@
 defaults:
   - basic
   - model: diffusion
-  - data@data_dict: tta_audiocaps
-  - loss@loss_fn: identity
+  - data@data_dict: train_val
+  - loss@loss_fn: weighted_sum
   - _self_
 
-exp_dir: experiments/waveform_vae_udit_diffusion/audiocaps/
+exp_name: wave_dit_ada_sola_bias_diff
+exp_dir: experiments/${exp_name}/
+logging_file: ${exp_dir}/train.log
 
 sample_rate: 24000
 
-downsampling_ratio : 480
+downsampling_ratio: 480
 
 train_dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader
   dataset:
-    _target_: data_module.dataset.AudioGenConcatDataset
+    _target_: data_module.dataset.TaskGroupedAudioGenConcatDataset
     datasets: ${data_dict.train_data_list}
+  sampler:
+    _target_: data_module.sampler.TaskIteratingSampler
+    shuffle: true
   batch_size: 24 # per device batch size
-  shuffle: True
   num_workers: 4
   collate_fn:
     _target_: data_module.collate_function.PaddingCollate
-    pad_keys: ["waveform", "duration"]
+    pad_keys: ["waveform", "duration", "instruction"]
+    torchify_keys: ["is_time_aligned"]
 
 val_dataloader:
   _target_: torch.utils.data.DataLoader
@@ -33,8 +38,28 @@ val_dataloader:
   num_workers: 4
   collate_fn:
     _target_: data_module.collate_function.PaddingCollate
-    pad_keys: ["waveform",  "duration"]
-  
+    pad_keys: ["waveform",  "duration", "instruction"]
+    torchify_keys: ["is_time_aligned"]
+
+warmup_params:
+  warmup_steps: 1000
+  warmup_epochs: Null
+  epoch_length: ${epoch_length}
+
+gradient_accumulation_steps: 4
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: !!float 1e-4
+  weight_decay: 0.01
+
+lr_scheduler:
+  _target_: "transformers.get_scheduler"
+  name: "linear"
+
+epochs: 200
+epoch_length: 1000
+
 trainer:
   _target_: audio_generation_trainer.AudioGenerationTrainer
   project_dir: ${exp_dir}
@@ -43,12 +68,12 @@ trainer:
   epochs: ${epochs}
   epoch_length: ${epoch_length}
   save_last_k: 1
-  early_stop: 10
+  early_stop: Null
   wandb_config:
     _target_: trainer.WandbConfig
     project: x_to_audio_generation
     save_dir: ${exp_dir}
-    name: audiocaps_waveform_vae_udit_diffusion
+    name: ${exp_name}
   metric_monitor:
     _target_: trainer.MetricMonitor
     metric_name: loss

@@ -72,13 +72,11 @@ def main():
                 if isinstance(data, torch.Tensor):
                     batch[key] = data.to(device)
 
+            kwargs = config["infer_args"].copy()
+            kwargs.update(batch)
             waveform = model.inference(
                 scheduler=scheduler,
-                # latent_shape=config["latent_shape"],
-                num_steps=config["num_steps"],
-                guidance_scale=config["guidance_scale"],
-                use_gt_duration=config["use_gt_duration"],
-                **batch
+                **kwargs,
             )
 
             if isinstance(batch["content"][0], str):

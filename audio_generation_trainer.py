@@ -58,6 +58,7 @@ class AudioGenerationTrainer(Trainer):
     def on_validation_start(self):
         self.val_loss_dict = defaultdict(int)
         self.val_batch_num = 0
+        self.val_time_aligned_batch_num = 0
 
     def validation_step(self, batch, batch_idx):
         output = self.model(**batch)
@@ -65,9 +66,10 @@ class AudioGenerationTrainer(Trainer):
         for loss_name in loss_dict:
             self.val_loss_dict[loss_name] += loss_dict[loss_name]
         self.val_batch_num += 1
+        if loss_dict["local_duration_loss"].item() != 0.0:
+            self.val_time_aligned_batch_num += 1
 
     def get_val_metrics(self):
-        # return {"loss": self.val_loss_dict["diff_loss"] / self.val_batch_num}
         return {"loss": self.val_loss_dict["loss"] / self.val_batch_num}
 
     def on_train_epoch_end(self):
@@ -75,8 +77,12 @@ class AudioGenerationTrainer(Trainer):
         val_loss = self.val_loss_dict["loss"] / self.val_batch_num
         log_dict = {}
         for loss_name in self.val_loss_dict:
-            log_dict[f"val/{loss_name}"
-                    ] = self.val_loss_dict[loss_name] / self.val_batch_num
+            if loss_name == "local_duration_loss":
+                log_dict[f"val/{loss_name}"] = self.val_loss_dict[
+                    loss_name] / self.val_time_aligned_batch_num
+            else:
+                log_dict[f"val/{loss_name}"
+                        ] = self.val_loss_dict[loss_name] / self.val_batch_num
         self.accelerator.log(
             log_dict,
             step=self.step,

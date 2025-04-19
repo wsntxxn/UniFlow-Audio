@@ -23,9 +23,7 @@ def main():
 
     configs = []
 
-    @hydra.main(
-        version_base=None, config_path="configs", config_name="default"
-    )
+    @hydra.main(version_base=None, config_path="configs", config_name="train")
     def parse_config_from_command_line(config):
         config = OmegaConf.to_container(config, resolve=True)
         configs.append(config)
@@ -37,9 +35,22 @@ def main():
     helper_accelerator = Accelerator()
 
     model: CountParamsBase = hydra.utils.instantiate(config["model"])
-    train_dataloader = hydra.utils.instantiate(
-        config["train_dataloader"], _convert_="all"
-    )
+    if "sampler" in config["train_dataloader"]:
+        data_source = hydra.utils.instantiate(
+            config["train_dataloader"]["dataset"], _convert_="all"
+        )
+        sampler = hydra.utils.instantiate(
+            config["train_dataloader"]["sampler"],
+            data_source=data_source,
+            _convert_="all"
+        )
+        train_dataloader = hydra.utils.instantiate(
+            config["train_dataloader"], sampler=sampler, _convert_="all"
+        )
+    else:
+        train_dataloader = hydra.utils.instantiate(
+            config["train_dataloader"], _convert_="all"
+        )
     val_dataloader = hydra.utils.instantiate(
         config["val_dataloader"], _convert_="all"
     )

@@ -6,12 +6,14 @@ import torch.nn as nn
 class ContentEncoder(nn.Module):
     def __init__(
         self,
-        text_encoder: nn.Module= None,
+        embed_dim: int,
+        text_encoder: nn.Module = None,
         midi_encoder: nn.Module = None,
         pitch_encoder: nn.Module = None,
         audio_encoder: nn.Module = None
     ):
         super().__init__()
+        self.embed_dim = embed_dim
         self.text_encoder = text_encoder
         self.midi_encoder = midi_encoder
         self.pitch_encoder = pitch_encoder
@@ -21,21 +23,31 @@ class ContentEncoder(nn.Module):
         self, batch_content: list[Any], batch_task: list[str],
         device: str | torch.device
     ):
-        batch_output = []
-        batch_mask = []
+        batch_content_output = []
+        batch_content_mask = []
+        batch_la_content_output = []
 
+        zero_la_content = torch.zeros(1, 1, self.embed_dim, device=device)
         for content, task in zip(batch_content, batch_task):
-            
-            if task =="audio_super_resolution":
-                content_dict = content
+
+            if task == "audio_super_resolution":
+                content_dict = {
+                    "waveform": torch.as_tensor(content).float(),
+                    "waveform_lengths": torch.as_tensor(content.shape[0]),
+                }
                 for key in list(content_dict.keys()):
                     content_dict[key] = content_dict[key].unsqueeze(0).to(
                         device
                     )
-                latent, latent_mask = self.audio_encoder.encode(content_dict["content"],content_dict["content_length"])
-                output_dict = {"output": latent.transpose(1, 2), "mask": latent_mask}
-            if task == "text_to_audio":
-                output_dict = self.text_encoder([content])
+                content_output_dict = self.audio_encoder(**content_dict)
+                la_content_output_dict = {
+                    "output": zero_la_content,
+                }
+            elif task == "text_to_audio":
+                content_output_dict = self.text_encoder([content])
+                la_content_output_dict = {
+                    "output": zero_la_content,
+                }
             elif task == "singing_voice_synthesis":
                 content_dict = {
                     "phoneme":
@@ -47,14 +59,22 @@ class ContentEncoder(nn.Module):
                     "is_slur":
                         torch.as_tensor(content["is_slur"]).long()
                 }
+                if "spk" in content:
+                    if self.midi_encoder.spk_config.encoding_format == "id":
+                        content_dict["spk"] = torch.as_tensor(content["spk"]
+                                                             ).long()
+                    elif self.midi_encoder.spk_config.encoding_format == "embedding":
+                        content_dict["spk"] = torch.as_tensor(content["spk"]
+                                                             ).float()
                 for key in list(content_dict.keys()):
                     content_dict[key] = content_dict[key].unsqueeze(0).to(
                         device
                     )
-                content_dict["lengths"] = torch.as_tensor([
-                    len(content["phoneme"])
-                ])
-                output_dict = self.midi_encoder(**content_dict)
+                content_dict["lengths"] = torch.as_tensor(
+                    [len(content["phoneme"])]
+                )
+                content_output_dict = self.midi_encoder(**content_dict)
+                la_content_output_dict = {"output": zero_la_content}
             elif task == "singing_acoustic_modeling":
                 content_dict = {
                     "phoneme": torch.as_tensor(content["phoneme"]).long(),
@@ -63,40 +83,11 @@ class ContentEncoder(nn.Module):
                     content_dict[key] = content_dict[key].unsqueeze(0).to(
                         device
                     )
-                content_dict["lengths"] = torch.as_tensor([
-                    len(content["phoneme"])
-                ])
-                output_dict = self.pitch_encoder(**content_dict)
+                content_dict["lengths"] = torch.as_tensor(
+                    [len(content["phoneme"])]
+                )
+                content_output_dict = self.pitch_encoder(**content_dict)
 
-            batch_output.append(output_dict["output"][0])
-            batch_mask.append(output_dict["mask"][0])
-
-        batch_output = nn.utils.rnn.pad_sequence(
-            batch_output, batch_first=True, padding_value=0
-        )
-        batch_mask = nn.utils.rnn.pad_sequence(
-            batch_mask, batch_first=True, padding_value=False
-        )
-        return batch_output, batch_mask
-
-    def encode_time_aligned_content(
-        self, batch_content: list[Any], batch_task: list[str],
-        device: str | torch.device
-    ):
-        batch_output = []
-
-        for content, task in zip(batch_content, batch_task):
-            
-            if task =="audio_super_resolution":
-                non_zero_positions = torch.nonzero(content, as_tuple=True)[0]
-                content_length = non_zero_positions[-1] + 1
-                latent, latent_mask = self.audio_encoder.encode(content.unsqueeze(0), content_length.unsqueeze(0))
-                output_dict = {"output": latent.transpose(1, 2), "mask": latent_mask}
-            if task == "text_to_audio":
-                output_dict = {"output": torch.zeros(1, 1, device=device)}
-            elif task == "singing_voice_synthesis":
-                output_dict = {"output": torch.zeros(1, 1, device=device)}
-            elif task == "singing_acoustic_modeling":
                 content_dict = {
                     "f0": torch.as_tensor(content["f0"]),
                     "uv": torch.as_tensor(content["uv"]),
@@ -105,11 +96,25 @@ class ContentEncoder(nn.Module):
                     content_dict[key] = content_dict[key].unsqueeze(0).to(
                         device
                     )
-                output_dict = self.pitch_encoder.encode_pitch(**content_dict)
+                la_content_output_dict = self.pitch_encoder.encode_pitch(
+                    **content_dict
+                )
 
-            batch_output.append(output_dict["output"][0])
+            batch_content_output.append(content_output_dict["output"][0])
+            batch_content_mask.append(content_output_dict["mask"][0])
+            batch_la_content_output.append(la_content_output_dict["output"][0])
 
-        batch_output = nn.utils.rnn.pad_sequence(
-            batch_output, batch_first=True, padding_value=0
+        batch_content_output = nn.utils.rnn.pad_sequence(
+            batch_content_output, batch_first=True, padding_value=0
         )
-        return batch_output
+        batch_content_mask = nn.utils.rnn.pad_sequence(
+            batch_content_mask, batch_first=True, padding_value=False
+        )
+        batch_la_content_output = nn.utils.rnn.pad_sequence(
+            batch_la_content_output, batch_first=True, padding_value=0
+        )
+        return {
+            "content": batch_content_output,
+            "content_mask": batch_content_mask,
+            "length_aligned_content": batch_la_content_output,
+        }

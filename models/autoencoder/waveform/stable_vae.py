@@ -16,7 +16,7 @@ from utils.torch_utilities import remove_key_prefix_factory, create_mask_from_le
 # jit script make it 1.4x faster and save GPU memory
 @torch.jit.script
 def snake_beta(x, alpha, beta):
-    return x + (1.0 / (beta+0.000000001)) * pow(torch.sin(x * alpha), 2)
+    return x + (1.0 / (beta + 0.000000001)) * pow(torch.sin(x * alpha), 2)
 
 
 class SnakeBeta(nn.Module):
@@ -99,7 +99,7 @@ class ResidualUnit(nn.Module):
 
         self.dilation = dilation
 
-        padding = (dilation * (7-1)) // 2
+        padding = (dilation * (7 - 1)) // 2
 
         self.layers = nn.Sequential(
             get_activation(
@@ -385,7 +385,7 @@ def vae_sample(mean, scale) -> dict[str, torch.Tensor]:
     logvar = torch.log(var)
     latents = torch.randn_like(mean) * stdev + mean
 
-    kl = (mean*mean + var - logvar - 1).sum(1).mean()
+    kl = (mean * mean + var - logvar - 1).sum(1).mean()
     return {"latents": latents, "kl": kl}
 
 
@@ -506,6 +506,27 @@ class StableVAE(LoadPretrainedBase, AutoEncoderBase):
         return waveform
 
 
+class StableVAEProjectorWrapper(nn.Module):
+    def __init__(
+        self,
+        vae_dim: int,
+        embed_dim: int,
+        model: StableVAE | None = None,
+    ):
+        super().__init__()
+        self.model = model
+        self.proj = nn.Linear(vae_dim, embed_dim)
+
+    def forward(
+        self, waveform: torch.Tensor, waveform_lengths: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        self.model.eval()
+        with torch.no_grad():
+            z, z_mask = self.model.encode(waveform, waveform_lengths)
+        z = self.proj(z.transpose(1, 2))
+        return {"output": z, "mask": z_mask}
+
+
 if __name__ == '__main__':
     import hydra
     from utils.config import generate_config_from_command_line_overrides
@@ -516,7 +537,7 @@ if __name__ == '__main__':
     autoencoder.eval()
 
     waveform, sr = torchaudio.load(
-        "/hpc_stor03/sjtu_home/xuenan.xu/workspace/singing_voice_synthesis/diffsinger/data/raw/opencpop/segments/wavs/2007000230.wav"
+        "/hpc_stor03/sjtu_home/xuenan.xu/data/m4singer/Tenor-1#童话/0006.wav"
     )
     waveform = torchaudio.functional.resample(
         waveform, sr, model_config["sample_rate"]

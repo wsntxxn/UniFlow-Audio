@@ -5,4 +5,5 @@ defaults:
 data_list:
   # - ${..audiocaps.test}
   # - ${..opencpop.test}
-  - ${..popcs.test}
+  # - ${..popcs.test}
+  - ${..m4singer.test}

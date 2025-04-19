@@ -1,6 +1,5 @@
 from pathlib import Path
 import sys
-from typing import Union
 import os
 
 import hydra
@@ -28,18 +27,16 @@ def register_omegaconf_resolvers() -> None:
     Register custom resolver for hydra configs, which can be used in YAML
     files for dynamically setting values
     """
-    omegaconf.OmegaConf.clear_resolvers()
-    omegaconf.OmegaConf.register_new_resolver("len", len, replace=True)
-    omegaconf.OmegaConf.register_new_resolver(
-        "multiply", multiply, replace=True
-    )
-    omegaconf.OmegaConf.register_new_resolver(
+    OmegaConf.clear_resolvers()
+    OmegaConf.register_new_resolver("len", len, replace=True)
+    OmegaConf.register_new_resolver("multiply", multiply, replace=True)
+    OmegaConf.register_new_resolver(
         "get_pitch_downsample_ratio", get_pitch_downsample_ratio, replace=True
     )
 
 
 def generate_config_from_command_line_overrides(
-    config_file: Union[str, Path]
+    config_file: str | Path
 ) -> omegaconf.DictConfig:
     register_omegaconf_resolvers()
 
