@@ -8,6 +8,7 @@ train_data_list:
   - ${..TTSHQ.train}
   - ${..musdb.train}
   - ${..moises.train}
+  - ${..ljspeech_se.train}
 
 val_data_list:
   - ${..audiocaps.val}
@@ -15,3 +16,4 @@ val_data_list:
   - ${..TTSHQ.val}
   - ${..musdb.val}
   - ${..moises.val}
+  - ${..ljspeech_se.val}

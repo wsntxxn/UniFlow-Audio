@@ -30,7 +30,7 @@ class ContentEncoder(nn.Module):
         zero_la_content = torch.zeros(1, 1, self.embed_dim, device=device)
         for content, task in zip(batch_content, batch_task):
 
-            if task == "audio_super_resolution":
+            if task == "audio_super_resolution" or task == "speech_enhancement":
                 content_dict = {
                     "waveform": torch.as_tensor(content).float(),
                     "waveform_lengths": torch.as_tensor(content.shape[0]),

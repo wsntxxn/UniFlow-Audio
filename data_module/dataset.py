@@ -311,10 +311,6 @@ class TextToSpeechDataset(AudioWaveformDataset):
     ...
 
 
-class SpeechEnhancementDataset(AudioWaveformDataset):
-    ...
-
-
 @dataclass(kw_only=True)
 class MidiSingingDataset(AudioGenerationDataset):
 
@@ -433,7 +429,6 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
             self.max_frame_num = None
 
     @property
-    @abstractmethod
     def task(self):
         return "audio_super_resolution"
 
@@ -441,9 +436,7 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
         return len(self.audio_ids)
 
     def load_content(self, audio_id: str, content_or_path: str) -> Any:
-        waveform, sr = torchaudio.load(content_or_path)
-        waveform = waveform.mean(0)
-        return waveform
+        return self.load_waveform(audio_id, content_or_path)
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
@@ -485,6 +478,18 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
 
         duration = self.load_duration(content, waveform)
         return content, waveform, duration
+
+
+@dataclass(kw_only=True)
+class SpeechEnhancementDataset(AudioSuperResolutionDataset):
+
+    id_col: str = "UUID"
+    content_col: str = "InputPath"
+    audio_col: str = "WavPath"
+
+    @property
+    def task(self):
+        return "speech_enhancement"
 
 
 class AudioGenConcatDataset(Dataset):
@@ -541,12 +546,23 @@ if __name__ == '__main__':
 
     dataset = TaskGroupedAudioGenConcatDataset(
         datasets=[
+            SpeechEnhancementDataset(
+                content=
+                "/hpc_stor03/sjtu_home/zihao.zheng/data/xtoaudio_se_ljspeech/val/metadata_caption.jsonl",
+                audio=
+                "/hpc_stor03/sjtu_home/zihao.zheng/data/xtoaudio_se_ljspeech/val/metadata_audio.jsonl",
+                downsampling_ratio=480,
+                target_sr=24000,
+                task_instruction=
+                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
+                max_instruction_idx=3,
+                max_duration=5.0,
+            ),
             TextToAudioDataset(
                 content="./data/audiocaps/test/caption.jsonl",
                 audio="./data/audiocaps/test/audio.jsonl",
                 task_instruction=
                 "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
-                max_instruction_idx=3,
                 instruction_idx=1,
                 target_sr=24000
             ),
@@ -558,7 +574,6 @@ if __name__ == '__main__':
                 target_sr=24000,
                 task_instruction=
                 "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
-                max_instruction_idx=3,
                 instruction_idx=1
             )
         ]

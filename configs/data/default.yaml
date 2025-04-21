@@ -5,4 +5,5 @@ defaults:
   - datasets@TTSHQ: TTSHQ
   - datasets@musdb: musdb
   - datasets@moises: moises
+  - datasets@ljspeech_se: ljspeech_se
   - datasets@m4singer: m4singer
