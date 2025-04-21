@@ -8,6 +8,7 @@ class ContentEncoder(nn.Module):
         self,
         embed_dim: int,
         text_encoder: nn.Module = None,
+        video_encoder: nn.Module = None,
         midi_encoder: nn.Module = None,
         pitch_encoder: nn.Module = None,
         audio_encoder: nn.Module = None
@@ -18,6 +19,7 @@ class ContentEncoder(nn.Module):
         self.midi_encoder = midi_encoder
         self.pitch_encoder = pitch_encoder
         self.audio_encoder = audio_encoder
+        self.video_encoder = video_encoder
 
     def encode_content(
         self, batch_content: list[Any], batch_task: list[str],
@@ -45,6 +47,19 @@ class ContentEncoder(nn.Module):
                 }
             elif task == "text_to_audio":
                 content_output_dict = self.text_encoder([content])
+                la_content_output_dict = {
+                    "output": zero_la_content,
+                }
+            elif task == "video_to_audio":
+                content_dict = {
+                    "frames": torch.as_tensor(content).float(),
+                    "frame_nums": torch.as_tensor(content.shape[0]),
+                }
+                for key in list(content_dict.keys()):
+                    content_dict[key] = content_dict[key].unsqueeze(0).to(
+                        device
+                    )
+                content_output_dict = self.video_encoder(**content_dict)
                 la_content_output_dict = {
                     "output": zero_la_content,
                 }

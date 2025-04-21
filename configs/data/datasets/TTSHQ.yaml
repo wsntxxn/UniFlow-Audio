@@ -6,17 +6,16 @@ train:
   downsampling_ratio: ${downsampling_ratio}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
-  max_instruction_idx: 3
   max_duration: 5.0
+  random_crop: true
 val:
   _target_: data_module.dataset.AudioSuperResolutionDataset
-  content: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/TTS_test/val/content.jsonl
-  audio: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/TTS_test/val/audio.jsonl
+  content: data/ttshq/content.jsonl
+  audio: data/ttshq/audio.jsonl
   target_sr: ${sample_rate}
   downsampling_ratio: ${downsampling_ratio}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
-  max_instruction_idx: 3
   max_duration: 5.0
   random_crop: false
 test:

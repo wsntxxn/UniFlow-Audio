@@ -38,13 +38,20 @@ def read_jsonl_to_mapping(
     return mapping
 
 
-def read_from_h5(key: str, h5_path: str, cache: dict[str, str] | None = None):
+def read_from_h5(
+    key: str | None, h5_path: str, cache: dict[str, str] | None = None
+):
     if cache is None:
-        with File(h5_path, "r") as reader:
-            return reader[key][()]
+        if key is None:
+            return File(h5_path, "r")
+        else:
+            with File(h5_path, "r") as reader:
+                return reader[key][()]
     else:
         if h5_path not in cache:
             cache[h5_path] = File(h5_path, "r")
+        if key is None:
+            return cache[h5_path]
         return cache[h5_path][key][()]
 
 
@@ -66,7 +73,6 @@ class HDF5DatasetMixin:
 class TaskMixin:
 
     task_instruction: str | Path
-    max_instruction_idx: int | None = None
     instruction_idx: int | None = None
 
     @property
@@ -209,8 +215,7 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
     def load_instruction(self) -> torch.Tensor:
         task = self.task
         if self.instruction_idx is None:  # random sample an instruction during training
-            num_instruction = self.max_instruction_idx or self.task_to_num_instruction[
-                task]
+            num_instruction = self.task_to_num_instruction[task]
             instruction_idx = random.randint(0, num_instruction - 1)
         else:  # use the given instruction index
             instruction_idx = self.instruction_idx - 1
@@ -266,41 +271,39 @@ class TextToAudioDataset(AudioGenerationDataset):
 @dataclass
 class VideoToAudioDataset(AudioGenerationDataset):
 
-    video_fps: int | None = None
-    video_size: tuple[int, int] = (256, 256)
-
-    def __post_init__(self, ):
-        super().__post_init__()
-        self.resize_transform = torchvision.transforms.Resize(self.video_size)
+    content_col: str = "video"
 
     def load_content_waveform(self, audio_id: str):
         video_path = self.id_to_content[audio_id]
-        video, waveform, meta = torchvision.io.read_video(video_path)
-        # video: T x H x W x C, waveform: C x T
-        orig_sr, fps = meta.get('audio_fps'), meta.get('video_fps')
 
-        # average multi-channel to single-channel
-        waveform = waveform.mean(0)
-        # resample audio
-        if self.target_sr:
-            waveform = torchaudio.functional.resample(
-                waveform, orig_freq=orig_sr, new_freq=self.target_sr
+        if video_path.endswith(".hdf5") or video_path.endswith(".h5"):
+            with File(video_path, "r") as hf:
+                id_set = hf["Video_id"][:]
+                idx = np.where(id_set == audio_id.encode())[0].item()
+
+                video_features = hf["Video"][idx][0]
+
+                if self.id_to_audio:
+                    waveform = hf["Audio"][idx]
+                    # TODO: handle resampling scenario
+                    waveform = torch.as_tensor(waveform, dtype=torch.float32)
+                else:  # inference, only content is available
+                    waveform = None
+        else:
+            raise NotImplementedError(
+                "Video feature must be load by h5 file !"
             )
 
-        # resample video
-        if self.video_fps:
-            video_resample_ratio = self.video_fps / fps
-            new_length = int(round(video.shape[0] * video_resample_ratio))
-            indices = torch.linspace(0, video.shape[0] - 1,
-                                     steps=new_length).long()
-            video = video[indices]
+        duration = self.load_duration(video_features, waveform)
+        return video_features, waveform, duration
 
-        # resize video
-        video = self.resize_transform(
-            video.permute(0, 3, 1, 2)
-        )  # T x C x H x W
-
-        return video, waveform
+    def load_duration(self, content: Any,
+                      waveform: torch.Tensor) -> Sequence[float]:
+        clip_duration = waveform.shape[0] / self.target_sr
+        frame_num = content.shape[0]
+        duration_value = clip_duration / frame_num
+        duration = np.full(frame_num, duration_value)
+        return duration
 
     @property
     def task(self):
@@ -555,7 +558,6 @@ if __name__ == '__main__':
                 target_sr=24000,
                 task_instruction=
                 "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
-                max_instruction_idx=3,
                 max_duration=5.0,
             ),
             TextToAudioDataset(

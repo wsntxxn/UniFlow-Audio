@@ -1,4 +1,4 @@
-instruction_embedding: /hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5
+instruction_embedding: /hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data_v2/t5_embeddings.h5
 
 seed: 42
 

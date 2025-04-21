@@ -1,0 +1,17 @@
+train:
+  _target_: data_module.dataset.VideoToAudioDataset
+  content: /hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-cavp/train/content.jsonl
+  audio: /hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-cavp/train/audio.jsonl
+  target_sr: ${sample_rate}
+  task_instruction: ${instruction_embedding}
+val:
+  _target_: data_module.dataset.VideoToAudioDataset
+  content: /hpc_stor03/sjtu_home/xuenan.xu/workspace/x_to_audio_generation/data/vggsound/video.jsonl
+  audio: /hpc_stor03/sjtu_home/xuenan.xu/workspace/x_to_audio_generation/data/vggsound/audio.jsonl
+  target_sr: ${sample_rate}
+  task_instruction: ${instruction_embedding}
+test:
+  _target_: data_module.dataset.VideoToAudioDataset
+  content: /hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-cavp/val/content.jsonl
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1

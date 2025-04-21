@@ -1,31 +1,28 @@
 train:
   _target_: data_module.dataset.AudioSuperResolutionDataset
-  content: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/TTS_test/train/content.jsonl   # 低频音频路径（caption 字段）
-  audio: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/TTS_test/train/audio.jsonl        # 高频音频路径
+  content: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/moises_test/train/content.jsonl
+  audio: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/moises_test/train/audio.jsonl
   target_sr: ${sample_rate}
   downsampling_ratio: ${downsampling_ratio}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
-  max_instruction_idx: 3
   max_duration: 5.0
 val:
   _target_: data_module.dataset.AudioSuperResolutionDataset
-  content: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/TTS_test/val/content.jsonl
-  audio: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/TTS_test/val/audio.jsonl
+  content: data/moises/content.jsonl
+  audio: data/moises/audio.jsonl
   target_sr: ${sample_rate}
   downsampling_ratio: ${downsampling_ratio}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
-  max_instruction_idx: 3
   max_duration: 5.0
   random_crop: false
 test:
   _target_: data_module.dataset.AudioSuperResolutionDataset
-  content: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/TTS_test/test/content.jsonl
+  content: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/moises_test/test/content.jsonl
   target_sr: ${sample_rate}
   downsampling_ratio: ${downsampling_ratio}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
   instruction_idx: 1
-  max_duration: 5.0
   random_crop: false

@@ -6,17 +6,15 @@ train:
   target_sr: ${sample_rate}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
-  max_instruction_idx: 3
   max_duration: 5.0
 val:
   _target_: data_module.dataset.SpeechEnhancementDataset
-  content: /hpc_stor03/sjtu_home/zihao.zheng/data/xtoaudio_se_ljspeech/val/metadata_caption.jsonl
-  audio: /hpc_stor03/sjtu_home/zihao.zheng/data/xtoaudio_se_ljspeech/val/metadata_audio.jsonl
+  content: /hpc_stor03/sjtu_home/xuenan.xu/workspace/x_to_audio_generation/data/ljspeech_se/content.jsonl
+  audio: /hpc_stor03/sjtu_home/xuenan.xu/workspace/x_to_audio_generation/data/ljspeech_se/audio.jsonl
   downsampling_ratio: ${downsampling_ratio}
   target_sr: ${sample_rate}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
-  max_instruction_idx: 3
   max_duration: 5.0
   random_crop: false
 test:
