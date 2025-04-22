@@ -2,9 +2,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections import defaultdict
 
-import torch
 from torch.nn.parallel import DistributedDataParallel
-from omegaconf import OmegaConf, DictConfig
+from omegaconf import OmegaConf
 from trainer import Trainer
 from utils.logging import LoggingLogger
 
@@ -70,7 +69,12 @@ class AudioGenerationTrainer(Trainer):
             self.val_time_aligned_batch_num += 1
 
     def get_val_metrics(self):
-        return {"loss": self.val_loss_dict["loss"] / self.val_batch_num}
+        metric_name = self.metric_monitor.metric_name
+        assert metric_name in self.val_loss_dict, \
+            f"{metric_name} not found in validation loss dict"
+        return {
+            metric_name: self.val_loss_dict[metric_name] / self.val_batch_num
+        }
 
     def on_train_epoch_end(self):
         train_loss = self.train_loss / self.train_batch_num

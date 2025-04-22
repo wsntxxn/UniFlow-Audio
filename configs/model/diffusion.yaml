@@ -17,6 +17,7 @@ backbone:
   ta_context_dim: ${..content_dim}
 
 _target_: models.diffusion.DummyContentAudioDiffusion
+# _target_: models.diffusion.DoubleContentAudioDiffusion
 content_encoder:
   _target_: models.content_encoder.content_encoder.ContentEncoder
   embed_dim: ${..content_dim}
@@ -46,3 +47,15 @@ content_encoder:
     _target_: models.content_encoder.vision_encoder.MlpVideoEncoder
     video_feat_dim: 512
     embed_dim: ${...content_dim}
+  phoneme_encoder:
+    _target_: models.content_encoder.midi_encoder.FastSpeech2PhonemeEncoder
+    phone_vocab_size: 92
+    d_model: 512
+    num_layers: 4
+    num_heads: 2
+    ffn_kernel_size: 9
+    d_out: ${...content_dim}
+    spk_config:
+      _target_: models.content_encoder.midi_encoder.SpkConfig
+      encoding_format: embedding
+      spk_embed_dim: 256

@@ -24,18 +24,19 @@ class PaddingCollate:
                 torchified_batch = [
                     torch.as_tensor(d) for d in collate_samples[key]
                 ]
-                data_batch = torch.nn.utils.rnn.pad_sequence(
+                data_batch = nn.utils.rnn.pad_sequence(
                     torchified_batch, batch_first=True
                 )
-                data_lengths = torch.as_tensor([
-                    len(d) for d in torchified_batch
-                ],
-                                               dtype=torch.int32)
+                data_lengths = torch.as_tensor(
+                    [len(d) for d in torchified_batch], dtype=torch.int32
+                )
 
-                collate_samples.update({
-                    key: data_batch,
-                    f"{key}_lengths": data_lengths
-                })
+                collate_samples.update(
+                    {
+                        key: data_batch,
+                        f"{key}_lengths": data_lengths
+                    }
+                )
             elif key in self.torchify_keys:
                 collate_samples[key] = torch.as_tensor(collate_samples[key])
 

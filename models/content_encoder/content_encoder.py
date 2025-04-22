@@ -10,6 +10,7 @@ class ContentEncoder(nn.Module):
         text_encoder: nn.Module = None,
         video_encoder: nn.Module = None,
         midi_encoder: nn.Module = None,
+        phoneme_encoder: nn.Module = None,
         pitch_encoder: nn.Module = None,
         audio_encoder: nn.Module = None
     ):
@@ -17,6 +18,7 @@ class ContentEncoder(nn.Module):
         self.embed_dim = embed_dim
         self.text_encoder = text_encoder
         self.midi_encoder = midi_encoder
+        self.phoneme_encoder = phoneme_encoder
         self.pitch_encoder = pitch_encoder
         self.audio_encoder = audio_encoder
         self.video_encoder = video_encoder
@@ -89,6 +91,26 @@ class ContentEncoder(nn.Module):
                     [len(content["phoneme"])]
                 )
                 content_output_dict = self.midi_encoder(**content_dict)
+                la_content_output_dict = {"output": zero_la_content}
+            elif task == "text_to_speech":
+                content_dict = {
+                    "phoneme": torch.as_tensor(content["phoneme"]).long(),
+                }
+                if "spk" in content:
+                    if self.phoneme_encoder.spk_config.encoding_format == "id":
+                        content_dict["spk"] = torch.as_tensor(content["spk"]
+                                                             ).long()
+                    elif self.phoneme_encoder.spk_config.encoding_format == "embedding":
+                        content_dict["spk"] = torch.as_tensor(content["spk"]
+                                                             ).float()
+                for key in list(content_dict.keys()):
+                    content_dict[key] = content_dict[key].unsqueeze(0).to(
+                        device
+                    )
+                content_dict["lengths"] = torch.as_tensor(
+                    [len(content["phoneme"])]
+                )
+                content_output_dict = self.phoneme_encoder(**content_dict)
                 la_content_output_dict = {"output": zero_la_content}
             elif task == "singing_acoustic_modeling":
                 content_dict = {

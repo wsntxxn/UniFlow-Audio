@@ -44,7 +44,8 @@ def load_meta_data():
 def split_train_test(item_names: List[str]):
     item_names = deepcopy(item_names)
     test_item_names = [
-        x for x in item_names if any([prefix in x for prefix in TEST_PREFIXES])
+        x
+        for x in item_names if any([prefix in x for prefix in TEST_PREFIXES])
     ]
     train_item_names = [x for x in item_names if x not in set(test_item_names)]
     return train_item_names, test_item_names

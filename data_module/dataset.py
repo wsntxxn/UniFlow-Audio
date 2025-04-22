@@ -1,5 +1,4 @@
 from pathlib import Path
-import random
 from dataclasses import dataclass
 from collections import defaultdict
 from abc import abstractmethod
@@ -142,6 +141,11 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
     content: str | Path
     audio: str | Path | None = None
     condition: str | Path | None = None
+
+    base_content_path: str | Path | None = None
+    base_audio_path: str | Path | None = None
+    base_condition_path: str | Path | None = None
+
     id_col: str = "audio_id"
     id_col_in_content: str | None = None
     content_col: str = "content"
@@ -162,6 +166,9 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
             self.content, id_col_in_content, self.content_col
         )
         # id_to_content: {'id1': '<content1>', 'id2': '<content2>'}
+        self.base_content_path = Path(
+            self.base_content_path
+        ) if self.base_content_path else None
 
         id_col_in_audio = self.id_col_in_audio or self.id_col
         if self.audio:
@@ -171,6 +178,9 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
         else:
             self.id_to_audio = None
         # id_to_audio: {'id1': '<audio path1>', 'id2': '<audio path2>'}
+        self.base_audio_path = Path(
+            self.base_audio_path
+        ) if self.base_audio_path else None
 
         if self.condition:
             id_col_in_condition = self.id_col_in_condition or self.id_col
@@ -179,6 +189,9 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
             )
         else:
             self.id_to_condition = None
+        self.base_condition_path = Path(
+            self.base_condition_path
+        ) if self.base_condition_path else None
 
         self.audio_ids = list(self.id_to_content.keys())
 
@@ -200,10 +213,14 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
 
     def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
         content_or_path = self.id_to_content[audio_id]
+        if self.base_content_path:
+            content_or_path = str(self.base_content_path / content_or_path)
         content = self.load_content(audio_id, content_or_path)
 
         if self.id_to_audio:  # training, audio is the target
             audio_path = self.id_to_audio[audio_id]
+            if self.base_audio_path:
+                audio_path = str(self.base_audio_path / audio_path)
             waveform = self.load_waveform(audio_id, audio_path)
         else:  # inference, only content is available
             waveform = None
@@ -310,8 +327,35 @@ class VideoToAudioDataset(AudioGenerationDataset):
         return "video_to_audio"
 
 
-class TextToSpeechDataset(AudioWaveformDataset):
-    ...
+@dataclass
+class TextToSpeechDataset(AudioGenerationDataset):
+
+    content_col: str = "audio"
+
+    @property
+    def task(self):
+        return "text_to_speech"
+
+    def load_content(self, audio_id, content_or_path):
+        with File(content_or_path, "r") as hf:
+            phoneme = hf["phoneme"][audio_id][()]
+            phoneme_duration = hf["phoneme_duration"][audio_id][()]
+
+            if "xvector" in hf.keys():
+                spk = hf["xvector"][audio_id][()]
+            else:
+                spk = None
+
+        content = {
+            "phoneme": phoneme,
+            "phoneme_duration": phoneme_duration,
+            "spk": spk,
+        }
+        return content
+
+    def load_duration(self, content: Any,
+                      waveform: torch.Tensor) -> Sequence[float]:
+        return content["phoneme_duration"]
 
 
 @dataclass(kw_only=True)
@@ -549,6 +593,15 @@ if __name__ == '__main__':
 
     dataset = TaskGroupedAudioGenConcatDataset(
         datasets=[
+            TextToSpeechDataset(
+                content="data/libritts/phoneme.jsonl",
+                audio="data/libritts/audio.jsonl",
+                base_content_path="/hpc_stor03/sjtu_home/jiahao.mei/",
+                base_audio_path="/hpc_stor03/public/shared/data/tts/",
+                target_sr=24000,
+                task_instruction=
+                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data_v2/t5_embeddings.h5",
+            ),
             SpeechEnhancementDataset(
                 content=
                 "/hpc_stor03/sjtu_home/zihao.zheng/data/xtoaudio_se_ljspeech/val/metadata_caption.jsonl",

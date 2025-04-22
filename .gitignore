@@ -173,6 +173,7 @@ cython_debug/
 # Experiment logs and checkpoints
 experiments/
 checkpoints/
+ckpts/
 
 # Raw / processed data file
 data/*
@@ -182,3 +183,10 @@ docker/
 
 # VC logs
 logs/
+*log
+
+# VS Code settings
+.vscode/
+
+# Demo files
+demo/

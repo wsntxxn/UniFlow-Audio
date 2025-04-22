@@ -102,7 +102,6 @@ def main():
         lr_scheduler_config, optimizer=optimizer, _convert_="all"
     )
     loss_fn = hydra.utils.instantiate(config["loss_fn"], _convert_="all")
-
     trainer: Trainer = hydra.utils.instantiate(
         config["trainer"],
         train_dataloader=train_dataloader,

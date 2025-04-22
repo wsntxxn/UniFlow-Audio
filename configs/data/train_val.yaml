@@ -3,6 +3,7 @@ defaults:
   - _self_
 
 train_data_list:
+  - ${..libritts.train}
   - ${..audiocaps.train}
   - ${..m4singer.train}
   - ${..TTSHQ.train}
@@ -12,6 +13,7 @@ train_data_list:
   - ${..vggsound_cavp.train}
 
 val_data_list:
+  - ${..libritts.val}
   - ${..audiocaps.val}
   - ${..m4singer.val}
   - ${..TTSHQ.val}

@@ -162,7 +162,6 @@ class AudioDiffusion(
         backbone: nn.Module,
         noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
         snr_gamma: float = None,
-        classifier_free_guidance: bool = True,
         cfg_drop_ratio: float = 0.2,
     ):
         nn.Module.__init__(self)
@@ -375,7 +374,6 @@ class VariableLengthAudioDiffusion(AudioDiffusion):
         duration_offset: float = 1.0,
         noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
         snr_gamma: float = None,
-        classifier_free_guidance: bool = True,
         cfg_drop_ratio: float = 0.2,
     ):
         super().__init__(
@@ -635,7 +633,9 @@ class DummyContentAudioDiffusion(AudioDiffusion):
         # --------------------------------------------------------------------
         if is_time_aligned.sum() == 0 and \
             duration.size(1) < content_mask.size(1):
-            duration = duration.repeat_interleave(content_mask.size(1), 1)
+            duration = F.pad(
+                duration, (0, content_mask.size(1) - duration.size(1))
+            )
         n_latents = torch.round(duration * self.autoencoder.latent_token_rate)
         # content_mask: [B, L], helper_latent_mask: [B, T]
         helper_latent_mask = create_mask_from_length(n_latents.sum(1)).to(
@@ -872,3 +872,166 @@ class DummyContentAudioDiffusion(AudioDiffusion):
 
         waveform = self.autoencoder.decode(latent)
         return waveform
+
+
+class DoubleContentAudioDiffusion(AudioDiffusion):
+    def __init__(
+        self,
+        autoencoder: AutoEncoderBase,
+        content_encoder: ContentEncoder,
+        content_adapter: nn.Module,
+        backbone: nn.Module,
+        content_dim: int,
+        frame_resolution: float,
+        duration_offset: float = 1.0,
+        noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
+        snr_gamma: float = None,
+        cfg_drop_ratio: float = 0.2,
+    ):
+        super().__init__(
+            autoencoder, content_encoder, backbone, noise_scheduler_name,
+            snr_gamma, cfg_drop_ratio
+        )
+        self.content_adapter = content_adapter
+        self.frame_resolution = frame_resolution
+        self.duration_offset = duration_offset
+
+    def forward(
+        self, content, duration, task, is_time_aligned, waveform,
+        waveform_lengths, instruction, instruction_lengths, **kwargs
+    ):
+        device = self.dummy_param.device
+        num_train_timesteps = self.noise_scheduler.config.num_train_timesteps
+        self.noise_scheduler.set_timesteps(num_train_timesteps, device=device)
+
+        self.autoencoder.eval()
+        with torch.no_grad():
+            latent, latent_mask = self.autoencoder.encode(
+                waveform.unsqueeze(1), waveform_lengths
+            )
+
+        content_output: dict[
+            str, torch.Tensor] = self.content_encoder.encode_content(
+                content, task, device=device
+            )
+        length_aligned_content = content_output["length_aligned_content"]
+        content, content_mask = content_output["content"], content_output[
+            "content_mask"]
+        context_mask = content_mask.detach()
+        instruction_mask = create_mask_from_length(instruction_lengths)
+
+        content, content_mask, global_duration_pred, local_duration_pred = \
+            self.content_adapter(content, content_mask, instruction, instruction_mask)
+
+        # TODO if all non time aligned, content length > duration length
+
+        n_frames = torch.round(duration / self.frame_resolution)
+        local_duration_target = torch.log(n_frames + self.duration_offset)
+        global_duration_target = torch.log(
+            latent_mask.sum(1) / self.autoencoder.latent_token_rate +
+            self.duration_offset
+        )
+        # truncate unused non time aligned duration prediction
+        if is_time_aligned.sum() > 0:
+            trunc_ta_length = content_mask[is_time_aligned].sum(1).max()
+        else:
+            trunc_ta_length = content.size(1)
+        local_duration_pred = local_duration_pred[:, :trunc_ta_length]
+        ta_content_mask = content_mask[:, :trunc_ta_length]
+        local_duration_loss = loss_with_mask(
+            (local_duration_target - local_duration_pred)**2,
+            ta_content_mask,
+            reduce=False
+        )
+        local_duration_loss *= is_time_aligned
+        if is_time_aligned.sum().item() == 0:
+            local_duration_loss *= 0.0
+            local_duration_loss = local_duration_loss.mean()
+        else:
+            local_duration_loss = local_duration_loss.sum(
+            ) / is_time_aligned.sum()
+        global_duration_loss = F.mse_loss(
+            global_duration_target, global_duration_pred
+        )
+
+        if self.training and self.classifier_free_guidance:
+            mask_indices = [
+                k for k in range(len(waveform))
+                if random.random() < self.cfg_drop_ratio
+            ]
+            if len(mask_indices) > 0:
+                content[mask_indices] = 0
+                length_aligned_content[mask_indices] = 0
+
+        batch_size = latent.shape[0]
+        timesteps = self.get_timesteps(batch_size, device, self.training)
+        noise = torch.randn_like(latent)
+        noisy_latent = self.noise_scheduler.add_noise(latent, noise, timesteps)
+        target = self.get_target(latent, noise, timesteps)
+
+        # --------------------------------------------------------------------
+        # duration adapter
+        # --------------------------------------------------------------------
+        # content_mask: [B, L], helper_latent_mask: [B, T]
+        if is_time_aligned.sum() == 0 and \
+            duration.size(1) < content_mask.size(1):
+            duration = F.pad(
+                duration, (0, content_mask.size(1) - duration.size(1))
+            )
+        n_latents = torch.round(duration * self.autoencoder.latent_token_rate)
+        helper_latent_mask = create_mask_from_length(n_latents.sum(1)).to(
+            content_mask.device
+        )
+        attn_mask = ta_content_mask.unsqueeze(
+            -1
+        ) * helper_latent_mask.unsqueeze(1)
+        align_path = create_alignment_path(n_latents, attn_mask)
+        time_aligned_content = content[:, :trunc_ta_length]
+        time_aligned_content = torch.matmul(
+            align_path.transpose(1, 2).to(content.dtype), time_aligned_content
+        )
+
+        latent_length = noisy_latent.size(self.autoencoder.time_dim)
+        time_aligned_content = trim_or_pad_length(
+            time_aligned_content, latent_length, 1
+        )
+        length_aligned_content = trim_or_pad_length(
+            length_aligned_content, latent_length, 1
+        )
+        time_aligned_content = time_aligned_content + length_aligned_content
+        context = content
+        pred: torch.Tensor = self.backbone(
+            x=noisy_latent,
+            timesteps=timesteps,
+            time_aligned_context=time_aligned_content,
+            context=context,
+            x_mask=latent_mask,
+            context_mask=context_mask,
+        )
+        pred = pred.transpose(1, self.autoencoder.time_dim)
+        target = target.transpose(1, self.autoencoder.time_dim)
+        diff_loss = self.loss_with_snr(pred, target, timesteps, latent_mask)
+        return {
+            "diff_loss": diff_loss,
+            "local_duration_loss": local_duration_loss,
+            "global_duration_loss": global_duration_loss,
+        }
+
+    @torch.no_grad()
+    def inference(
+        self,
+        content: list[Any],
+        condition: list[Any],
+        task: list[str],
+        is_time_aligned: list[bool],
+        instruction: torch.Tensor,
+        instruction_lengths: Sequence[int],
+        scheduler: SchedulerMixin,
+        num_steps: int = 20,
+        guidance_scale: float = 3.0,
+        uidance_rescale: float = 0.0,
+        disable_progress: bool = True,
+        use_gt_duration: bool = False,
+        **kwargs
+    ):
+        ...

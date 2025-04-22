@@ -9,13 +9,17 @@ import numpy as np
 from tqdm import trange
 from torchdata.stateful_dataloader import StatefulDataLoader
 from torch.utils.data import DataLoader
+from torch.distributed import all_reduce, ReduceOp
+import torch.distributed as dist
 import torch
 import torch.nn as nn
 from accelerate.utils import set_seed
 from accelerate import DistributedDataParallelKwargs
 import wandb
+import os
 
 from utils.accelerate_utilities import AcceleratorSaveTrainableParams
+from utils.torch_utilities import contains_nan, check_nan_in_batch
 
 
 @dataclass
@@ -252,6 +256,30 @@ class Trainer(CheckpointMixin):
                 self.train_data_iterator = iter(self.train_dataloader)
                 batch = next(self.train_data_iterator)
 
+            # check if batch contains NaN
+            nan_flag = torch.tensor(
+                1 if contains_nan(batch) else 0,
+                device=self.accelerator.device
+            )
+            if dist.is_available() and dist.is_initialized():
+                torch.distributed.all_reduce(
+                    nan_flag, op=torch.distributed.ReduceOp.MAX
+                )
+
+            if nan_flag.item() == 1:
+                if contains_nan(batch):
+                    lis = check_nan_in_batch(batch)
+                    self.accelerator.print(
+                        f"\nStep={self.step}, device={self.accelerator.device}, "
+                        f"batch {lis} contains NaN"
+                    )
+                self.step += 1
+                # TODO handle gradient accumulation scenario
+                self.optimizer.zero_grad(set_to_none=True)
+                if self.lr_scheduler_interval == LRSchedulerInterval.STEP:
+                    self.lr_scheduler.step()
+                continue
+
             with self.accelerator.accumulate(self.model):
                 loss = self.training_step(batch, batch_idx)
                 self.accelerator.log({"train/loss": loss}, step=self.step)
@@ -267,19 +295,24 @@ class Trainer(CheckpointMixin):
             if self.save_every_n_steps and self.step % self.save_every_n_steps == 0:
                 self.save_checkpoint(self.checkpoint_dir / f"step_{self.step}")
 
+        self.accelerator.wait_for_everyone()
+
         self.val_loop()
         self.epoch += 1
+        self.accelerator.wait_for_everyone()
 
         if self.lr_scheduler_interval == LRSchedulerInterval.EPOCH:
             self.lr_scheduler.step()
 
         if self.save_every_n_epochs and self.epoch % self.save_every_n_epochs == 0:
+            self.accelerator.print("\n Saving latest checkpoint...")
             self.save_checkpoint(self.checkpoint_dir / f"epoch_{self.epoch}")
 
         metric_dict: dict = self.get_val_metrics()
         if self.metric_monitor is not None:
             # save checkpoint if the monitored metric improves
             if self.metric_monitor(metric_dict):
+                self.accelerator.print("\n Saving best checkpoint...")
                 self.save_checkpoint(self.checkpoint_dir / "best")
 
             if self.early_stop is not None and self.metric_monitor.worse_count >= self.early_stop:
@@ -287,6 +320,9 @@ class Trainer(CheckpointMixin):
         else:
             assert self.early_stop is None, "early stop does not have metrics to monitor!"
 
+        self.accelerator.wait_for_everyone()
+
+        # on start of train epoch end func
         self.on_train_epoch_end()
 
     def on_train_start(self) -> None:
@@ -319,10 +355,11 @@ class Trainer(CheckpointMixin):
             self.accelerator.init_trackers(
                 self.wandb_config.project,
                 init_kwargs={
-                    "wandb": {
-                        "name": self.wandb_config.name,
-                        "dir": self.wandb_config.save_dir
-                    }
+                    "wandb":
+                        {
+                            "name": self.wandb_config.name,
+                            "dir": self.wandb_config.save_dir
+                        }
                 }
             )
 
@@ -340,6 +377,7 @@ class Trainer(CheckpointMixin):
         self.on_train_start()
 
         for _ in range(self.epoch, self.epochs):
+            self.accelerator.wait_for_everyone()
             self.train_loop()
             if self.should_stop_training:
                 break

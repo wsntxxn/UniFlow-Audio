@@ -1,6 +1,8 @@
 import logging
+import math
 from typing import Callable
 from pathlib import Path
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -154,7 +156,7 @@ def trim_or_pad_length(x: torch.Tensor, target_length: int, length_dim: int):
         return x[tuple(slices)]
 
     elif current_length < target_length:
-        # Pad the tensor
+        # Pad the tensor with zeros
         pad_shape = list(x.shape)
         pad_length = target_length - current_length
 
@@ -164,3 +166,27 @@ def trim_or_pad_length(x: torch.Tensor, target_length: int, length_dim: int):
         return torch.cat([x, padding], dim=length_dim)
 
     return x
+
+
+def contains_nan(data):
+    """check if data contains NaN"""
+    if isinstance(data, torch.Tensor):
+        return torch.isnan(data).any().item()
+    elif isinstance(data, np.ndarray):
+        return np.isnan(data).any()
+    elif isinstance(data, float):
+        return math.isnan(data)
+    elif isinstance(data, (list, tuple)):
+        return any(contains_nan(x) for x in data)
+    elif isinstance(data, dict):
+        return any(contains_nan(v) for v in data.values())
+    return False
+
+
+def check_nan_in_batch(batch):
+    """check if batch contains NaN"""
+    nan_samples = []
+    for item in batch:
+        if contains_nan(item):
+            nan_samples.append(item)
+    return nan_samples

@@ -1,4 +1,5 @@
 defaults:
+  - datasets@libritts: libritts
   - datasets@audiocaps: audiocaps
   - datasets@opencpop: opencpop
   - datasets@popcs: popcs

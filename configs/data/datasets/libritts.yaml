@@ -1,0 +1,24 @@
+train:
+  _target_: data_module.dataset.TextToSpeechDataset
+  content: data/libritts/phoneme_train.jsonl
+  audio: /hpc_stor03/sjtu_home/jiahao.mei/data/libritts/train_500h/audio.jsonl
+  base_content_path: /hpc_stor03/sjtu_home/jiahao.mei
+  base_audio_path: /hpc_stor03/public/shared/data/tts
+  target_sr: ${sample_rate}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+val:
+  _target_: data_module.dataset.TextToSpeechDataset
+  content: data/libritts/phoneme.jsonl
+  audio: data/libritts/audio.jsonl
+  base_content_path: /hpc_stor03/sjtu_home/jiahao.mei
+  base_audio_path: /hpc_stor03/public/shared/data/tts
+  target_sr: ${sample_rate}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+test:
+  _target_: data_module.dataset.TextToSpeechDataset
+  content: /hpc_stor03/sjtu_home/jiahao.mei/data/libritts/test/phoneme.jsonl
+  base_content_path: /hpc_stor03/sjtu_home/jiahao.mei
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1

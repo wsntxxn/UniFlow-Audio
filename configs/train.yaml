@@ -42,7 +42,7 @@ val_dataloader:
     torchify_keys: ["is_time_aligned"]
 
 warmup_params:
-  warmup_steps: 1000
+  warmup_steps: 10000
   warmup_epochs: Null
   epoch_length: ${epoch_length}
 
@@ -57,8 +57,8 @@ lr_scheduler:
   _target_: "transformers.get_scheduler"
   name: "linear"
 
-epochs: 200
-epoch_length: 1000
+epochs: 600
+epoch_length: 2000
 
 trainer:
   _target_: audio_generation_trainer.AudioGenerationTrainer

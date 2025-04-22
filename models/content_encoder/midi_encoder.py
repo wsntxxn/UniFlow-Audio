@@ -885,7 +885,60 @@ class SpkConfig:
             assert self.spk_embed_dim is not None
 
 
-class FastSpeech2MIDIEncoder(FastSpeech2EncoderBase):
+class FastSpeech2PhonemeEncoder(FastSpeech2EncoderBase):
+    def __init__(
+        self,
+        phone_vocab_size,
+        d_model,
+        num_layers,
+        num_heads,
+        ffn_kernel_size,
+        d_out,
+        dropout=0.1,
+        rel_pos=False,
+        spk_config: SpkConfig | None = None,
+        padding_set_zero: bool = True
+    ):
+        super().__init__(
+            d_model=d_model,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            ffn_kernel_size=ffn_kernel_size,
+            d_out=d_out,
+            dropout=dropout,
+            rel_pos=rel_pos,
+            padding_set_zero=padding_set_zero
+        )
+        self.phone_embed = Embedding(phone_vocab_size, d_model)
+        self.spk_config = spk_config
+        if spk_config is not None:
+            if spk_config.encoding_format == "id":
+                self.spk_embed_proj = Embedding(
+                    spk_config.num_spk + 1, d_model
+                )
+            elif spk_config.encoding_format == "embedding":
+                self.spk_embed_proj = Linear(spk_config.spk_embed_dim, d_model)
+
+    def forward(
+        self, phoneme: torch.Tensor, lengths: Sequence[int], spk: torch.Tensor
+    ):
+        x = self.embed_scale * self.phone_embed(phoneme)
+        x = self.pos_encoding(x, lengths)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+
+        padding_mask = ~create_mask_from_length(lengths).to(phoneme.device)
+        x = self.layers(x, padding_mask=padding_mask)
+
+        if self.spk_config is not None:
+            spk_embed = self.spk_embed_proj(spk).unsqueeze(1)
+            x = x + spk_embed
+
+        x = self.out_proj(x)
+
+        return {"output": x, "mask": ~padding_mask}
+
+
+class FastSpeech2MIDIEncoder(FastSpeech2PhonemeEncoder):
     def __init__(
         self,
         phone_vocab_size: int,
@@ -902,6 +955,7 @@ class FastSpeech2MIDIEncoder(FastSpeech2EncoderBase):
         padding_set_zero: bool = True
     ):
         super().__init__(
+            phone_vocab_size=phone_vocab_size,
             d_model=d_model,
             num_layers=num_layers,
             num_heads=num_heads,
@@ -909,20 +963,12 @@ class FastSpeech2MIDIEncoder(FastSpeech2EncoderBase):
             d_out=d_out,
             dropout=dropout,
             rel_pos=rel_pos,
+            spk_config=spk_config,
             padding_set_zero=padding_set_zero
         )
-        self.phone_embed = Embedding(phone_vocab_size, d_model)
         self.midi_embed = Embedding(midi_vocab_size, d_model, padding_idx=0)
         self.midi_dur_embed = Linear(1, d_model)
         self.is_slur_embed = Embedding(slur_vocab_size, d_model)
-        self.spk_config = spk_config
-        if spk_config is not None:
-            if spk_config.encoding_format == "id":
-                self.spk_embed_proj = Embedding(
-                    spk_config.num_spk + 1, d_model
-                )
-            elif spk_config.encoding_format == "embedding":
-                self.spk_embed_proj = Linear(spk_config.spk_embed_dim, d_model)
 
     def forward(
         self,
