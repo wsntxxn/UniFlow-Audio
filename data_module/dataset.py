@@ -203,7 +203,8 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
         ...
 
     @abstractmethod
-    def load_content(self, audio_id: str, content_or_path: str) -> Any:
+    def load_content(self, audio_id: str,
+                     content_or_path: str) -> tuple[Any, str]:
         ...
 
     @abstractmethod
@@ -211,11 +212,28 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
                       waveform: torch.Tensor) -> Sequence[float]:
         ...
 
-    def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
+    def load_content_waveform(
+        self, audio_id: str
+    ) -> tuple[Any, torch.Tensor, Sequence[float], str]:
+        """
+        Load content and waveform for the given audio_id.
+
+        Args:
+            audio_id: the unique id of the audio sample
+        
+        Returns:
+            content: the content of the audio sample, can be any type, 
+                normally a dict
+            waveform: the waveform of the audio sample, None during inference
+            duration: the duration sequence of the content for time-aligned 
+                generation task; for non time-aligned task, return a dummy
+                one [1.0]
+            item_name: the interpretable name used in writing filenames 
+        """
         content_or_path = self.id_to_content[audio_id]
         if self.base_content_path:
             content_or_path = str(self.base_content_path / content_or_path)
-        content = self.load_content(audio_id, content_or_path)
+        content, item_name = self.load_content(audio_id, content_or_path)
 
         if self.id_to_audio:  # training, audio is the target
             audio_path = self.id_to_audio[audio_id]
@@ -227,7 +245,7 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
 
         duration = self.load_duration(content, waveform)
 
-        return content, waveform, duration
+        return content, waveform, duration, item_name
 
     def load_instruction(self) -> torch.Tensor:
         task = self.task
@@ -245,7 +263,9 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
 
     def __getitem__(self, index) -> dict[str, Any]:
         audio_id = self.audio_ids[index]
-        content, waveform, duration = self.load_content_waveform(audio_id)
+        content, waveform, duration, item_name = self.load_content_waveform(
+            audio_id
+        )
 
         if self.id_to_condition:
             condition_path = self.id_to_condition[audio_id]
@@ -256,6 +276,7 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
         instruction = self.load_instruction()
 
         return {
+            "item_name": item_name,
             "audio_id": audio_id,
             "content": content,
             "waveform": waveform,
@@ -280,9 +301,11 @@ class TextToAudioDataset(AudioGenerationDataset):
                       waveform: torch.Tensor) -> Sequence[float]:
         return [1.0]  # dummy duration sequence for batchify
 
-    def load_content(self, audio_id: str, content_or_path: str):
+    def load_content(self, audio_id: str,
+                     content_or_path: str) -> tuple[Any, str]:
         # text-to-audio / text-to-music, directly use text as the content input
-        return content_or_path
+        yid_stem = Path(audio_id).stem
+        return content_or_path, f"{yid_stem}_{content_or_path.replace(' ', '_')}"
 
 
 @dataclass
@@ -299,6 +322,7 @@ class VideoToAudioDataset(AudioGenerationDataset):
                 idx = np.where(id_set == audio_id.encode())[0].item()
 
                 video_features = hf["Video"][idx][0]
+                label = hf["Label"][idx]
 
                 if self.id_to_audio:
                     waveform = hf["Audio"][idx]
@@ -312,7 +336,7 @@ class VideoToAudioDataset(AudioGenerationDataset):
             )
 
         duration = self.load_duration(video_features, waveform)
-        return video_features, waveform, duration
+        return video_features, waveform, duration, f"{audio_id}_{label}"
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
@@ -351,7 +375,7 @@ class TextToSpeechDataset(AudioGenerationDataset):
             "phoneme_duration": phoneme_duration,
             "spk": spk,
         }
-        return content
+        return content, audio_id
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
@@ -383,7 +407,8 @@ class MidiSingingDataset(AudioGenerationDataset):
             midi = pickle.load(file)[audio_id]
         midi["phoneme"] = self.token_encoder.encode(midi["phoneme"])
         midi["spk"] = self.spk_map[midi["spk"]]
-        return midi
+        text = midi["text"]
+        return midi, f"{audio_id}_{text}"
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
@@ -524,7 +549,7 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
             waveform = None
 
         duration = self.load_duration(content, waveform)
-        return content, waveform, duration
+        return content, waveform, duration, audio_id
 
 
 @dataclass(kw_only=True)
@@ -642,11 +667,9 @@ if __name__ == '__main__':
         dataset, collate_fn=collate_fn, batch_size=4, sampler=sampler
     )
 
-    # for item in tqdm(dataset):
     batch_idx = 0
     for batch in tqdm(dataloader):
         print(batch["task"])
         batch_idx += 1
         if batch_idx == 10:
             break
-        # pass

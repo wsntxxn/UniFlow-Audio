@@ -79,18 +79,12 @@ def main():
                 **kwargs,
             )
 
-            if isinstance(batch["content"][0], str):
-                out_file: str = batch["content"][0]
-            else:
-                out_file: str = batch["audio_id"][0]
-            if not out_file.endswith(".wav"):
-                out_file = f"{out_file}.wav"
-
-            sf.write(
-                audio_output_dir / out_file,
-                waveform[0, 0].cpu().numpy(),
-                samplerate=exp_config["sample_rate"],
-            )
+            for name, wave in zip(batch["item_name"], waveform):
+                sf.write(
+                    audio_output_dir / f"{name}.wav",
+                    wave[0].cpu().numpy(),
+                    samplerate=exp_config["sample_rate"],
+                )
 
 
 if __name__ == "__main__":

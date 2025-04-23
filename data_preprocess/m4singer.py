@@ -107,8 +107,8 @@ def main():
                 "midi": raw_item["midi"],
                 "midi_duration": raw_item["midi_duration"],
                 "is_slur": raw_item["is_slur"],
-                "spk": raw_item["spk"]
-                # "spk": spk_map[raw_item["spk"]]
+                "spk": raw_item["spk"],
+                "text": raw_item["txt"],
             }
             midi_data[item_name] = item_data
         pickle.dump(midi_data, open(midi_file, "wb"))
