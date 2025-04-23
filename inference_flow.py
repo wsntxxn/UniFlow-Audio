@@ -87,10 +87,10 @@ def main():
                 **batch
             )
             for i in range(len(waveform)):
-                if isinstance(batch["content"][0], str):
-                    out_file: str = batch["content"][0]
+                if isinstance(batch["content"][i], str):
+                    out_file: str = batch["content"][i]
                 else:
-                    out_file: str = batch["audio_id"][0]
+                    out_file: str = batch["audio_id"][i]
                 if not out_file.endswith(".wav"):
                     out_file = f"{out_file}.wav"
 
