@@ -1,11 +1,8 @@
 from pathlib import Path
 import json
 import pickle
+import argparse
 
-from utils.diffsinger_utilities import TokenTextEncoder
-
-RAW_M4SINGER_DIR = Path("/hpc_stor03/sjtu_home/xuenan.xu/data/m4singer")
-TARGET_M4SINGER_DIR = Path("./data/m4singer")
 TEST_PREFIXES = [
     'Alto-2#岁月神偷',
     'Alto-2#奇妙能力歌',
@@ -16,6 +13,23 @@ TEST_PREFIXES = [
     'Soprano-1#念奴娇赤壁怀古',
     'Soprano-1#问春',
 ]
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    '--raw_m4singer_dir',
+    type=str,
+    default="/hpc_stor03/sjtu_home/xuenan.xu/data/m4singer",
+    help='path to raw m4singer data'
+)
+parser.add_argument(
+    '--target_m4singer_dir',
+    type=str,
+    default="./data/m4singer",
+    help='path to processed m4singer data'
+)
+args = parser.parse_args()
+RAW_M4SINGER_DIR = Path(args.raw_m4singer_dir)
+TARGET_M4SINGER_DIR = Path(args.target_m4singer_dir)
 
 
 def build_spk_map(item_names, item_to_data):
@@ -78,9 +92,6 @@ def main():
     all_phones = sorted(set(all_phones))
     json.dump(all_phones, open(TARGET_M4SINGER_DIR / "phone_set.json", 'w'))
     print("build phone set: ", all_phones)
-    phone_tokenizer = TokenTextEncoder(
-        None, vocab_list=all_phones, replace_oov=','
-    )
 
     for split in ["train", "val", "test"]:
         (TARGET_M4SINGER_DIR / split).mkdir(parents=True, exist_ok=True)
