@@ -16,7 +16,7 @@ backbone:
   context_dim: ${..content_dim}
   ta_context_dim: ${..content_dim}
 
-_target_: models.diffusion.DummyContentAudioDiffusion
+_target_: models.diffusion.DoubleContentAudioDiffusion
 content_encoder:
   _target_: models.content_encoder.content_encoder.ContentEncoder
   embed_dim: ${..content_dim}
@@ -58,3 +58,4 @@ content_encoder:
       _target_: models.content_encoder.midi_encoder.SpkConfig
       encoding_format: embedding
       spk_embed_dim: 256
+

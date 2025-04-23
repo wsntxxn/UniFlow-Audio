@@ -82,8 +82,11 @@ class AudioGenerationTrainer(Trainer):
         log_dict = {}
         for loss_name in self.val_loss_dict:
             if loss_name == "local_duration_loss":
-                log_dict[f"val/{loss_name}"] = self.val_loss_dict[
-                    loss_name] / self.val_time_aligned_batch_num
+                if self.val_time_aligned_batch_num == 0:
+                    log_dict[f"val/{loss_name}"] = 0.0
+                else:
+                    log_dict[f"val/{loss_name}"] = self.val_loss_dict[
+                        loss_name] / self.val_time_aligned_batch_num
             else:
                 log_dict[f"val/{loss_name}"
                         ] = self.val_loss_dict[loss_name] / self.val_batch_num
