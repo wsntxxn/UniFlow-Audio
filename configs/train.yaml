@@ -9,10 +9,6 @@ exp_name: wave_dit_ada_sola_bias_diff
 exp_dir: experiments/${exp_name}/
 logging_file: ${exp_dir}/train.log
 
-sample_rate: 24000
-
-downsampling_ratio: 480
-
 train_dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader
   dataset:
@@ -67,7 +63,7 @@ trainer:
   gradient_accumulation_steps: ${gradient_accumulation_steps}
   epochs: ${epochs}
   epoch_length: ${epoch_length}
-  save_last_k: 1
+  save_last_k: 2
   early_stop: Null
   wandb_config:
     _target_: trainer.WandbConfig

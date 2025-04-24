@@ -19,3 +19,5 @@ test:
   content: data/m4singer/test/midi.jsonl
   task_instruction: ${instruction_embedding}
   instruction_idx: 1
+  phoneme_set: data/m4singer/phone_set.json
+  spk_set: data/m4singer/spk_set.json

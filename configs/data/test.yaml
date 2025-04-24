@@ -3,7 +3,11 @@ defaults:
   - _self_
 
 data_list:
+  - ${..libritts.test}
   # - ${..audiocaps.test}
-  # - ${..opencpop.test}
-  # - ${..popcs.test}
-  - ${..m4singer.test}
+  # - ${..m4singer.test}
+  # - ${..TTSHQ.test}
+  # - ${..musdb.test}
+  # - ${..moises.test}
+  # - ${..ljspeech_se.test}
+  # - ${..vggsound_cavp.test}

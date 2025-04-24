@@ -3,8 +3,6 @@ defaults:
   - data@test_data_dict: test
   - _self_
 
-sample_rate: 24000 # for training dataset config parsing
-
 test_dataloader:
   _target_: torch.utils.data.DataLoader
   dataset: ${test_data_dict.data_list.0}
@@ -26,8 +24,3 @@ infer_args:
   guidance_scale: 3.5
   guidance_rescale: 0.5
   use_gt_duration: false
-
-hydra:
-  output_subdir: null
-  run:
-    dir: .

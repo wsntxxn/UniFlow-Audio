@@ -29,7 +29,6 @@ class DiffusionMixin:
     ) -> None:
         self.noise_scheduler_name = noise_scheduler_name
         self.snr_gamma = snr_gamma
-        # self.classifier_free_guidance = classifier_free_guidance
         self.classifier_free_guidance = cfg_drop_ratio > 0.0
         self.cfg_drop_ratio = cfg_drop_ratio
         self.noise_scheduler = noise_schedulers.DDPMScheduler.from_pretrained(
@@ -151,7 +150,7 @@ class DiffusionMixin:
         return pred_cfg
 
 
-class AudioDiffusion(
+class CrossAttentionAudioDiffusion(
     LoadPretrainedBase, CountParamsBase, SaveTrainableParamsBase,
     DiffusionMixin
 ):
@@ -159,7 +158,9 @@ class AudioDiffusion(
         self,
         autoencoder: AutoEncoderBase,
         content_encoder: ContentEncoder,
+        content_adapter: ContentAdapterBase,
         backbone: nn.Module,
+        duration_offset: float = 1.0,
         noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
         snr_gamma: float = None,
         cfg_drop_ratio: float = 0.2,
@@ -175,12 +176,15 @@ class AudioDiffusion(
 
         self.content_encoder = content_encoder
         self.content_encoder.audio_encoder.model = self.autoencoder
+        self.content_adapter = content_adapter
         self.backbone = backbone
+        self.duration_offset = duration_offset
         self.dummy_param = nn.Parameter(torch.empty(0))
 
     def forward(
-        self, content: list[Any], condition: list[Any], task: list[str],
-        waveform: torch.Tensor, waveform_lengths: torch.Tensor, **kwargs
+        self, content: list[Any], task: list[str], waveform: torch.Tensor,
+        waveform_lengths: torch.Tensor, instruction: torch.Tensor,
+        instruction_lengths: Sequence[int], **kwargs
     ):
         device = self.dummy_param.device
         num_train_timesteps = self.noise_scheduler.config.num_train_timesteps
@@ -198,6 +202,16 @@ class AudioDiffusion(
             )
         content, content_mask = content_output["content"], content_output[
             "content_mask"]
+        instruction_mask = create_mask_from_length(instruction_lengths)
+        content, content_mask, global_duration_pred, _ = \
+            self.content_adapter(content, content_mask, instruction, instruction_mask)
+        global_duration_target = torch.log(
+            latent_mask.sum(1) / self.autoencoder.latent_token_rate +
+            self.duration_offset
+        )
+        global_duration_loss = F.mse_loss(
+            global_duration_target, global_duration_pred
+        )
 
         if self.training and self.classifier_free_guidance:
             mask_indices = [
@@ -211,10 +225,9 @@ class AudioDiffusion(
         timesteps = self.get_timesteps(batch_size, device, self.training)
         noise = torch.randn_like(latent)
         noisy_latent = self.noise_scheduler.add_noise(latent, noise, timesteps)
-
         target = self.get_target(latent, noise, timesteps)
 
-        pred = self.backbone(
+        pred: torch.Tensor = self.backbone(
             x=noisy_latent,
             timesteps=timesteps,
             context=content,
@@ -224,9 +237,12 @@ class AudioDiffusion(
 
         pred = pred.transpose(1, self.autoencoder.time_dim)
         target = target.transpose(1, self.autoencoder.time_dim)
-        loss = self.loss_with_snr(pred, target, timesteps, latent_mask)
+        diff_loss = self.loss_with_snr(pred, target, timesteps, latent_mask)
 
-        return loss
+        return {
+            "diff_loss": diff_loss,
+            "global_duration_loss": global_duration_loss,
+        }
 
     @torch.no_grad()
     def inference(
@@ -234,41 +250,56 @@ class AudioDiffusion(
         content: list[Any],
         condition: list[Any],
         task: list[str],
+        instruction: torch.Tensor,
+        instruction_lengths: Sequence[int],
         scheduler: SchedulerMixin,
-        latent_shape: Sequence[int],
         num_steps: int = 20,
         guidance_scale: float = 3.0,
         guidance_rescale: float = 0.0,
-        num_samples_per_content: int = 1,
         disable_progress: bool = True,
         **kwargs
     ):
         device = self.dummy_param.device
         classifier_free_guidance = guidance_scale > 1.0
-        batch_size = len(content) * num_samples_per_content
+
+        content_output: dict[
+            str, torch.Tensor] = self.content_encoder.encode_content(
+                content, task, device=device
+            )
+        content, content_mask = content_output["content"], content_output[
+            "content_mask"]
+
+        instruction_mask = create_mask_from_length(instruction_lengths)
+        content, content_mask, global_duration_pred, _ = \
+            self.content_adapter(content, content_mask, instruction, instruction_mask)
 
         if classifier_free_guidance:
-            content, content_mask = self.encode_content_classifier_free(
-                content, task, num_samples_per_content
-            )
-        else:
-            content_output: dict[
-                str, torch.Tensor] = self.content_encoder.encode_content(
-                    content, task, device=device
-                )
-            content, content_mask = content_output["content"], content_output[
-                "content_mask"]
-            content = content.repeat_interleave(num_samples_per_content, 0)
-            content_mask = content_mask.repeat_interleave(
-                num_samples_per_content, 0
-            )
+            uncond_content = torch.zeros_like(content)
+            uncond_content_mask = content_mask.detach().clone()
+            content = torch.cat([uncond_content, content])
+            content_mask = torch.cat([uncond_content_mask, content_mask])
 
         scheduler.set_timesteps(num_steps, device=device)
         timesteps = scheduler.timesteps
 
+        global_duration_pred = torch.exp(
+            global_duration_pred
+        ) - self.duration_offset
+        global_duration_pred *= self.autoencoder.latent_token_rate
+        global_duration_pred = torch.round(global_duration_pred)
+        batch_size = content.size(0)
+        latent_shape = tuple(
+            int(global_duration_pred.max().item()) if dim is None else dim
+            for dim in self.autoencoder.latent_shape
+        )
         latent = self.prepare_latent(
             batch_size, scheduler, latent_shape, content.dtype, device
         )
+        latent_mask = create_mask_from_length(global_duration_pred).to(
+            content_mask.device
+        )
+        if classifier_free_guidance:
+            latent_mask = torch.cat([latent_mask, latent_mask])
 
         num_warmup_steps = len(timesteps) - num_steps * scheduler.order
         progress_bar = tqdm(range(num_steps), disable=disable_progress)
@@ -282,9 +313,10 @@ class AudioDiffusion(
 
             noise_pred = self.backbone(
                 x=latent_input,
+                x_mask=latent_mask,
                 timesteps=timestep,
                 context=content,
-                context_mask=content_mask
+                context_mask=content_mask,
             )
 
             # perform guidance
@@ -323,180 +355,8 @@ class AudioDiffusion(
         latent = latent * scheduler.init_noise_sigma
         return latent
 
-    def encode_content_classifier_free(
-        self,
-        content: list[Any],
-        task: list[str],
-        num_samples_per_content: int = 1
-    ):
-        device = self.dummy_param.device
-        content_output: dict[
-            str, torch.Tensor] = self.content_encoder.encode_content(
-                content, task, device=device
-            )
-        content, content_mask = content_output["content"], content_output[
-            "content_mask"]
 
-        content = content.repeat_interleave(num_samples_per_content, 0)
-        content_mask = content_mask.repeat_interleave(
-            num_samples_per_content, 0
-        )
-
-        # get unconditional embeddings for classifier free guidance
-        uncond_content = torch.zeros_like(content)
-        uncond_content_mask = content_mask.detach().clone()
-
-        uncond_content = uncond_content.repeat_interleave(
-            num_samples_per_content, 0
-        )
-        uncond_content_mask = uncond_content_mask.repeat_interleave(
-            num_samples_per_content, 0
-        )
-
-        # For classifier free guidance, we need to do two forward passes.
-        # We concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes
-        content = torch.cat([uncond_content, content])
-        content_mask = torch.cat([uncond_content_mask, content_mask])
-
-        return content, content_mask
-
-
-class VariableLengthAudioDiffusion(AudioDiffusion):
-    def __init__(
-        self,
-        autoencoder: AutoEncoderBase,
-        content_encoder: ContentEncoder,
-        content_adapter: ContentAdapterBase,
-        backbone: nn.Module,
-        content_dim: int,
-        frame_resolution:
-        float,  # frame resolution in second for duration prediction
-        duration_offset: float = 1.0,
-        noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
-        snr_gamma: float = None,
-        cfg_drop_ratio: float = 0.2,
-    ):
-        super().__init__(
-            autoencoder, content_encoder, backbone, noise_scheduler_name,
-            snr_gamma, cfg_drop_ratio
-        )
-        self.content_adapter = content_adapter
-        self.frame_resolution = frame_resolution
-        self.duration_offset = duration_offset
-        self.dummy_nta_embed = nn.Parameter(torch.zeros(content_dim))
-
-    def forward(
-        self, content, condition, duration, duration_lengths, task, waveform,
-        waveform_lengths, **kwargs
-    ):
-        device = self.dummy_param.device
-        num_train_timesteps = self.noise_scheduler.config.num_train_timesteps
-        self.noise_scheduler.set_timesteps(num_train_timesteps, device=device)
-
-        self.autoencoder.eval()
-        with torch.no_grad():
-            latent, latent_mask = self.autoencoder.encode(
-                waveform.unsqueeze(1), waveform_lengths
-            )
-
-        # content: (B, L, E)
-        content_output: dict[
-            str, torch.Tensor] = self.content_encoder.encode_content(
-                content, task, device=device
-            )
-        length_aligned_content = content_output["length_aligned_content"]
-        content, content_mask = content_output["content"], content_output[
-            "content_mask"]
-        (
-            content,
-            content_mask,
-            global_duration_pred,
-            local_duration_pred,
-        ) = self.content_adapter(content, content_mask)
-
-        n_frames = torch.round(duration / self.frame_resolution)
-        local_duration_target = torch.log(n_frames + self.duration_offset)
-        global_duration_target = torch.log(
-            latent_mask.sum(1) / self.autoencoder.latent_token_rate + 1e-8
-        )
-        local_duration_loss = loss_with_mask(
-            (local_duration_target - local_duration_pred)**2, content_mask
-        )
-        global_duration_loss = torch.sum(
-            (global_duration_target - global_duration_pred)**2
-        ) / content.shape[0]
-
-        # --------------------------------------------------------------------
-        # prepare latent and diffusion-related noise
-        # --------------------------------------------------------------------
-        if self.training and self.classifier_free_guidance:
-            mask_indices = [
-                k for k in range(len(waveform))
-                if random.random() < self.cfg_drop_ratio
-            ]
-            if len(mask_indices) > 0:
-                content[mask_indices] = 0
-                length_aligned_content[mask_indices] = 0
-
-        batch_size = latent.shape[0]
-        timesteps = self.get_timesteps(batch_size, device, self.training)
-        noise = torch.randn_like(latent)
-        noisy_latent = self.noise_scheduler.add_noise(latent, noise, timesteps)
-        target = self.get_target(latent, noise, timesteps)
-
-        # --------------------------------------------------------------------
-        # duration adapter
-        # --------------------------------------------------------------------
-
-        # content_mask: [B, L], helper_latent_mask: [B, T]
-        n_latents = torch.round(duration * self.autoencoder.latent_token_rate)
-        helper_latent_mask = create_mask_from_length(n_latents.sum(1)).to(
-            content_mask.device
-        )
-        attn_mask = content_mask.unsqueeze(-1
-                                          ) * helper_latent_mask.unsqueeze(1)
-        # attn_mask: [B, L, T]
-        align_path = create_alignment_path(n_latents, attn_mask)
-        time_aligned_content = torch.matmul(
-            align_path.transpose(1, 2), content
-        )  # (B, T, L) x (B, L, E) -> (B, T, E)
-
-        # --------------------------------------------------------------------
-        # prepare input to the backbone
-        # --------------------------------------------------------------------
-        # TODO compatility for 2D spectrogram VAE
-        latent_length = noisy_latent.size(self.autoencoder.time_dim)
-        time_aligned_content = trim_or_pad_length(
-            time_aligned_content, latent_length, 1
-        )
-        length_aligned_content = trim_or_pad_length(
-            length_aligned_content, latent_length, 1
-        )
-        # time_aligned_content: from monotonic aligned input, without frame expansion (phoneme)
-        # length_aligned_content: from aligned input (f0/energy)
-        time_aligned_content = time_aligned_content + length_aligned_content
-
-        context = self.dummy_nta_embed[(None, ) * (content.ndim - 1) +
-                                       (..., )].expand_as(content)
-        context_mask = torch.ones(batch_size, context.size(1)).to(device)
-        pred: torch.Tensor = self.backbone(
-            x=noisy_latent,
-            timesteps=timesteps,
-            time_aligned_context=time_aligned_content,
-            context=context,
-            x_mask=latent_mask,
-            context_mask=context_mask
-        )
-        pred = pred.transpose(1, self.autoencoder.time_dim)
-        target = target.transpose(1, self.autoencoder.time_dim)
-        diff_loss = self.loss_with_snr(pred, target, timesteps, latent_mask)
-        return {
-            "diff_loss": diff_loss,
-            "local_duration_loss": local_duration_loss
-        }
-
-
-class DummyContentAudioDiffusion(AudioDiffusion):
+class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
     def __init__(
         self,
         autoencoder: AutoEncoderBase,
@@ -542,12 +402,16 @@ class DummyContentAudioDiffusion(AudioDiffusion):
                 to support CFG.
         """
         super().__init__(
-            autoencoder, content_encoder, backbone, noise_scheduler_name,
-            snr_gamma, cfg_drop_ratio
+            autoencoder=autoencoder,
+            content_encoder=content_encoder,
+            content_adapter=content_adapter,
+            backbone=backbone,
+            duration_offset=duration_offset,
+            noise_scheduler_name=noise_scheduler_name,
+            snr_gamma=snr_gamma,
+            cfg_drop_ratio=cfg_drop_ratio,
         )
-        self.content_adapter = content_adapter
         self.frame_resolution = frame_resolution
-        self.duration_offset = duration_offset
         self.dummy_nta_embed = nn.Parameter(torch.zeros(content_dim))
         self.dummy_ta_embed = nn.Parameter(torch.zeros(content_dim))
 
@@ -725,8 +589,10 @@ class DummyContentAudioDiffusion(AudioDiffusion):
         instruction_mask = create_mask_from_length(instruction_lengths)
         content, content_mask, global_duration_pred, local_duration_pred = \
             self.content_adapter(content, content_mask, instruction, instruction_mask)
+
         scheduler.set_timesteps(num_steps, device=device)
         timesteps = scheduler.timesteps
+        batch_size = content.size(0)
 
         # truncate dummy time aligned duration prediction
         is_time_aligned = torch.as_tensor(is_time_aligned)
@@ -817,7 +683,6 @@ class DummyContentAudioDiffusion(AudioDiffusion):
         # --------------------------------------------------------------------
         # prepare input to the backbone
         # --------------------------------------------------------------------
-        batch_size = content.size(0)
         latent_shape = tuple(
             int(global_duration.max().item()) if dim is None else dim
             for dim in self.autoencoder.latent_shape
@@ -874,14 +739,13 @@ class DummyContentAudioDiffusion(AudioDiffusion):
         return waveform
 
 
-class DoubleContentAudioDiffusion(AudioDiffusion):
+class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
     def __init__(
         self,
         autoencoder: AutoEncoderBase,
         content_encoder: ContentEncoder,
         content_adapter: nn.Module,
         backbone: nn.Module,
-        content_dim: int,
         frame_resolution: float,
         duration_offset: float = 1.0,
         noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
@@ -889,12 +753,14 @@ class DoubleContentAudioDiffusion(AudioDiffusion):
         cfg_drop_ratio: float = 0.2,
     ):
         super().__init__(
-            autoencoder, content_encoder, backbone, noise_scheduler_name,
-            snr_gamma, cfg_drop_ratio
+            autoencoder=autoencoder,
+            content_encoder=content_encoder,
+            backbone=backbone,
+            noise_scheduler_name=noise_scheduler_name,
+            snr_gamma=snr_gamma,
+            cfg_drop_ratio=cfg_drop_ratio
         )
-        self.content_adapter = content_adapter
         self.frame_resolution = frame_resolution
-        self.duration_offset = duration_offset
 
     def forward(
         self, content, duration, task, is_time_aligned, waveform,

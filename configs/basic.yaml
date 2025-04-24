@@ -1,5 +1,6 @@
 instruction_embedding: /hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data_v2/t5_embeddings.h5
-
+sample_rate: 24000
+downsampling_ratio: 480
 seed: 42
 
 hydra:

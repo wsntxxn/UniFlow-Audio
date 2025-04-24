@@ -312,6 +312,7 @@ class TextToAudioDataset(AudioGenerationDataset):
 class VideoToAudioDataset(AudioGenerationDataset):
 
     content_col: str = "video"
+    video_fps: int = 10
 
     def load_content_waveform(self, audio_id: str):
         video_path = self.id_to_content[audio_id]
@@ -322,7 +323,8 @@ class VideoToAudioDataset(AudioGenerationDataset):
                 idx = np.where(id_set == audio_id.encode())[0].item()
 
                 video_features = hf["Video"][idx][0]
-                label = hf["Label"][idx]
+                label: bytes = hf["Label"][idx]
+                label = label.decode()
 
                 if self.id_to_audio:
                     waveform = hf["Audio"][idx]
@@ -340,7 +342,7 @@ class VideoToAudioDataset(AudioGenerationDataset):
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
-        clip_duration = waveform.shape[0] / self.target_sr
+        clip_duration = content.shape[0] / self.video_fps
         frame_num = content.shape[0]
         duration_value = clip_duration / frame_num
         duration = np.full(frame_num, duration_value)
