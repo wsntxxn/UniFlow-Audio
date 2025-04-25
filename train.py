@@ -1,4 +1,6 @@
+import argparse
 import multiprocessing as mp
+import sys
 
 mp.set_start_method("spawn", force=True)
 
@@ -20,16 +22,27 @@ register_omegaconf_resolvers()
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_dir", type=str, default="configs")
+    parser.add_argument("--config_name", type=str, default="train")
+    args, unknown = parser.parse_known_args()
 
-    configs = []
+    sys.argv = [sys.argv[0]] + unknown
 
-    @hydra.main(version_base=None, config_path="configs", config_name="train")
-    def parse_config_from_command_line(config):
-        config = OmegaConf.to_container(config, resolve=True)
-        configs.append(config)
+    def run_with_dynamic_hydra(config_path, config_name):
+        configs = []
 
-    parse_config_from_command_line()
-    config = configs[0]
+        @hydra.main(version_base=None, config_path=config_path, config_name=config_name)
+        def parse_config_from_command_line(config):
+            config = OmegaConf.to_container(config, resolve=True)
+            configs.append(config)
+
+        parse_config_from_command_line()
+        return configs[0]
+
+    config = run_with_dynamic_hydra(args.config_dir, args.config_name)
+
+
 
     # helper instance for accessing information about the current training environment
     helper_accelerator = Accelerator()
