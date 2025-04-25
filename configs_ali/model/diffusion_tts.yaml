@@ -1,0 +1,62 @@
+defaults:
+  - autoencoder: stable_vae
+  - backbone: audio_udit
+
+_target_: models.diffusion.VariableLengthAudioDiffusion
+content_encoder:
+  _target_: models.content_encoder.content_encoder.ContentEncoder
+  text_encoder:
+    _target_: models.content_encoder.text_encoder.T5TextEncoder
+    model_name: google/flan-t5-large
+  midi_encoder:
+    _target_: models.content_encoder.midi_encoder.FastSpeech2MIDIEncoder
+    phone_vocab_size: 63
+    midi_vocab_size: 300
+    slur_vocab_size: 2
+    d_model: 256
+    num_layers: 4
+    num_heads: 2
+    ffn_kernel_size: 9
+    d_out: 256
+  pitch_encoder:
+    _target_: models.content_encoder.midi_encoder.FastSpeech2PitchEncoder
+    phone_vocab_size: 62
+    d_model: 256
+    num_layers: 4
+    num_heads: 2
+    ffn_kernel_size: 9
+    pitch_downsample_ratio: ${get_pitch_downsample_ratio:${...autoencoder}, 0.005}
+    d_out: 256
+  phoneme_encoder:
+    _target_: models.content_encoder.midi_encoder.FastSpeech2PhonemeEncoder
+    phone_vocab_size: 92
+    d_model: 256
+    num_layers: 4
+    num_heads: 2
+    ffn_kernel_size: 9
+    pitch_downsample_ratio: ${get_pitch_downsample_ratio:${...autoencoder}, 0.005}
+    d_out: 256
+    n_spks: 1
+    xvector_dim: 256
+    use_xvector: true
+    
+
+content_adapter:
+  _target_: models.content_adapter.ContentAdapter
+  d_model: 256
+  d_out: 256
+  num_layers: 2
+  num_heads: 4
+  dropout: 0.1
+  duration_predictor:
+    _target_: models.content_adapter.DurationPredictor
+    in_channels: ${..d_model}
+    filter_channels: 256
+    n_layers: 5
+    kernel_size: 3
+    p_dropout: 0.5
+frame_resolution: 0.005
+noise_scheduler_name: "stabilityai/stable-diffusion-2-1"
+snr_gamma: 5.0
+classifier_free_guidance: false
+

@@ -1,0 +1,15 @@
+defaults:
+  - default
+  - _self_
+
+trainer:
+  wandb_config:
+    project: x_to_audio_generation_ascend
+
+model:
+  autoencoder:
+    pretrained_ckpt: checkpoints/stable_vae.pt
+  content_encoder:
+    text_encoder:
+      model_name: /aistor/sjtu/hpc_stor01/home/xuxuenan/hf_cache/hub/models--google--flan-t5-large/snapshots/0613663d0d48ea86ba8cb3d7a44f0f65dc596a2a/
+  noise_scheduler_name: /aistor/sjtu/hpc_stor01/home/xuxuenan/hf_cache/hub/models--stabilityai--stable-diffusion-2-1/snapshots/5cae40e6a2745ae2b01ad92ae5043f95f23644d6

@@ -1,0 +1,28 @@
+train:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: data/TTS-HQ/train/content.jsonl  # frequency-cutoff audio
+  audio: data/TTS-HQ/train/audio.jsonl  # high-frequency enhanced audio
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  max_duration: 5.0
+  random_crop: true
+val:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: data/TTS-HQ/val/content.jsonl  # frequency-cutoff audio
+  audio: data/TTS-HQ/val/audio.jsonl  # high-frequency enhanced audio
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  max_duration: 5.0
+  random_crop: false
+test:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: data/TTS-HQ/test/content.jsonl  # frequency-cutoff audio
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1

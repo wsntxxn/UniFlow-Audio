@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+import os
 
 
 def load_metadata(file_path):
@@ -201,16 +202,18 @@ def append_metadata(source_folder, target_folder):
 if __name__ == "__main__":
     # 多个原目录，包含 matadata 文件，包含除voicebank+demand之外的se数据集
     base_dirs = [
-        Path("/hpc_stor03/sjtu_home/zihao.zheng/data/LJSpeech-1.1"),
-        Path("/hpc_stor03/sjtu_home/zihao.zheng/data/VCTK"),
-        Path("/hpc_stor03/sjtu_home/zihao.zheng/data/Libritts"),
-        Path("/hpc_stor03/sjtu_home/zihao.zheng/data/Libritts_360")
+        # Path("/cpfs_shared/jiahao.mei/data/se/LJSpeech+Musan"),
+        # Path("/cpfs_shared/jiahao.mei/data/se/Libritts+Wham"),
+        Path("/cpfs_shared/jiahao.mei/data/se/VCTK+Wham"),
+        # Path("/hpc_stor03/sjtu_home/zihao.zheng/data/Libritts_360")
     ]
     # 目标目录，保存训练、验证、测试集的 metadata 文件
     target_dir = Path(
-        "/hpc_stor03/sjtu_home/zihao.zheng/xtoaudio/XToAudioGeneration-master/data/se"
+        f"/cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/VCTK+Wham"
     )
     split_and_save_metadata(base_dirs, target_dir)
-    # voicebank+demand 数据集需要单独处理
-    add_dir = "/hpc_stor03/sjtu_home/zihao.zheng/data/voicebank+demand"
-    append_metadata(add_dir, target_dir)
+    print("Done!")
+    # # voicebank+demand 数据集需要单独处理
+    # add_dir = "/cpfs_shared/jiahao.mei/data/se/VCTK+Demand"
+    # append_metadata(add_dir, target_dir)
+    # print("vctk+demand done!")

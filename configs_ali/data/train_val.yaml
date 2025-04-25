@@ -1,0 +1,23 @@
+defaults:
+  - default
+  - _self_
+
+train_data_list:
+  - ${..libritts.train}
+  - ${..audiocaps.train}
+  - ${..m4singer.train}
+  - ${..TTSHQ.train}
+  - ${..musdb.train}
+  - ${..moises.train}
+  - ${..ljspeech_se.train}
+  - ${..vggsound_cavp.train}
+
+val_data_list:
+  - ${..libritts.val}
+  - ${..audiocaps.val}
+  - ${..m4singer.val}
+  - ${..TTSHQ.val}
+  - ${..musdb.val}
+  - ${..moises.val}
+  - ${..ljspeech_se.val}
+  - ${..vggsound_cavp.val}

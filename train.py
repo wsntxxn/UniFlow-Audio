@@ -110,6 +110,7 @@ def main():
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
         loss_fn=loss_fn,
+        val_epoch_length=config["val_epoch_length"],
         _convert_="all"
     )
     trainer.config_dict = config  # assign here, don't instantiate it
@@ -117,4 +118,5 @@ def main():
 
 
 if __name__ == "__main__":
+    
     main()

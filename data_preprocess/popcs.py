@@ -8,10 +8,14 @@ import librosa
 import numpy as np
 from tqdm import tqdm
 from h5py import File
-
+import sys
+print(sys.path)
+import os 
+print(os.getcwd())
+sys.path.append("./")
 from utils.diffsinger_utilities import TokenTextEncoder, read_duration_from_textgrid, get_pitch
 
-RAW_POPCS_DIR = Path("/hpc_stor03/public/shared/data/tts/PopCS/popcs")
+RAW_POPCS_DIR = Path("/cpfs_shared/jiahao.mei/data/svs/popcs")
 TARGET_POPCS_DIR = Path("./data/popcs")
 TEST_PREFIXES = [
     'popcs-说散就散',

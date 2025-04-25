@@ -1,0 +1,30 @@
+train:
+  _target_: data_module.dataset.PopCsSingingDataset
+  content: data/popcs/train/phone_pitch.jsonl
+  audio: data/popcs/train/audio.jsonl
+  target_sr: ${sample_rate}
+  f0_stats: data/popcs/train/f0_mean_std.npy
+  pitch_norm: "log"
+  use_uv: true
+  max_duration: 16.0
+val:
+  _target_: data_module.dataset.PopCsSingingDataset
+  content: data/popcs/val/phone_pitch.jsonl
+  audio: data/popcs/val/audio.jsonl
+  target_sr: ${sample_rate}
+  f0_stats: data/popcs/val/f0_mean_std.npy
+  pitch_norm: "log"
+  use_uv: true
+  max_duration: 16.0
+test:
+  _target_: data_module.dataset.PopCsSingingDataset
+  content: data/popcs/test/phone_pitch.jsonl
+  f0_stats: data/popcs/test/f0_mean_std.npy
+  pitch_norm: "log"
+  use_uv: true
+train_for_infer:
+  _target_: data_module.dataset.PopCsSingingDataset
+  content: data/popcs/train/phone_pitch.jsonl
+  f0_stats: data/popcs/train/f0_mean_std.npy
+  pitch_norm: "log"
+  use_uv: true

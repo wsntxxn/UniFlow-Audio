@@ -1,0 +1,7 @@
+instruction_embedding: data/instruction_embedding/t5_embeddings.h5
+seed: 42
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .

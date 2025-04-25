@@ -1,0 +1,33 @@
+defaults:
+  - basic
+  - data@test_data_dict: test
+  - _self_
+
+sample_rate: 24000 # for training dataset config parsing
+
+test_dataloader:
+  _target_: torch.utils.data.DataLoader
+  dataset: ${test_data_dict.data_list.0}
+  batch_size: 1 # per device batch size
+  shuffle: False
+  num_workers: 4
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys: ["instruction"]
+
+wav_dir: inference
+
+noise_scheduler:
+  type: DDIMScheduler
+  name: stabilityai/stable-diffusion-2-1
+
+infer_args:
+  num_steps: 50
+  guidance_scale: 3.5
+  guidance_rescale: 0.5
+  use_gt_duration: false
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .

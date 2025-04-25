@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     '--raw_m4singer_dir',
     type=str,
-    default="/hpc_stor03/sjtu_home/xuenan.xu/data/m4singer",
+    default="/cpfs_shared/jiahao.mei/data/svs/m4singer",
     help='path to raw m4singer data'
 )
 parser.add_argument(

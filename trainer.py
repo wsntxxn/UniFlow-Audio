@@ -100,6 +100,7 @@ class Trainer(CheckpointMixin):
     optimizer: torch.optim.Optimizer
     lr_scheduler: torch.optim.lr_scheduler.LRScheduler
     loss_fn: nn.Module
+    val_epoch_length: int | None = None
 
     epochs: int
     epoch_length: int | None = None
@@ -162,13 +163,26 @@ class Trainer(CheckpointMixin):
 
         self.on_validation_start()
 
-        for batch_idx, batch in enumerate(self.val_dataloader):
+        val_steps = self.val_epoch_length or len(self.val_dataloader)
+        self.val_data_iterator = iter(self.val_dataloader)
+
+        if self.accelerator.is_main_process:
+            range_iterator = trange(val_steps, desc="Validation")
+        else:
+            range_iterator = range(val_steps)
+
+        for batch_idx in range_iterator:
+            try:
+                batch = next(self.val_data_iterator)
+            except StopIteration:
+                self.val_data_iterator = iter(self.val_dataloader)
+                batch = next(self.val_data_iterator)
+
             self.validation_step(batch, batch_idx)
 
         self.on_validation_end()
         self.model.train()
         torch.set_grad_enabled(True)
-
     def on_validation_start(self) -> None:
         pass
 
@@ -349,6 +363,7 @@ class Trainer(CheckpointMixin):
         if self.epoch_length is None:
             self.epoch_length = len(self.train_dataloader)
         self.train_data_iterator = iter(self.train_dataloader)
+        self.val_data_iterator = iter(self.val_dataloader)
 
         self.accelerator.print(f"training start ............")
         if self.wandb_config is not None:

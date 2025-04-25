@@ -4,10 +4,13 @@ import pickle
 
 import librosa
 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.diffsinger_utilities import TokenTextEncoder
 
 RAW_OPENCPOP_DIR = Path(
-    "/hpc_stor03/public/shared/data/tts/music/opencpop/segments"
+    "/cpfs_shared/jiahao.mei/data/svs/opencpop/segments"
 )
 TARGET_OPENCPOP_DIR = Path("./data/opencpop")
 
