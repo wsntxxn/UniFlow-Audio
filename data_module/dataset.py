@@ -153,6 +153,8 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
     audio_col: str = "audio"
     id_col_in_condition: str | None = None
     condition_col: str = "condition"
+    max_samples: int | None = None
+
 
     # TODO how to add instructions of the condition, like `condition_name` or `task_name`
     # and then map `xx_name` to specific prompts?
@@ -194,6 +196,9 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
         ) if self.base_condition_path else None
 
         self.audio_ids = list(self.id_to_content.keys())
+
+        if self.max_samples is not None:
+            self.audio_ids = self.audio_ids[:min(len(self.audio_ids),self.max_samples)]
 
     def __len__(self) -> int:
         return len(self.audio_ids)

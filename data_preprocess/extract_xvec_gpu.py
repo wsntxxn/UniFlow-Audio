@@ -13,7 +13,8 @@ from multiprocessing import Process, Queue
 from wespeaker import load_model
 from pydub import AudioSegment
 
-GPU_NUM = 8
+
+GPU_NUM = 2
 
 # === 解析命令行参数 ===
 parser = argparse.ArgumentParser(description="Extract xvectors from audio directory")
@@ -22,7 +23,7 @@ parser.add_argument("--ext", type=str, default=".mp3", help="Audio file extensio
 parser.add_argument("--h5_save_path", type=str, required=True, help="Path to save the h5 file")
 
 args = parser.parse_args()
-
+dataset_name=args.dir_path.split('/')[-1]
 # === 加载模型（避免多进程冲突） ===
 _ = load_model('english')  # 触发模型下载
 
@@ -53,9 +54,14 @@ def worker(gpu_id, file_list, queue):
 
     for dir, file in tqdm.tqdm(file_list, desc=f"[GPU:{gpu_id}]"):
         audio_path = os.path.join(dir, file)
+        #"l2arctic_ASI_arctic_a0017"
         try:
             emb = model.extract_embedding(audio_path)
             utt_id = file.replace(ext, '')
+            if dataset_name=="L2arctic":
+                parent_dir_name=dir.split('/')[-2]
+                utt_id=f"l2arctic_{parent_dir_name}_{utt_id}"
+            print(f"uttid:{utt_id}")
             result[utt_id] = emb
         except Exception as e:
             print(f"❌ [GPU:{gpu_id}] 失败: {audio_path} - {e}")

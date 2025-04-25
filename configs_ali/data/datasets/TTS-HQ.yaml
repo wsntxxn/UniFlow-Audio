@@ -16,6 +16,7 @@ val:
   downsampling_ratio: ${downsampling_ratio}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
+  max_samlpes: ${max_val_samlpes}
   max_duration: 5.0
   random_crop: false
 test:

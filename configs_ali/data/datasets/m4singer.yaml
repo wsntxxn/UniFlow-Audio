@@ -14,6 +14,7 @@ val:
   spk_set: data/m4singer/spk_set.json
   target_sr: ${sample_rate}
   task_instruction: ${instruction_embedding}
+  max_samlpes: ${max_val_samlpes}
 test:
   _target_: data_module.dataset.MidiSingingDataset
   content: data/m4singer/test/midi.jsonl

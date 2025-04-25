@@ -16,6 +16,7 @@ val:
   pitch_norm: "log"
   use_uv: true
   max_duration: 16.0
+  max_samlpes: ${max_val_samlpes}
 test:
   _target_: data_module.dataset.PopCsSingingDataset
   content: data/popcs/test/phone_pitch.jsonl

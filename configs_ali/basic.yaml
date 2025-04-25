@@ -1,4 +1,6 @@
 instruction_embedding: data/instruction_embedding/t5_embeddings.h5
+sample_rate: 24000
+downsampling_ratio: 480
 seed: 42
 
 hydra:

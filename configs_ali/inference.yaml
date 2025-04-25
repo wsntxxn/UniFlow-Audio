@@ -3,7 +3,6 @@ defaults:
   - data@test_data_dict: test
   - _self_
 
-sample_rate: 24000 # for training dataset config parsing
 
 test_dataloader:
   _target_: torch.utils.data.DataLoader

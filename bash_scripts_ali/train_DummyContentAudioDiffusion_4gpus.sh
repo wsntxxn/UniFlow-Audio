@@ -1,13 +1,12 @@
-# nohup bash bash_scripts_ali/train_DummyContentAudioDiffusion_2gpus.sh > logs/train_DummyContentAudioDiffusion_2gpus.log 2>&1  &
+# nohup bash bash_scripts_ali/train_DummyContentAudioDiffusion_4gpus.sh > logs/train_DummyContentAudioDiffusion_4gpus.log 2>&1  &
 echo "Current time: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')" 
 echo "Running script name: $(basename "$0")" 
 
-accelerate launch --config_file configs/accelerate/nvidia/2gpus.yaml train.py \
+accelerate launch --config_file configs/accelerate/nvidia/4gpus.yaml train.py \
     --config_dir configs_ali \
     data@data_dict=train_init \
-    train_dataloader.batch_size=8 \
-    train_dataloader.num_workers=8 \
-    val_dataloader.batch_size=24 \
+    train_dataloader.batch_size=16 \
+    val_dataloader.batch_size=16 \
     epochs=1000 \
     model=diffusion \
     loss@loss_fn=weighted_sum \

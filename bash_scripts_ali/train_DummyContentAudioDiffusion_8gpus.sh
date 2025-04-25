@@ -3,11 +3,10 @@ echo "Current time: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
 echo "Running script name: $(basename "$0")" 
 
 accelerate launch --config_file configs/accelerate/nvidia/8gpus.yaml train.py \
-    warmup_params.warmup_steps=2000 \
+    --config_dir configs_ali \
     data@data_dict=train_init \
-    train_dataloader.batch_size=8 \
-    train_dataloader.num_workers=8 \
-    val_dataloader.batch_size=24 \
+    train_dataloader.batch_size=16 \
+    val_dataloader.batch_size=16 \
     epochs=1000 \
     model=diffusion \
     loss@loss_fn=weighted_sum \

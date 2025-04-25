@@ -9,9 +9,6 @@ exp_name: wave_dit_ada_sola_bias_diff
 exp_dir: experiments/${exp_name}/
 logging_file: ${exp_dir}/train.log
 
-sample_rate: 24000
-
-downsampling_ratio: 480
 
 train_dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader
@@ -59,7 +56,9 @@ lr_scheduler:
 
 epochs: 600
 epoch_length: 1000
-val_epoch_length: 50
+val_epoch_length: null
+max_val_samlpes: 1000
+
 
 trainer:
   _target_: audio_generation_trainer.AudioGenerationTrainer

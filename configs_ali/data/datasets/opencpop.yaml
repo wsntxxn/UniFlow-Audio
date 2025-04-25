@@ -8,6 +8,7 @@ val:
   content: data/opencpop/val/midi.jsonl
   audio: data/opencpop/val/audio.jsonl
   target_sr: ${sample_rate}
+  max_samlpes: ${max_val_samlpes}
 test:
   _target_: data_module.dataset.MidiSingingDataset
   content: data/opencpop/test/midi.jsonl
