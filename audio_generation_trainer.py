@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+import gc
 from pathlib import Path
 from collections import defaultdict
 
+import torch
 from torch.nn.parallel import DistributedDataParallel
 from omegaconf import OmegaConf
 from trainer import Trainer
@@ -57,7 +59,7 @@ class AudioGenerationTrainer(Trainer):
         return loss
 
     def on_validation_start(self):
-        self.val_loss_dict = defaultdict(int)
+        self.val_loss_dict = defaultdict(float)
         self.val_batch_num = 0
         self.val_time_aligned_batch_num = 0
 
@@ -65,9 +67,9 @@ class AudioGenerationTrainer(Trainer):
         output = self.model(**batch)
         loss_dict = self.loss_fn(output)
         for loss_name in loss_dict:
-            self.val_loss_dict[loss_name] += loss_dict[loss_name]
+            self.val_loss_dict[loss_name] += loss_dict[loss_name].item()
         self.val_batch_num += 1
-        if loss_dict["local_duration_loss"].item() != 0.0:
+        if loss_dict["local_duration_loss"] != 0.0:
             self.val_time_aligned_batch_num += 1
 
     def get_val_metrics(self):
@@ -100,3 +102,6 @@ class AudioGenerationTrainer(Trainer):
         self.accelerator.print(logging_msg)
         if self.accelerator.is_main_process:
             self.logger.info(logging_msg)
+
+        torch.cuda.empty_cache()
+        gc.collect()

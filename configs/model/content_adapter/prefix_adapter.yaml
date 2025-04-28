@@ -2,10 +2,9 @@ _target_: models.content_adapter.PrefixAdapter
 d_model: 1024
 d_out: ${..content_dim}
 prefix_dim: 1024
-num_layers: 6
+num_layers: 2
 num_heads: 16
 dropout: 0.2
-norm_first: true
 duration_grad_scale: 0.1
 duration_predictor:
   _target_: models.content_adapter.DurationPredictor

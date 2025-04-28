@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 
@@ -86,6 +87,26 @@ class ContentAdapterBase(nn.Module):
         self.d_out = d_out
 
 
+class SinusoidalPositionalEmbedding(nn.Module):
+    def __init__(self, d_model, dropout, max_len=1000):
+        super().__init__()
+        self.dropout = nn.Dropout(dropout)
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() *
+            (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(1), :]
+        return self.dropout(x)
+
+
 class ContentAdapter(ContentAdapterBase):
     def __init__(
         self,
@@ -150,6 +171,7 @@ class PrefixAdapter(ContentAdapterBase):
         duration_predictor: DurationPredictor,
         dropout: float = 0.1,
         norm_first: bool = False,
+        use_last_norm: bool = True,
         activation: str = "gelu",
         duration_grad_scale: float = 0.1,
     ):
@@ -173,13 +195,20 @@ class PrefixAdapter(ContentAdapterBase):
         else:
             enable_nested_tensor = True
         self.cls_embed = nn.Parameter(torch.randn(d_model))
+        # self.pos_embed = SinusoidalPositionalEmbedding(d_model, dropout)
         self.layers = nn.TransformerEncoder(
             encoder_layer=layer,
             num_layers=num_layers,
             enable_nested_tensor=enable_nested_tensor
         )
+        self.use_last_norm = use_last_norm
+        if self.use_last_norm:
+            self.last_norm = nn.LayerNorm(d_model)
         self.duration_predictor = duration_predictor
         self.content_proj = nn.Conv1d(d_model, d_out, 1)
+        nn.init.normal_(self.cls_embed, 0., 0.02)
+        nn.init.xavier_uniform_(self.content_proj.weight)
+        nn.init.constant_(self.content_proj.bias, 0.)
 
     def forward(self, content, content_mask, instruction, instruction_mask):
         batch_size = content.size(0)
@@ -193,7 +222,10 @@ class PrefixAdapter(ContentAdapterBase):
         prefix = self.prefix_mlp(instruction)
         seq = torch.cat([prefix, x], dim=1)
         seq_mask = torch.cat([instruction_mask, x_mask], dim=1)
+        # seq = self.pos_embed(seq)
         x = self.layers(seq, src_key_padding_mask=~seq_mask.bool())
+        if self.use_last_norm:
+            x = self.last_norm(x)
         x = x[:, prefix.size(1):, :]
 
         x_grad_rescaled = x * self.duration_grad_scale + x.detach(

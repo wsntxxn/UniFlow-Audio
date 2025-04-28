@@ -296,7 +296,9 @@ class Trainer(CheckpointMixin):
 
             with self.accelerator.accumulate(self.model):
                 loss = self.training_step(batch, batch_idx)
-                self.accelerator.log({"train/loss": loss}, step=self.step)
+                self.accelerator.log(
+                    {"train/loss": loss.item()}, step=self.step
+                )
 
                 self.accelerator.backward(loss)
                 self.optimizer.step()

@@ -455,8 +455,9 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
             trunc_ta_length = content_mask[is_time_aligned].sum(1).max()
         else:
             trunc_ta_length = content.size(1)
+
+        # local duration loss
         local_duration_pred = local_duration_pred[:, :trunc_ta_length]
-        time_aligned_content = content[:, :trunc_ta_length]
         ta_content_mask = content_mask[:, :trunc_ta_length]
         local_duration_loss = loss_with_mask(
             (local_duration_target - local_duration_pred)**2,
@@ -470,6 +471,8 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         else:
             local_duration_loss = local_duration_loss.sum(
             ) / is_time_aligned.sum()
+
+        # global duration loss
         global_duration_loss = F.mse_loss(
             global_duration_target, global_duration_pred
         )
@@ -497,6 +500,7 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         # --------------------------------------------------------------------
         if is_time_aligned.sum() == 0 and \
             duration.size(1) < content_mask.size(1):
+            # for non time-aligned tasks like TTA, `duration` is dummy one
             duration = F.pad(
                 duration, (0, content_mask.size(1) - duration.size(1))
             )
@@ -510,6 +514,7 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         ) * helper_latent_mask.unsqueeze(1)
         # attn_mask: [B, L, T]
         align_path = create_alignment_path(n_latents, attn_mask)
+        time_aligned_content = content[:, :trunc_ta_length]
         time_aligned_content = torch.matmul(
             align_path.transpose(1, 2).to(content.dtype), time_aligned_content
         )  # (B, T, L) x (B, L, E) -> (B, T, E)
@@ -535,6 +540,7 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         context[is_time_aligned] = self.dummy_nta_embed.to(context.dtype)
         # only use the first dummy non time aligned embedding
         context_mask[is_time_aligned, 1:] = False
+
         # truncate dummy non time aligned context
         if is_time_aligned.sum().item() < batch_size:
             trunc_nta_length = content_mask[~is_time_aligned].sum(1).max()
@@ -542,6 +548,7 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
             trunc_nta_length = content.size(1)
         context = context[:, :trunc_nta_length]
         context_mask = context_mask[:, :trunc_nta_length]
+
         pred: torch.Tensor = self.backbone(
             x=noisy_latent,
             timesteps=timesteps,
@@ -623,7 +630,8 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         ) - self.duration_offset
         global_duration_pred *= self.autoencoder.latent_token_rate
         global_duration_pred = torch.round(global_duration_pred)
-        global_duration[~is_time_aligned] = global_duration_pred
+        global_duration[~is_time_aligned] = global_duration_pred[
+            ~is_time_aligned]
 
         # --------------------------------------------------------------------
         # duration adapter
@@ -735,6 +743,9 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
             ):
                 progress_bar.update(1)
 
+        progress_bar.close()
+
+        # TODO variable length decoding, using `latent_mask`
         waveform = self.autoencoder.decode(latent)
         return waveform
 
@@ -798,6 +809,8 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
             self.duration_offset
         )
         # truncate unused non time aligned duration prediction
+
+        # local duration loss
         if is_time_aligned.sum() > 0:
             trunc_ta_length = content_mask[is_time_aligned].sum(1).max()
         else:
@@ -816,6 +829,8 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
         else:
             local_duration_loss = local_duration_loss.sum(
             ) / is_time_aligned.sum()
+
+        # global duration loss
         global_duration_loss = F.mse_loss(
             global_duration_target, global_duration_pred
         )
@@ -841,6 +856,7 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
         # content_mask: [B, L], helper_latent_mask: [B, T]
         if is_time_aligned.sum() == 0 and \
             duration.size(1) < content_mask.size(1):
+            # for non time-aligned tasks like TTA, `duration` is dummy one
             duration = F.pad(
                 duration, (0, content_mask.size(1) - duration.size(1))
             )
