@@ -1,6 +1,5 @@
-import argparse
+from pathlib import Path
 import multiprocessing as mp
-import sys
 
 mp.set_start_method("spawn", force=True)
 
@@ -33,7 +32,10 @@ def main():
     parse_config_from_command_line()
     config = configs[0]
 
-
+    if "resume_from_checkpoint" in config["trainer"]:
+        ckpt_dir = Path(config["trainer"]["resume_from_checkpoint"])
+        exp_dir = ckpt_dir.parent.parent
+        config = OmegaConf.load(exp_dir / "config.yaml")
 
     # helper instance for accessing information about the current training environment
     helper_accelerator = Accelerator()
@@ -114,7 +116,6 @@ def main():
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
         loss_fn=loss_fn,
-        val_epoch_length=config["val_epoch_length"],
         _convert_="all"
     )
     trainer.config_dict = config  # assign here, don't instantiate it
@@ -122,5 +123,5 @@ def main():
 
 
 if __name__ == "__main__":
-    
+
     main()

@@ -100,12 +100,12 @@ class Trainer(CheckpointMixin):
     optimizer: torch.optim.Optimizer
     lr_scheduler: torch.optim.lr_scheduler.LRScheduler
     loss_fn: nn.Module
-    val_epoch_length: int | None = None
 
     epochs: int
     epoch_length: int | None = None
     lr_scheduler_interval: LRSchedulerInterval = LRSchedulerInterval.STEP
     gradient_accumulation_steps: int = 1
+    max_grad_norm: float | None = 2.0
     resume_from_checkpoint: str | Path | None = None
     save_every_n_steps: int | None = None
     save_every_n_epochs: int | None = 1
@@ -163,26 +163,13 @@ class Trainer(CheckpointMixin):
 
         self.on_validation_start()
 
-        val_steps = self.val_epoch_length or len(self.val_dataloader)
-        self.val_data_iterator = iter(self.val_dataloader)
-
-        if self.accelerator.is_main_process:
-            range_iterator = trange(val_steps, desc="Validation")
-        else:
-            range_iterator = range(val_steps)
-
-        for batch_idx in range_iterator:
-            try:
-                batch = next(self.val_data_iterator)
-            except StopIteration:
-                self.val_data_iterator = iter(self.val_dataloader)
-                batch = next(self.val_data_iterator)
-
+        for batch_idx, batch in enumerate(self.val_dataloader):
             self.validation_step(batch, batch_idx)
 
         self.on_validation_end()
         self.model.train()
         torch.set_grad_enabled(True)
+
     def on_validation_start(self) -> None:
         pass
 
@@ -301,6 +288,12 @@ class Trainer(CheckpointMixin):
                 )
 
                 self.accelerator.backward(loss)
+
+                if self.accelerator.sync_gradients and self.max_grad_norm:
+                    self.accelerator.clip_grad_norm_(
+                        self.model.parameters(), self.max_grad_norm
+                    )
+
                 self.optimizer.step()
                 if self.lr_scheduler_interval == LRSchedulerInterval.STEP:
                     self.lr_scheduler.step()

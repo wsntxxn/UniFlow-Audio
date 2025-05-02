@@ -163,6 +163,7 @@ class ContentAdapter(ContentAdapterBase):
 class PrefixAdapter(ContentAdapterBase):
     def __init__(
         self,
+        content_dim: int,
         d_model: int,
         d_out: int,
         prefix_dim: int,
@@ -179,6 +180,10 @@ class PrefixAdapter(ContentAdapterBase):
         self.duration_grad_scale = duration_grad_scale
         self.prefix_mlp = nn.Sequential(
             nn.Linear(prefix_dim, d_model), nn.ReLU(), nn.Dropout(dropout),
+            nn.Linear(d_model, d_model)
+        )
+        self.content_mlp = nn.Sequential(
+            nn.Linear(content_dim, d_model), nn.ReLU(), nn.Dropout(dropout),
             nn.Linear(d_model, d_model)
         )
         layer = nn.TransformerEncoderLayer(
@@ -214,6 +219,7 @@ class PrefixAdapter(ContentAdapterBase):
         batch_size = content.size(0)
         cls_embed = self.cls_embed.reshape(1, -1).expand(batch_size, -1)
         cls_embed = cls_embed.to(content.device).unsqueeze(1)
+        content = self.content_mlp(content)
         x = torch.cat([cls_embed, content], dim=1)
         cls_mask = torch.ones(batch_size, 1,
                               dtype=bool).to(content_mask.device)
@@ -233,3 +239,54 @@ class PrefixAdapter(ContentAdapterBase):
         duration = self.duration_predictor(x_grad_rescaled, x_mask).squeeze(-1)
         content = self.content_proj(x.transpose(1, 2)).transpose(1, 2)
         return content[:, 1:], x_mask[:, 1:], duration[:, 0], duration[:, 1:]
+
+
+class CrossAttentionAdapter(ContentAdapterBase):
+    def __init__(
+        self,
+        d_out: int,
+        content_dim: int,
+        prefix_dim: int,
+        num_heads: int,
+        duration_predictor: DurationPredictor,
+        dropout: float = 0.1,
+        duration_grad_scale: float = 0.1,
+    ):
+        super().__init__(d_out)
+        self.attn = nn.MultiheadAttention(
+            embed_dim=content_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            kdim=prefix_dim,
+            vdim=prefix_dim,
+            batch_first=True,
+        )
+        self.duration_grad_scale = duration_grad_scale
+        self.duration_predictor = duration_predictor
+        self.global_duration_mlp = nn.Sequential(
+            nn.Linear(content_dim, content_dim), nn.ReLU(),
+            nn.Dropout(dropout), nn.Linear(content_dim, 1)
+        )
+        self.norm = nn.LayerNorm(content_dim)
+        self.content_proj = nn.Conv1d(content_dim, d_out, 1)
+
+    def forward(self, content, content_mask, prefix, prefix_mask):
+        attn_output, attn_output_weights = self.attn(
+            query=content,
+            key=prefix,
+            value=prefix,
+            key_padding_mask=~prefix_mask.bool()
+        )
+        attn_output = attn_output * content_mask.unsqueeze(-1).float()
+        x = self.norm(attn_output + content)
+        x_grad_rescaled = x * self.duration_grad_scale + x.detach(
+        ) * (1 - self.duration_grad_scale)
+        x_aggregated = (x_grad_rescaled * content_mask.unsqueeze(-1).float()
+                       ).sum(dim=1) / content_mask.sum(dim=1,
+                                                       keepdim=True).float()
+        global_duration = self.global_duration_mlp(x_aggregated).squeeze(-1)
+        local_duration = self.duration_predictor(
+            x_grad_rescaled, content_mask
+        ).squeeze(-1)
+        content = self.content_proj(x.transpose(1, 2)).transpose(1, 2)
+        return content, content_mask, global_duration, local_duration

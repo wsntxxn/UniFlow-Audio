@@ -1,7 +1,7 @@
 defaults:
   - autoencoder: stable_vae
   - backbone: audio_udit
-  - content_adapter: prefix_adapter
+  - content_adapter: cross_attn_adapter
   - _self_
 
 

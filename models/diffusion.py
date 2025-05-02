@@ -437,7 +437,6 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         length_aligned_content = content_output["length_aligned_content"]
         content, content_mask = content_output["content"], content_output[
             "content_mask"]
-        context_mask = content_mask.detach()
         instruction_mask = create_mask_from_length(instruction_lengths)
 
         content, content_mask, global_duration_pred, local_duration_pred = \
@@ -480,14 +479,6 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         # --------------------------------------------------------------------
         # prepare latent and diffusion-related noise
         # --------------------------------------------------------------------
-        if self.training and self.classifier_free_guidance:
-            mask_indices = [
-                k for k in range(len(waveform))
-                if random.random() < self.cfg_drop_ratio
-            ]
-            if len(mask_indices) > 0:
-                content[mask_indices] = 0
-                length_aligned_content[mask_indices] = 0
 
         batch_size = latent.shape[0]
         timesteps = self.get_timesteps(batch_size, device, self.training)
@@ -536,9 +527,11 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         time_aligned_content[~is_time_aligned] = self.dummy_ta_embed.to(
             time_aligned_content.dtype
         )
+
         context = content
         context[is_time_aligned] = self.dummy_nta_embed.to(context.dtype)
         # only use the first dummy non time aligned embedding
+        context_mask = content_mask.detach().clone()
         context_mask[is_time_aligned, 1:] = False
 
         # truncate dummy non time aligned context
@@ -548,6 +541,18 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
             trunc_nta_length = content.size(1)
         context = context[:, :trunc_nta_length]
         context_mask = context_mask[:, :trunc_nta_length]
+
+        # --------------------------------------------------------------------
+        # classifier free guidance
+        # --------------------------------------------------------------------
+        if self.training and self.classifier_free_guidance:
+            mask_indices = [
+                k for k in range(len(waveform))
+                if random.random() < self.cfg_drop_ratio
+            ]
+            if len(mask_indices) > 0:
+                context[mask_indices] = 0
+                time_aligned_content[mask_indices] = 0
 
         pred: torch.Tensor = self.backbone(
             x=noisy_latent,
@@ -835,15 +840,6 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
             global_duration_target, global_duration_pred
         )
 
-        if self.training and self.classifier_free_guidance:
-            mask_indices = [
-                k for k in range(len(waveform))
-                if random.random() < self.cfg_drop_ratio
-            ]
-            if len(mask_indices) > 0:
-                content[mask_indices] = 0
-                length_aligned_content[mask_indices] = 0
-
         batch_size = latent.shape[0]
         timesteps = self.get_timesteps(batch_size, device, self.training)
         noise = torch.randn_like(latent)
@@ -882,6 +878,16 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
         )
         time_aligned_content = time_aligned_content + length_aligned_content
         context = content
+
+        if self.training and self.classifier_free_guidance:
+            mask_indices = [
+                k for k in range(len(waveform))
+                if random.random() < self.cfg_drop_ratio
+            ]
+            if len(mask_indices) > 0:
+                context[mask_indices] = 0
+                time_aligned_content[mask_indices] = 0
+
         pred: torch.Tensor = self.backbone(
             x=noisy_latent,
             timesteps=timesteps,

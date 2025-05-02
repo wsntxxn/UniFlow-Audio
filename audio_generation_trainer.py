@@ -52,7 +52,6 @@ class AudioGenerationTrainer(Trainer):
             step=self.step,
         )
         loss = loss_dict["loss"]
-        print(f'\n device:{self.accelerator.device},step:{self.step},train loss_dict: {loss_dict},\n train loss:{self.train_loss}')
 
         self.train_loss += loss.item()
         self.train_batch_num += 1

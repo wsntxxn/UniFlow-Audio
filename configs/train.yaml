@@ -1,6 +1,6 @@
 defaults:
   - basic
-  - model: diffusion
+  - model@model: diffusion
   - data@data_dict: train_val
   - loss@loss_fn: weighted_sum
   - _self_
@@ -61,6 +61,7 @@ trainer:
   project_dir: ${exp_dir}
   logging_file: ${logging_file}
   gradient_accumulation_steps: ${gradient_accumulation_steps}
+  max_grad_norm: 2.0
   epochs: ${epochs}
   epoch_length: ${epoch_length}
   save_last_k: 2
