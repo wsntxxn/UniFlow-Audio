@@ -1,5 +1,6 @@
 from pathlib import Path
 from dataclasses import dataclass
+import random
 import datetime
 import torch
 from torch import nn
@@ -12,6 +13,21 @@ from trainer import Trainer, WandbConfig, MetricMonitor
 from utils.logging import LoggingLogger
 
 
+class RandomNaNDatasetWrapper(torch.utils.data.Dataset):
+    def __init__(self, mnist_dataset, p=0.1):
+        self.mnist_dataset = mnist_dataset
+        self.p = p
+
+    def __getitem__(self, index):
+        feature, label = self.mnist_dataset[index]
+        if random.random() < self.p:
+            feature = torch.full_like(feature, float("nan"))
+        return feature, label
+
+    def __len__(self):
+        return len(self.mnist_dataset)
+
+
 def create_dataloaders(batch_size=64):
     transform = transforms.Compose([transforms.ToTensor()])
     ds_train = torchvision.datasets.MNIST(
@@ -20,6 +36,7 @@ def create_dataloaders(batch_size=64):
         download=True,
         transform=transform
     )
+    ds_train = RandomNaNDatasetWrapper(ds_train, p=0.001)
     ds_val = torchvision.datasets.MNIST(
         root="/mnt/cloudstorfs/sjtu_home/xuenan.xu/data/mnist",
         train=False,
@@ -89,11 +106,9 @@ class MnistTrainer(Trainer):
         features, labels = batch
         preds = self.model(features)
         predictions = preds.argmax(dim=-1)
-
-        predictions = self.accelerator.gather_for_metrics(predictions)
-        labels = self.accelerator.gather_for_metrics(labels)
-
-        accurate_preds = (predictions == labels)
+        output = {"predictions": predictions, "labels": labels}
+        output = self.accelerator.gather_for_metrics(output)
+        accurate_preds = (output["predictions"] == output["labels"])
         self.validation_stats["accurate"] += accurate_preds.long().sum()
         self.validation_stats["num_elems"] += accurate_preds.shape[0]
 
@@ -124,11 +139,11 @@ class MnistTrainer(Trainer):
 gradient_accumulation_steps = 4
 
 # dl_train, dl_val = create_dataloaders(32 * 32)
-dl_train, dl_val = create_dataloaders(128)
+dl_train, dl_val = create_dataloaders(64)
 
 model = create_net()
 lr = 1e-4
-epochs = 5
+epochs = 10
 optimizer = torch.optim.AdamW(params=model.parameters(), lr=lr)
 lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optimizer=optimizer,

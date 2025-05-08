@@ -168,6 +168,89 @@ def trim_or_pad_length(x: torch.Tensor, target_length: int, length_dim: int):
     return x
 
 
+def concat_non_padding(
+    seq1: torch.Tensor, mask1: torch.BoolTensor, seq2: torch.Tensor,
+    mask2: torch.BoolTensor
+):
+    """
+    Args
+        seq1 : Tensor (B, L1, E)
+            First sequence.
+        mask1 : BoolTensor (B, L1)
+            True for valid tokens in seq1, False for padding.
+        seq2 : Tensor (B, L2, E)
+            Second sequence.
+        mask2 : BoolTensor (B, L2)
+            True for valid tokens in seq2, False for padding.
+
+    Returns
+        concat_seq : Tensor (B, L1+L2, E)
+            Both sequences concatenated; valid tokens are left-aligned,
+            padding on the right is 0.
+        concat_mask: BoolTensor (B, L1+L2)
+            Mask for the concatenated sequence.
+        perm : LongTensor (B, L1+L2)
+            Permutation that maps **original indices → new indices**.
+            Needed for restoring the original sequences.
+    """
+    mask1, mask2 = mask1.bool(), mask2.bool()
+    B, L1, E = seq1.shape
+    L2 = seq2.size(1)
+    L = L1 + L2
+
+    seq_cat = torch.cat([seq1, seq2], dim=1)  # (B, L, E)
+    mask_cat = torch.cat([mask1, mask2], dim=1)  # (B, L)
+
+    # ----- Key step: stable sort so that all valid tokens move to the left -----
+    # Padding positions get +L, guaranteeing the largest “score” → sorted to the end.
+    positions = torch.arange(L, device=seq_cat.device).unsqueeze(0)  # (1, L)
+    sort_score = positions + (~mask_cat) * L
+    perm = sort_score.argsort(dim=1, stable=True)  # (B, L)
+
+    # Build concatenated sequence & mask
+    gather_idx = perm.unsqueeze(-1).expand(-1, -1, E)  # (B, L, E)
+    concat_seq = seq_cat.gather(1, gather_idx)
+    concat_mask = mask_cat.gather(1, perm)
+
+    # Explicitly zero out the right-hand padding region for safety
+    concat_seq = concat_seq * concat_mask.unsqueeze(-1)
+
+    return concat_seq, concat_mask, perm
+
+
+def restore_from_concat(
+    concat_seq: torch.Tensor, mask1: torch.BoolTensor, mask2: torch.BoolTensor,
+    perm: torch.LongTensor
+):
+    """
+    Restore (seq1, seq2) from the concatenated sequence produced by
+    `concat_non_padding`, using the returned permutation `perm`.
+    Fully vectorised — no Python loops.
+    """
+    mask1, mask2 = mask1.bool(), mask2.bool()
+    B, L1 = mask1.shape
+    L2 = mask2.size(1)
+    E = concat_seq.size(-1)
+
+    # Inverse permutation: maps **new_idx → old_idx**
+    inv_perm = torch.empty_like(perm)
+    inv_perm.scatter_(
+        1, perm,
+        torch.arange(L1 + L2, device=perm.device).unsqueeze(0).expand(B, -1)
+    )
+
+    # Bring tokens back to their original order
+    gather_idx = inv_perm.unsqueeze(-1).expand(-1, -1, E)
+    seq_cat_rec = concat_seq.gather(1, gather_idx)  # (B, L1+L2, E)
+
+    # Split back into the two sequences and mask out padding positions
+    seq1_restore, seq2_restore = seq_cat_rec.split([L1, L2], dim=1)
+    seq1_restore = seq1_restore * mask1.unsqueeze(-1)
+    seq2_restore = seq2_restore * mask2.unsqueeze(-1)
+
+    return seq1_restore, seq2_restore
+
+
 def contains_nan(data):
     """check if data contains NaN"""
     if isinstance(data, torch.Tensor):

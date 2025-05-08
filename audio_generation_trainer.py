@@ -5,7 +5,9 @@ from collections import defaultdict
 
 import torch
 from torch.nn.parallel import DistributedDataParallel
+from torch.utils._pytree import tree_map
 from omegaconf import OmegaConf
+
 from trainer import Trainer
 from utils.logging import LoggingLogger
 
@@ -64,6 +66,8 @@ class AudioGenerationTrainer(Trainer):
 
     def validation_step(self, batch, batch_idx):
         output = self.model(**batch)
+        output = self.accelerator.gather_for_metrics(output)
+        output = tree_map(lambda x: x.mean(), output)
         loss_dict = self.loss_fn(output)
         for loss_name in loss_dict:
             self.val_loss_dict[loss_name] += loss_dict[loss_name].item()

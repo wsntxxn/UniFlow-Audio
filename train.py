@@ -6,6 +6,7 @@ mp.set_start_method("spawn", force=True)
 import hydra
 from omegaconf import OmegaConf
 from accelerate import Accelerator
+from accelerate.state import PartialState
 
 from utils.config import register_omegaconf_resolvers
 from utils.lr_scheduler_utilities import (
@@ -36,9 +37,10 @@ def main():
         ckpt_dir = Path(config["trainer"]["resume_from_checkpoint"])
         exp_dir = ckpt_dir.parent.parent
         config = OmegaConf.load(exp_dir / "config.yaml")
+        config["trainer"]["resume_from_checkpoint"] = ckpt_dir.__str__()
 
-    # helper instance for accessing information about the current training environment
-    helper_accelerator = Accelerator()
+    # helper state for accessing information about the current training environment
+    state = PartialState()
 
     model: CountParamsBase = hydra.utils.instantiate(config["model"])
     if "sampler" in config["train_dataloader"]:
@@ -69,23 +71,22 @@ def main():
     # https://github.com/huggingface/diffusers/issues/9633, and
     # https://github.com/huggingface/diffusers/issues/3954
     dataloader_one_pass_outside_steps = get_dataloader_one_pass_outside_steps(
-        train_dataloader, helper_accelerator.num_processes
+        train_dataloader, state.num_processes
     )
     total_training_steps = get_total_training_steps(
-        train_dataloader, config["epochs"], helper_accelerator.num_processes,
+        train_dataloader, config["epochs"], state.num_processes,
         config["epoch_length"]
     )
     dataloader_one_pass_steps_inside_accelerator = (
         get_dataloader_one_pass_steps_inside_accelerator(
             dataloader_one_pass_outside_steps,
-            config["gradient_accumulation_steps"],
-            helper_accelerator.num_processes
+            config["gradient_accumulation_steps"], state.num_processes
         )
     )
     num_training_updates = get_steps_inside_accelerator_from_outside_steps(
         total_training_steps, dataloader_one_pass_outside_steps,
         dataloader_one_pass_steps_inside_accelerator,
-        config["gradient_accumulation_steps"], helper_accelerator.num_processes
+        config["gradient_accumulation_steps"], state.num_processes
     )
 
     num_warmup_steps = get_warmup_steps(
@@ -95,7 +96,7 @@ def main():
     num_warmup_updates = get_steps_inside_accelerator_from_outside_steps(
         num_warmup_steps, dataloader_one_pass_outside_steps,
         dataloader_one_pass_steps_inside_accelerator,
-        config["gradient_accumulation_steps"], helper_accelerator.num_processes
+        config["gradient_accumulation_steps"], state.num_processes
     )
 
     lr_scheduler_config = lr_scheduler_param_adapter(

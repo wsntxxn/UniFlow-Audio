@@ -452,7 +452,6 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         length_aligned_content = content_output["length_aligned_content"]
         content, content_mask = content_output["content"], content_output[
             "content_mask"]
-        context_mask = content_mask.detach()
         instruction_mask = create_mask_from_length(instruction_lengths)
 
         content, content_mask, global_duration_pred, local_duration_pred = \
@@ -470,8 +469,9 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
             trunc_ta_length = content_mask[is_time_aligned].sum(1).max()
         else:
             trunc_ta_length = content.size(1)
+
+        # local duration loss
         local_duration_pred = local_duration_pred[:, :trunc_ta_length]
-        time_aligned_content = content[:, :trunc_ta_length]
         ta_content_mask = content_mask[:, :trunc_ta_length]
         local_duration_loss = loss_with_mask(
             (local_duration_target - local_duration_pred)**2,
@@ -485,19 +485,15 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         else:
             local_duration_loss = local_duration_loss.sum(
             ) / is_time_aligned.sum()
+
+        # global duration loss
         global_duration_loss = F.mse_loss(
             global_duration_target, global_duration_pred
         )
 
-        if self.training and self.classifier_free_guidance:
-            mask_indices = [
-                k for k in range(len(waveform))
-                if random.random() < self.cfg_drop_ratio
-            ]
-            if len(mask_indices) > 0:
-                content[mask_indices] = 0
-                length_aligned_content[mask_indices] = 0
-
+        # --------------------------------------------------------------------
+        # prepare latent and noise
+        # --------------------------------------------------------------------
         noisy_latent, target, timesteps = self.get_input_target_and_timesteps(
             latent
         )
@@ -518,6 +514,7 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
             -1
         ) * helper_latent_mask.unsqueeze(1)
         align_path = create_alignment_path(n_latents, attn_mask)
+        time_aligned_content = content[:, :trunc_ta_length]
         time_aligned_content = torch.matmul(
             align_path.transpose(1, 2).to(content.dtype), time_aligned_content
         )
@@ -539,10 +536,13 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         time_aligned_content[~is_time_aligned] = self.dummy_ta_embed.to(
             time_aligned_content.dtype
         )
+
         context = content
         context[is_time_aligned] = self.dummy_nta_embed.to(context.dtype)
         # only use the first dummy non time aligned embedding
+        context_mask = content_mask.detach().clone()
         context_mask[is_time_aligned, 1:] = False
+
         # truncate dummy non time aligned context
         if is_time_aligned.sum().item() < batch_size:
             trunc_nta_length = content_mask[~is_time_aligned].sum(1).max()
@@ -550,6 +550,19 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
             trunc_nta_length = content.size(1)
         context = context[:, :trunc_nta_length]
         context_mask = context_mask[:, :trunc_nta_length]
+
+        # --------------------------------------------------------------------
+        # classifier free guidance
+        # --------------------------------------------------------------------
+        if self.training and self.classifier_free_guidance:
+            mask_indices = [
+                k for k in range(len(waveform))
+                if random.random() < self.cfg_drop_ratio
+            ]
+            if len(mask_indices) > 0:
+                context[mask_indices] = 0
+                time_aligned_content[mask_indices] = 0
+
         pred: torch.Tensor = self.backbone(
             x=noisy_latent,
             x_mask=latent_mask,

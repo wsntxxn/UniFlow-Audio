@@ -3,20 +3,18 @@ from enum import Enum
 from typing import Literal, Any
 import shutil
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from tqdm import trange
 from torchdata.stateful_dataloader import StatefulDataLoader
 from torch.utils.data import DataLoader
-from torch.distributed import all_reduce, ReduceOp
 import torch.distributed as dist
 import torch
 import torch.nn as nn
-from accelerate.utils import set_seed
+from accelerate.utils import set_seed, broadcast
 from accelerate import DistributedDataParallelKwargs
 import wandb
-import os
 
 from utils.accelerate_utilities import AcceleratorSaveTrainableParams
 from utils.torch_utilities import contains_nan, check_nan_in_batch
@@ -112,6 +110,11 @@ class Trainer(CheckpointMixin):
     save_last_k: int | None = 1
     metric_monitor: MetricMonitor | None = None
     early_stop: int | None = None
+
+    def wrap_and_broadcast_value(self, value: Any) -> torch.Tensor:
+        value = torch.tensor(value, device=self.accelerator.device)
+        broadcast(value, from_process=0)
+        return value
 
     def setup_accelerator(self) -> None:
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
@@ -225,16 +228,22 @@ class Trainer(CheckpointMixin):
             shutil.rmtree(checkpoint)
 
     def save_checkpoint(self, save_dir: Path | str) -> None:
+        """
+        Note: since `wait_for_everyone` is called, user must be responsible for making sure 
+        all processes call or not call this function at the same time!!!
+        """
         self.accelerator.wait_for_everyone()
-        if not self.accelerator.is_main_process:
-            return
-        save_dir = Path(save_dir)
-        checkpoints_dir = save_dir.parent
+        if self.accelerator.is_main_process:
+            save_dir = Path(save_dir)
+            checkpoints_dir = save_dir.parent
 
-        if self.save_last_k:
-            self.clean_checkpoints_to_k(checkpoints_dir, self.save_last_k - 1)
+            if self.save_last_k:
+                self.clean_checkpoints_to_k(
+                    checkpoints_dir, self.save_last_k - 1
+                )
 
-        self.accelerator.save_state(save_dir)
+            self.accelerator.save_state(save_dir)
+        self.accelerator.wait_for_everyone()
 
     def train_loop(self) -> None:
         torch.set_grad_enabled(True)
@@ -258,34 +267,25 @@ class Trainer(CheckpointMixin):
                 batch = next(self.train_data_iterator)
 
             # check if batch contains NaN
-            nan_flag = torch.tensor(
+            has_nan = torch.tensor(
                 1 if contains_nan(batch) else 0,
                 device=self.accelerator.device
             )
-            if dist.is_available() and dist.is_initialized():
-                torch.distributed.all_reduce(
-                    nan_flag, op=torch.distributed.ReduceOp.MAX
-                )
-
-            if nan_flag.item() == 1:
-                if contains_nan(batch):
-                    lis = check_nan_in_batch(batch)
-                    self.accelerator.print(
-                        f"\nStep={self.step}, device={self.accelerator.device}, "
-                        f"batch {lis} contains NaN"
-                    )
-                self.step += 1
-                # TODO handle gradient accumulation scenario
-                self.optimizer.zero_grad(set_to_none=True)
-                if self.lr_scheduler_interval == LRSchedulerInterval.STEP:
-                    self.lr_scheduler.step()
-                continue
+            has_nan = self.accelerator.reduce(has_nan, reduction="sum")
 
             with self.accelerator.accumulate(self.model):
                 loss = self.training_step(batch, batch_idx)
-                self.accelerator.log(
-                    {"train/loss": loss.item()}, step=self.step
-                )
+                if has_nan.item() > 0:
+                    self.accelerator.print(
+                        f"Batch {batch_idx} contains NaN, skipping it..."
+                    )
+                    loss = torch.zeros(
+                        [], requires_grad=True, device=loss.device
+                    )
+                else:
+                    self.accelerator.log(
+                        {"train/loss": loss.item()}, step=self.step
+                    )
 
                 self.accelerator.backward(loss)
 
@@ -301,26 +301,38 @@ class Trainer(CheckpointMixin):
 
             self.step += 1
 
-            if self.save_every_n_steps and self.step % self.save_every_n_steps == 0:
-                self.save_checkpoint(self.checkpoint_dir / f"step_{self.step}")
-
-        self.accelerator.wait_for_everyone()
+            if self.save_every_n_steps:
+                should_save_checkpoint = self.wrap_and_broadcast_value(
+                    self.step % self.save_every_n_steps == 0,
+                )
+                if should_save_checkpoint:
+                    self.save_checkpoint(
+                        self.checkpoint_dir / f"step_{self.step}"
+                    )
 
         self.val_loop()
         self.epoch += 1
-        self.accelerator.wait_for_everyone()
 
         if self.lr_scheduler_interval == LRSchedulerInterval.EPOCH:
             self.lr_scheduler.step()
 
-        if self.save_every_n_epochs and self.epoch % self.save_every_n_epochs == 0:
-            self.accelerator.print("\n Saving latest checkpoint...")
-            self.save_checkpoint(self.checkpoint_dir / f"epoch_{self.epoch}")
+        if self.save_every_n_epochs:
+            should_save_checkpoint = self.wrap_and_broadcast_value(
+                self.epoch % self.save_every_n_epochs == 0
+            )
+            if should_save_checkpoint:
+                self.accelerator.print("\n Saving latest checkpoint...")
+                self.save_checkpoint(
+                    self.checkpoint_dir / f"epoch_{self.epoch}"
+                )
 
         metric_dict: dict = self.get_val_metrics()
         if self.metric_monitor is not None:
             # save checkpoint if the monitored metric improves
-            if self.metric_monitor(metric_dict):
+            should_save_checkpoint = self.wrap_and_broadcast_value(
+                self.metric_monitor(metric_dict)
+            )
+            if should_save_checkpoint:
                 self.accelerator.print("\n Saving best checkpoint...")
                 self.save_checkpoint(self.checkpoint_dir / "best")
 
@@ -328,8 +340,6 @@ class Trainer(CheckpointMixin):
                 self.should_stop_training = True
         else:
             assert self.early_stop is None, "early stop does not have metrics to monitor!"
-
-        self.accelerator.wait_for_everyone()
 
         # on start of train epoch end func
         self.on_train_epoch_end()
@@ -387,7 +397,6 @@ class Trainer(CheckpointMixin):
         self.on_train_start()
 
         for _ in range(self.epoch, self.epochs):
-            self.accelerator.wait_for_everyone()
             self.train_loop()
             if self.should_stop_training:
                 break

@@ -2,6 +2,8 @@ import math
 import torch
 import torch.nn as nn
 
+from utils.torch_utilities import concat_non_padding, restore_from_concat
+
 
 ######################
 # fastspeech modules
@@ -226,13 +228,14 @@ class PrefixAdapter(ContentAdapterBase):
         x_mask = torch.cat([cls_mask, content_mask], dim=1)
 
         prefix = self.prefix_mlp(instruction)
-        seq = torch.cat([prefix, x], dim=1)
-        seq_mask = torch.cat([instruction_mask, x_mask], dim=1)
+        seq, seq_mask, perm = concat_non_padding(
+            prefix, instruction_mask, x, x_mask
+        )
         # seq = self.pos_embed(seq)
         x = self.layers(seq, src_key_padding_mask=~seq_mask.bool())
         if self.use_last_norm:
             x = self.last_norm(x)
-        x = x[:, prefix.size(1):, :]
+        _, x = restore_from_concat(x, instruction_mask, x_mask, perm)
 
         x_grad_rescaled = x * self.duration_grad_scale + x.detach(
         ) * (1 - self.duration_grad_scale)
