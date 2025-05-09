@@ -198,6 +198,8 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
         self.audio_ids = list(self.id_to_content.keys())
 
         if self.max_samples is not None:
+            # When the max_samples parameter is set, shuffling is enabled by default.
+            random.shuffle(self.audio_ids)
             self.audio_ids = self.audio_ids[:min(len(self.audio_ids),self.max_samples)]
 
     def __len__(self) -> int:
@@ -386,7 +388,7 @@ class TextToSpeechDataset(AudioGenerationDataset):
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
-        return content["phoneme_duration"]
+        return content["phoneme_duration"].astype(np.float32)
 
 
 @dataclass(kw_only=True)

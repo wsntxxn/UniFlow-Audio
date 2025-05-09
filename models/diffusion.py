@@ -458,6 +458,7 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         # local duration loss
         local_duration_pred = local_duration_pred[:, :trunc_ta_length]
         ta_content_mask = content_mask[:, :trunc_ta_length]
+        local_duration_target = local_duration_target.to(dtype=local_duration_pred.dtype)
         local_duration_loss = loss_with_mask(
             (local_duration_target - local_duration_pred)**2,
             ta_content_mask,
@@ -762,6 +763,7 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
         content_encoder: ContentEncoder,
         content_adapter: nn.Module,
         backbone: nn.Module,
+        content_dim: int,
         frame_resolution: float,
         duration_offset: float = 1.0,
         noise_scheduler_name: str = "stabilityai/stable-diffusion-2-1",
@@ -771,7 +773,9 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
         super().__init__(
             autoencoder=autoencoder,
             content_encoder=content_encoder,
+            content_adapter=content_adapter,
             backbone=backbone,
+            duration_offset=duration_offset,
             noise_scheduler_name=noise_scheduler_name,
             snr_gamma=snr_gamma,
             cfg_drop_ratio=cfg_drop_ratio
@@ -822,6 +826,7 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
             trunc_ta_length = content.size(1)
         local_duration_pred = local_duration_pred[:, :trunc_ta_length]
         ta_content_mask = content_mask[:, :trunc_ta_length]
+        local_duration_target = local_duration_target.to(dtype=local_duration_pred.dtype)
         local_duration_loss = loss_with_mask(
             (local_duration_target - local_duration_pred)**2,
             ta_content_mask,

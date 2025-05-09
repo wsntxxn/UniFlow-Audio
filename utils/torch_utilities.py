@@ -267,9 +267,22 @@ def contains_nan(data):
 
 
 def check_nan_in_batch(batch):
-    """check if batch contains NaN"""
-    nan_samples = []
-    for item in batch:
-        if contains_nan(item):
-            nan_samples.append(item)
-    return nan_samples
+    """check if batch contains NaN and return nan audio ids"""
+    assert type(batch)==dict,"batch type error" 
+    nan_audio_ids=[]
+    audio_ids=batch["audio_id"]
+    audio_id2content={}
+    for idx,audio_id in enumerate(audio_ids):
+        content=[]
+        for k,v in batch.items():
+            if k=="audio_id":
+                continue
+            content.append(v[idx])
+        audio_id2content[audio_id]=content
+    
+    for audio_id,content in audio_id2content.items():
+        if contains_nan(content):
+            nan_audio_ids.append(audio_id)
+            print(f"{audio_id} contains NaN")
+    return nan_audio_ids
+    
