@@ -143,9 +143,13 @@ class AudioDiTBlock(DiTBlock):
             x_norm = film_modulate(
                 self.norm1(x), shift=shift_msa, scale=scale_msa
             )
-            x = x + (1 - gate_msa) * self.attn(
+            tanh_gate_msa = torch.tanh(1 - gate_msa)
+            x = x + tanh_gate_msa * self.attn(
                 x_norm, context=None, context_mask=x_mask, extras=extras
             )
+            # x = x + (1 - gate_msa) * self.attn(
+            #     x_norm, context=None, context_mask=x_mask, extras=extras
+            # )
         else:
             # TODO diffusion timestep input is not fused here
             x = x + self.attn(
@@ -160,8 +164,16 @@ class AudioDiTBlock(DiTBlock):
             time_aligned_context = self.ta_context_projection(
                 self.ta_context_norm(time_aligned_context)
             )
+            if time_aligned_context.size(1) < x.size(1):
+                time_aligned_context = nn.functional.pad(
+                    time_aligned_context, (0, 0, 1, 0)
+                )
             x = x + time_aligned_context
         elif self.ta_context_fusion == "concat":
+            if time_aligned_context.size(1) < x.size(1):
+                time_aligned_context = nn.functional.pad(
+                    time_aligned_context, (0, 0, 1, 0)
+                )
             cat = torch.cat([x, time_aligned_context], dim=-1)
             cat = self.ta_context_norm(cat)
             x = self.ta_context_projection(cat)
@@ -332,32 +344,30 @@ class AudioUDiT(UDiT):
         else:
             raise NotImplementedError
 
-        self.in_blocks = nn.ModuleList(
-            [
-                AudioDiTBlock(
-                    dim=embed_dim,
-                    ta_context_dim=ta_context_dim,
-                    ta_context_fusion=ta_context_fusion,
-                    ta_context_norm=ta_context_norm,
-                    context_dim=context_dim,
-                    num_heads=num_heads,
-                    mlp_ratio=mlp_ratio,
-                    qkv_bias=qkv_bias,
-                    qk_scale=qk_scale,
-                    qk_norm=qk_norm,
-                    act_layer=act_layer,
-                    norm_layer=norm_layer,
-                    time_fusion=time_fusion,
-                    ada_sola_rank=ada_sola_rank,
-                    ada_sola_alpha=ada_sola_alpha,
-                    skip=False,
-                    skip_norm=False,
-                    rope_mode=self.rope,
-                    context_norm=context_norm,
-                    use_checkpoint=use_checkpoint
-                ) for i in range(depth // 2)
-            ]
-        )
+        self.in_blocks = nn.ModuleList([
+            AudioDiTBlock(
+                dim=embed_dim,
+                ta_context_dim=ta_context_dim,
+                ta_context_fusion=ta_context_fusion,
+                ta_context_norm=ta_context_norm,
+                context_dim=context_dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                qk_scale=qk_scale,
+                qk_norm=qk_norm,
+                act_layer=act_layer,
+                norm_layer=norm_layer,
+                time_fusion=time_fusion,
+                ada_sola_rank=ada_sola_rank,
+                ada_sola_alpha=ada_sola_alpha,
+                skip=False,
+                skip_norm=False,
+                rope_mode=self.rope,
+                context_norm=context_norm,
+                use_checkpoint=use_checkpoint
+            ) for i in range(depth // 2)
+        ])
 
         self.mid_block = AudioDiTBlock(
             dim=embed_dim,
@@ -382,32 +392,30 @@ class AudioUDiT(UDiT):
             use_checkpoint=use_checkpoint
         )
 
-        self.out_blocks = nn.ModuleList(
-            [
-                AudioDiTBlock(
-                    dim=embed_dim,
-                    ta_context_dim=ta_context_dim,
-                    context_dim=context_dim,
-                    num_heads=num_heads,
-                    mlp_ratio=mlp_ratio,
-                    qkv_bias=qkv_bias,
-                    qk_scale=qk_scale,
-                    qk_norm=qk_norm,
-                    act_layer=act_layer,
-                    norm_layer=norm_layer,
-                    time_fusion=time_fusion,
-                    ada_sola_rank=ada_sola_rank,
-                    ada_sola_alpha=ada_sola_alpha,
-                    ta_context_fusion=ta_context_fusion,
-                    ta_context_norm=ta_context_norm,
-                    skip=skip,
-                    skip_norm=skip_norm,
-                    rope_mode=self.rope,
-                    context_norm=context_norm,
-                    use_checkpoint=use_checkpoint
-                ) for i in range(depth // 2)
-            ]
-        )
+        self.out_blocks = nn.ModuleList([
+            AudioDiTBlock(
+                dim=embed_dim,
+                ta_context_dim=ta_context_dim,
+                context_dim=context_dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                qk_scale=qk_scale,
+                qk_norm=qk_norm,
+                act_layer=act_layer,
+                norm_layer=norm_layer,
+                time_fusion=time_fusion,
+                ada_sola_rank=ada_sola_rank,
+                ada_sola_alpha=ada_sola_alpha,
+                ta_context_fusion=ta_context_fusion,
+                ta_context_norm=ta_context_norm,
+                skip=skip,
+                skip_norm=skip_norm,
+                rope_mode=self.rope,
+                context_norm=context_norm,
+                use_checkpoint=use_checkpoint
+            ) for i in range(depth // 2)
+        ])
 
         # FinalLayer block
         self.use_conv = use_conv
@@ -478,18 +486,15 @@ class AudioUDiT(UDiT):
             time_token = self.time_pe(time_token)
             x = torch.cat((time_token, x), dim=1)
             if x_mask is not None:
-                x_mask = torch.cat(
-                    [
-                        torch.ones(
-                            B, time_token.shape[1], device=x_mask.device
-                        ).bool(), x_mask
-                    ],
-                    dim=1
-                )
+                x_mask = torch.cat([
+                    torch.ones(B, time_token.shape[1],
+                               device=x_mask.device).bool(), x_mask
+                ],
+                                   dim=1)
             time_token = None
 
         skips = []
-        for blk in self.in_blocks:
+        for blk_idx, blk in enumerate(self.in_blocks):
             x = blk(
                 x=x,
                 time_aligned_context=time_aligned_context,
@@ -501,6 +506,10 @@ class AudioUDiT(UDiT):
                 context_mask=context_mask,
                 extras=self.extras
             )
+            if not self.training:
+                print(
+                    f"block {blk_idx}, min: {x.min().item()}, max: {x.max().item()}, std: {x.std().item()}"
+                )
             if self.use_skip:
                 skips.append(x)
 

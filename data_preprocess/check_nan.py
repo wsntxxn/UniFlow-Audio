@@ -2,9 +2,7 @@
 processes audio metadata and removes entries with NaN values from the corresponding content.jsonl file.
 
 """
-import argparse
 import multiprocessing as mp
-import sys
 import os
 import shutil
 
@@ -28,7 +26,9 @@ def main():
 
     configs = []
 
-    @hydra.main(version_base=None, config_path="../configs", config_name="train")
+    @hydra.main(
+        version_base=None, config_path="../configs", config_name="train"
+    )
     def parse_config_from_command_line(config):
         config = OmegaConf.to_container(config, resolve=True)
         configs.append(config)
@@ -38,7 +38,8 @@ def main():
 
     # check train split
     collate_fn = hydra.utils.instantiate(
-        config["train_dataloader"]['collate_fn'], _convert_="all")
+        config["train_dataloader"]['collate_fn'], _convert_="all"
+    )
     num_workers = min(mp.cpu_count(), 20)
     data_names = []
     for dataset_config in config["train_dataloader"]['dataset']['datasets']:
@@ -50,10 +51,12 @@ def main():
         dataset = hydra.utils.instantiate(dataset_config, _convert_="all")
         dataset_name = dataset_config['content'].split('/')[-3]
         print(f'statrt checking train data integrity in  {dataset_name}')
-        dataloader = torch.utils.data.DataLoader(dataset,
-                                                 collate_fn=collate_fn,
-                                                 batch_size=32,
-                                                 num_workers=num_workers)
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            collate_fn=collate_fn,
+            batch_size=32,
+            num_workers=num_workers
+        )
         nan_data_ids = set()
         for batch in tqdm(dataloader):
             nan_ids = check_nan_in_batch(batch)
@@ -98,7 +101,8 @@ def main():
 
     # check val split
     collate_fn = hydra.utils.instantiate(
-        config["val_dataloader"]['collate_fn'], _convert_="all")
+        config["val_dataloader"]['collate_fn'], _convert_="all"
+    )
 
     num_workers = min(mp.cpu_count(), 20)
 
@@ -113,10 +117,12 @@ def main():
         dataset_name = dataset_config['content'].split('/')[-3]
         print(f'Start checking validation data integrity in {dataset_name}')
 
-        dataloader = torch.utils.data.DataLoader(dataset,
-                                                 collate_fn=collate_fn,
-                                                 batch_size=32,
-                                                 num_workers=num_workers)
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            collate_fn=collate_fn,
+            batch_size=32,
+            num_workers=num_workers
+        )
 
         nan_data_ids = set()
 

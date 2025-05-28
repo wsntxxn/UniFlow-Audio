@@ -15,7 +15,7 @@ norm_layer: layernorm
 act_layer: geglu
 context_norm: true
 use_checkpoint: true # false
-time_fusion: 'ada_sola_bias'
+time_fusion: 'ada'
 ada_sola_rank: 32
 ada_sola_alpha: 32
 cls_dim: null

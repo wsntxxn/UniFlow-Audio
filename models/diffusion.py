@@ -79,9 +79,9 @@ class DiffusionMixin:
         else:
             # validation on half of the total timesteps
             timesteps = (self.noise_scheduler.config.num_train_timesteps //
-                         2) * torch.ones(
-                             (batch_size, ), dtype=torch.int64, device=device
-                         )
+                         2) * torch.ones((batch_size, ),
+                                         dtype=torch.int64,
+                                         device=device)
 
         timesteps = timesteps.long()
         return timesteps
@@ -306,9 +306,8 @@ class CrossAttentionAudioDiffusion(
 
         for i, timestep in enumerate(timesteps):
             # expand the latent if we are doing classifier free guidance
-            latent_input = torch.cat(
-                [latent, latent]
-            ) if classifier_free_guidance else latent
+            latent_input = torch.cat([latent, latent]
+                                    ) if classifier_free_guidance else latent
             latent_input = scheduler.scale_model_input(latent_input, timestep)
 
             noise_pred = self.backbone(
@@ -334,9 +333,8 @@ class CrossAttentionAudioDiffusion(
             latent = scheduler.step(noise_pred, timestep, latent).prev_sample
 
             # call the callback, if provided
-            if i == len(timesteps) - 1 or (
-                (i + 1) > num_warmup_steps and (i + 1) % scheduler.order == 0
-            ):
+            if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and
+                                           (i + 1) % scheduler.order == 0):
                 progress_bar.update(1)
 
         waveform = self.autoencoder.decode(latent)
@@ -458,7 +456,9 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         # local duration loss
         local_duration_pred = local_duration_pred[:, :trunc_ta_length]
         ta_content_mask = content_mask[:, :trunc_ta_length]
-        local_duration_target = local_duration_target.to(dtype=local_duration_pred.dtype)
+        local_duration_target = local_duration_target.to(
+            dtype=local_duration_pred.dtype
+        )
         local_duration_loss = loss_with_mask(
             (local_duration_target - local_duration_pred)**2,
             ta_content_mask,
@@ -685,14 +685,14 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
             )
             uncond_context = torch.zeros_like(context)
             uncond_context_mask = context_mask.detach().clone()
-            time_aligned_content = torch.cat(
-                [uncond_time_aligned_content, time_aligned_content]
-            )
+            time_aligned_content = torch.cat([
+                uncond_time_aligned_content, time_aligned_content
+            ])
             context = torch.cat([uncond_context, context])
             context_mask = torch.cat([uncond_context_mask, context_mask])
-            latent_mask = torch.cat(
-                [latent_mask, latent_mask.detach().clone()]
-            )
+            latent_mask = torch.cat([
+                latent_mask, latent_mask.detach().clone()
+            ])
 
         # --------------------------------------------------------------------
         # prepare input to the backbone
@@ -744,9 +744,8 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
             latent = scheduler.step(noise_pred, timestep, latent).prev_sample
 
             # call the callback, if provided
-            if i == len(timesteps) - 1 or (
-                (i + 1) > num_warmup_steps and (i + 1) % scheduler.order == 0
-            ):
+            if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and
+                                           (i + 1) % scheduler.order == 0):
                 progress_bar.update(1)
 
         progress_bar.close()
@@ -819,13 +818,15 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
         )
         # truncate unused non time aligned duration prediction
         if is_time_aligned.sum() > 0:
-                trunc_ta_length = content_mask[is_time_aligned].sum(1).max()
+            trunc_ta_length = content_mask[is_time_aligned].sum(1).max()
         else:
             trunc_ta_length = content.size(1)
         # local duration loss
         local_duration_pred = local_duration_pred[:, :trunc_ta_length]
         ta_content_mask = content_mask[:, :trunc_ta_length]
-        local_duration_target = local_duration_target.to(dtype=local_duration_pred.dtype)
+        local_duration_target = local_duration_target.to(
+            dtype=local_duration_pred.dtype
+        )
         local_duration_loss = loss_with_mask(
             (local_duration_target - local_duration_pred)**2,
             ta_content_mask,
@@ -996,7 +997,6 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
             align_path.transpose(1, 2).to(content.dtype), time_aligned_content
         )  # (B, T, L) x (B, L, E) -> (B, T, E)
 
-
         # time_aligned_content[~is_time_aligned] = self.dummy_ta_embed.to(
         #     time_aligned_content.dtype
         # )
@@ -1029,14 +1029,14 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
             )
             uncond_context = torch.zeros_like(context)
             uncond_context_mask = context_mask.detach().clone()
-            time_aligned_content = torch.cat(
-                [uncond_time_aligned_content, time_aligned_content]
-            )
+            time_aligned_content = torch.cat([
+                uncond_time_aligned_content, time_aligned_content
+            ])
             context = torch.cat([uncond_context, context])
             context_mask = torch.cat([uncond_context_mask, context_mask])
-            latent_mask = torch.cat(
-                [latent_mask, latent_mask.detach().clone()]
-            )
+            latent_mask = torch.cat([
+                latent_mask, latent_mask.detach().clone()
+            ])
 
         # --------------------------------------------------------------------
         # prepare input to the backbone
@@ -1088,9 +1088,8 @@ class DoubleContentAudioDiffusion(CrossAttentionAudioDiffusion):
             latent = scheduler.step(noise_pred, timestep, latent).prev_sample
 
             # call the callback, if provided
-            if i == len(timesteps) - 1 or (
-                (i + 1) > num_warmup_steps and (i + 1) % scheduler.order == 0
-            ):
+            if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and
+                                           (i + 1) % scheduler.order == 0):
                 progress_bar.update(1)
 
         progress_bar.close()

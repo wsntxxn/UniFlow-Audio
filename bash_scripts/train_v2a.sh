@@ -1,14 +1,10 @@
-accelerate launch --config_file configs/accelerate/nvidia/1gpus.yaml train.py \
-    warmup_params.warmup_steps=2000 \
-    train_dataloader.batch_size=8 \
-    train_dataloader.num_workers=8 \
-    val_dataloader.batch_size=20 \
-    model=diffusion_v2a \
-    loss@loss_fn=weighted_sum \
-    optimizer.lr=1e-4 \
-    lr_scheduler.name="linear" \
-    exp_dir=experiments/v2a-vggsound-cavp-debug \
-    epochs=2 \
-    trainer.gradient_accumulation_steps=1 \
-    trainer.wandb_config.project=x2audio_v2a-debug \
-    trainer.wandb_config.name=v2a_cavp 
+accelerate launch --config_file configs/accelerate/nvidia/4gpus.yaml train.py \
+    warmup_params.warmup_steps=1000 \
+    train_dataloader.batch_size=24 \
+    val_dataloader.batch_size=24 \
+    exp_name=vggsound_token \
+    data@data_dict=v2a_vggsound_clip \
+    model.content_encoder.video_encoder.video_feat_dim=1024 \
+    epoch_length=2000 \
+    epochs=100 \
+    ~trainer.wandb_config

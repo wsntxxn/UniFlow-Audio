@@ -42,7 +42,7 @@ warmup_params:
   warmup_epochs: Null
   epoch_length: ${epoch_length}
 
-gradient_accumulation_steps: 4
+gradient_accumulation_steps: 1
 
 optimizer:
   _target_: torch.optim.AdamW
@@ -61,7 +61,7 @@ trainer:
   project_dir: ${exp_dir}
   logging_file: ${logging_file}
   gradient_accumulation_steps: ${gradient_accumulation_steps}
-  max_grad_norm: 2.0
+  max_grad_norm: 1.0
   epochs: ${epochs}
   epoch_length: ${epoch_length}
   save_last_k: 2

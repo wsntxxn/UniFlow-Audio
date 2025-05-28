@@ -6,6 +6,6 @@ defaults:
   - datasets@TTSHQ: TTSHQ
   - datasets@musdb: musdb
   - datasets@moises: moises
-  - datasets@vggsound_cavp: vggsound_cavp
+  - datasets@vggsound_clip: vggsound_clip
   - datasets@ljspeech_se: ljspeech_se
   - datasets@m4singer: m4singer

@@ -2,9 +2,9 @@ defaults:
   - default
   - _self_
 
-data_list:
-  - ${..libritts.test}
-  # - ${..audiocaps.test}
+test_data_list:
+  # - ${..libritts.test}
+  - ${..audiocaps.test}
   # - ${..m4singer.test}
   # - ${..TTSHQ.test}
   # - ${..musdb.test}

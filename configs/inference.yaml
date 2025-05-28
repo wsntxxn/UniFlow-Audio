@@ -1,11 +1,11 @@
 defaults:
   - basic
-  - data@test_data_dict: test
+  - data@data_dict: test
   - _self_
 
 test_dataloader:
   _target_: torch.utils.data.DataLoader
-  dataset: ${test_data_dict.data_list.0}
+  dataset: ${data_dict.test_data_list.0}
   batch_size: 1 # per device batch size
   shuffle: False
   num_workers: 4

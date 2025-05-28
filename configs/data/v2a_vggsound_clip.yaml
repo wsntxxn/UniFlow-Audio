@@ -3,10 +3,10 @@ defaults:
   - _self_
 
 train_data_list:
-  - ${..audiocaps.train}
+  - ${..vggsound_clip.train}
 
 val_data_list:
-  - ${..audiocaps.val}
+  - ${..vggsound_clip.val}
 
 test_data_list:
-  - ${..audiocaps.test}
+  - ${..vggsound_clip.test}

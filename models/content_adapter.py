@@ -48,11 +48,10 @@ class DurationPredictor(nn.Module):
             in_chans = in_channels if idx == 0 else filter_channels
             self.conv += [
                 nn.Sequential(
-                    nn.ConstantPad1d(
-                        ((kernel_size - 1) // 2,
-                         (kernel_size - 1) // 2) if padding == 'SAME' else
-                        (kernel_size - 1, 0), 0
-                    ),
+                    nn.ConstantPad1d(((kernel_size - 1) // 2,
+                                      (kernel_size - 1) //
+                                      2) if padding == 'SAME' else
+                                     (kernel_size - 1, 0), 0),
                     nn.Conv1d(
                         in_chans,
                         filter_channels,
@@ -292,4 +291,91 @@ class CrossAttentionAdapter(ContentAdapterBase):
             x_grad_rescaled, content_mask
         ).squeeze(-1)
         content = self.content_proj(x.transpose(1, 2)).transpose(1, 2)
+        return content, content_mask, global_duration, local_duration
+
+
+class ExperimentalCrossAttentionAdapter(ContentAdapterBase):
+    def __init__(
+        self,
+        d_out: int,
+        content_dim: int,
+        prefix_dim: int,
+        num_heads: int,
+        duration_predictor: DurationPredictor,
+        dropout: float = 0.1,
+        duration_grad_scale: float = 0.1,
+    ):
+        super().__init__(d_out)
+        self.content_mlp = nn.Sequential(
+            nn.Linear(content_dim, content_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(content_dim, content_dim),
+        )
+        self.content_norm = nn.LayerNorm(content_dim)
+        self.prefix_mlp = nn.Sequential(
+            nn.Linear(prefix_dim, prefix_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(prefix_dim, prefix_dim),
+        )
+        self.prefix_norm = nn.LayerNorm(content_dim)
+        self.attn = nn.MultiheadAttention(
+            embed_dim=content_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            kdim=prefix_dim,
+            vdim=prefix_dim,
+            batch_first=True,
+        )
+        self.duration_grad_scale = duration_grad_scale
+        self.duration_predictor = duration_predictor
+        self.global_duration_mlp = nn.Sequential(
+            nn.Linear(content_dim, content_dim), nn.ReLU(),
+            nn.Dropout(dropout), nn.Linear(content_dim, 1)
+        )
+        self.content_proj = nn.Sequential(
+            nn.Linear(content_dim, d_out),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_out, d_out),
+        )
+        self.norm1 = nn.LayerNorm(content_dim)
+        self.norm2 = nn.LayerNorm(d_out)
+        self.init_weights()
+
+    def init_weights(self):
+        def _init_weights(module):
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0.)
+
+        self.apply(_init_weights)
+
+    def forward(self, content, content_mask, prefix, prefix_mask):
+        content = self.content_mlp(content)
+        content = self.content_norm(content)
+        prefix = self.prefix_mlp(prefix)
+        prefix = self.prefix_norm(prefix)
+        attn_output, attn_weights = self.attn(
+            query=content,
+            key=prefix,
+            value=prefix,
+            key_padding_mask=~prefix_mask.bool(),
+        )
+        attn_output = attn_output * content_mask.unsqueeze(-1).float()
+        x = attn_output + content
+        x = self.norm1(x)
+        x_grad_rescaled = x * self.duration_grad_scale + x.detach(
+        ) * (1 - self.duration_grad_scale)
+        x_aggregated = (x_grad_rescaled * content_mask.unsqueeze(-1).float()
+                       ).sum(dim=1) / content_mask.sum(dim=1,
+                                                       keepdim=True).float()
+        global_duration = self.global_duration_mlp(x_aggregated).squeeze(-1)
+        local_duration = self.duration_predictor(
+            x_grad_rescaled, content_mask
+        ).squeeze(-1)
+        content = self.content_proj(x)
+        content = self.norm2(content)
         return content, content_mask, global_duration, local_duration

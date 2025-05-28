@@ -1,0 +1,42 @@
+import argparse
+from pathlib import Path
+import pandas as pd
+from tqdm import tqdm
+
+from utils.video import merge_audio_video
+
+
+def main(args):
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(exist_ok=True, parents=True)
+
+    df = pd.read_csv(args.aid_video_mapping, sep='\t')
+    aid_to_video = dict(zip(df['audio_id'], df['video_path']))
+    files = list(Path(args.audio_path).glob('*.wav'))
+
+    for audio_file in tqdm(files):
+        audio_id = audio_file.stem
+        video_file = aid_to_video[audio_id]
+        output_file = output_dir / f"{audio_id}.mp4"
+        merge_audio_video(audio_file, video_file, output_file)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--aid_video_mapping",
+        type=str,
+        required=True,
+        help="mapping file between audio id and video files"
+    )
+    parser.add_argument(
+        "--audio_path",
+        type=str,
+        required=True,
+        help="path to the audio directory"
+    )
+    parser.add_argument(
+        "--output_dir", type=str, required=True, help="output directory"
+    )
+    args = parser.parse_args()
+    main(args)

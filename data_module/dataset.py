@@ -12,29 +12,11 @@ from h5py import File
 import torch
 from torch.utils.data import Dataset
 import torchaudio
-import torchvision
 import random
 
 from utils.diffsinger_utilities import norm_interp_f0, TokenTextEncoder
+from utils.general import read_jsonl_to_mapping
 from constants import TIME_ALIGNED_TASKS, NON_TIME_ALIGNED_TASKS
-
-
-def read_jsonl_to_mapping(
-    jsonl_file: str | Path, key_col: str, value_col: str
-) -> dict[str, str]:
-    """
-    Read two columns, indicated by `key_col` and `value_col`, from the
-    given jsonl file to return the mapping dict
-    TODO handle duplicate keys
-    """
-    mapping = {}
-    with open(jsonl_file, 'r') as file:
-        for line in file.readlines():
-            data = json.loads(line.strip())
-            key = data[key_col]
-            value = data[value_col]
-            mapping[key] = value
-    return mapping
 
 
 def read_from_h5(
@@ -155,7 +137,6 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
     condition_col: str = "condition"
     max_samples: int | None = None
 
-
     # TODO how to add instructions of the condition, like `condition_name` or `task_name`
     # and then map `xx_name` to specific prompts?
 
@@ -200,7 +181,9 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
         if self.max_samples is not None:
             # When the max_samples parameter is set, shuffling is enabled by default.
             random.shuffle(self.audio_ids)
-            self.audio_ids = self.audio_ids[:min(len(self.audio_ids),self.max_samples)]
+            self.audio_ids = self.audio_ids[:min(
+                len(self.audio_ids), self.max_samples
+            )]
 
     def __len__(self) -> int:
         return len(self.audio_ids)
@@ -329,7 +312,9 @@ class VideoToAudioDataset(AudioGenerationDataset):
                 id_set = hf["Video_id"][:]
                 idx = np.where(id_set == audio_id.encode())[0].item()
 
-                video_features = hf["Video"][idx][0]
+                video_features = hf["Video"][idx]
+                if video_features.ndim == 3:
+                    video_features = video_features[0]
                 label: bytes = hf["Label"][idx]
                 label = label.decode()
 
@@ -345,14 +330,15 @@ class VideoToAudioDataset(AudioGenerationDataset):
             )
 
         duration = self.load_duration(video_features, waveform)
-        return video_features, waveform, duration, f"{audio_id}_{label}"
+        yid_stem = Path(audio_id).stem
+        return video_features, waveform, duration, f"{yid_stem}_{label}"
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
         clip_duration = content.shape[0] / self.video_fps
         frame_num = content.shape[0]
         duration_value = clip_duration / frame_num
-        duration = np.full(frame_num, duration_value)
+        duration = np.full(frame_num, duration_value, dtype=np.float32)
         return duration
 
     @property

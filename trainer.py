@@ -266,26 +266,11 @@ class Trainer(CheckpointMixin):
                 self.train_data_iterator = iter(self.train_dataloader)
                 batch = next(self.train_data_iterator)
 
-            # check if batch contains NaN
-            has_nan = torch.tensor(
-                1 if contains_nan(batch) else 0,
-                device=self.accelerator.device
-            )
-            has_nan = self.accelerator.reduce(has_nan, reduction="sum")
-
             with self.accelerator.accumulate(self.model):
                 loss = self.training_step(batch, batch_idx)
-                if has_nan.item() > 0:
-                    self.accelerator.print(
-                        f"Batch {batch_idx} contains NaN, skipping it..."
-                    )
-                    loss = torch.zeros(
-                        [], requires_grad=True, device=loss.device
-                    )
-                else:
-                    self.accelerator.log(
-                        {"train/loss": loss.item()}, step=self.step
-                    )
+                self.accelerator.log(
+                    {"train/loss": loss.item()}, step=self.step
+                )
 
                 self.accelerator.backward(loss)
 

@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from utils.config import register_omegaconf_resolvers
 from models.common import LoadPretrainedBase
+from utils.general import sanitize_filename
 
 try:
     import torch_npu
@@ -20,15 +21,6 @@ except:
 
 register_omegaconf_resolvers()
 
-
-
-MAX_FILE_NAME_LENGTH=50
-def sanitize_filename(name, max_len=MAX_FILE_NAME_LENGTH):
-    #Clean and truncate a string to make it a valid and safe filename.
-    name = re.sub(r'[\\/*?:"<>|]', '_', name)
-    name = name.replace('/', '_')  
-    max_len=min(len(name),max_len)
-    return name[:max_len]
 
 def main():
 
@@ -48,12 +40,12 @@ def main():
         exp_dir = Path(config["exp_dir"])
         #use best ckpt
         if use_best:
-            ckpt_path: Path = sorted(
-                (exp_dir / "checkpoints").iterdir())[0] / "model.safetensors"
+            ckpt_path: Path = sorted((exp_dir / "checkpoints").iterdir()
+                                    )[0] / "model.safetensors"
         else:
             # use last ckpt
-            ckpt_path: Path = sorted(
-                (exp_dir / "checkpoints").iterdir())[-1] / "model.safetensors"
+            ckpt_path: Path = sorted((exp_dir / "checkpoints").iterdir()
+                                    )[-1] / "model.safetensors"
     elif "ckpt_dir" in config:
         ckpt_dir = Path(config["ckpt_dir"])
         ckpt_path = ckpt_dir / "model.safetensors"
@@ -81,7 +73,7 @@ def main():
         test_dataloader = hydra.utils.instantiate(
             config["test_dataloader"], _convert_="all"
         )
-    
+
     model.eval()
 
     scheduler = getattr(
@@ -110,7 +102,9 @@ def main():
                 **kwargs,
             )
 
-            for name, wave, task in zip(batch["item_name"], waveform, batch["task"]):
+            for name, wave, task in zip(
+                batch["item_name"], waveform, batch["task"]
+            ):
                 (audio_output_dir / task).mkdir(parents=True, exist_ok=True)
                 safe_name = sanitize_filename(name)
                 sf.write(

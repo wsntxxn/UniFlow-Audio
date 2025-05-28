@@ -604,12 +604,12 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         length_aligned_content = content_output["length_aligned_content"]
         content, content_mask = content_output["content"], content_output[
             "content_mask"]
-        context_mask = content_mask.detach()
         instruction_mask = create_mask_from_length(instruction_lengths)
-
         content, content_mask, global_duration_pred, local_duration_pred = \
             self.content_adapter(content, content_mask, instruction, instruction_mask)
-
+        print(
+            f"std: {content.std().item()}, min: {content.min().item()}, max: {content.max().item()}"
+        )
         batch_size = content.size(0)
 
         # truncate dummy time aligned duration prediction
@@ -719,24 +719,24 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
                 latent_input = torch.cat([latent, latent])
             else:
                 latent_input = latent
-            t = torch.tensor([timestep], device=device)
-            t = t.expand(batch_size, )
 
-            pred: torch.Tensor = self.backbone(
+            noise_pred: torch.Tensor = self.backbone(
                 x=latent_input,
                 x_mask=latent_mask,
-                timesteps=t,
+                timesteps=timestep,
                 context=context,
                 context_mask=context_mask,
                 time_aligned_context=time_aligned_content,
             )
 
             if classifier_free_guidance:
-                pred_uncond, pred_cond = pred.chunk(2)
-                pred = pred_uncond + guidance_scale * (pred_cond - pred_uncond)
+                noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance_scale * (
+                    noise_pred_cond - noise_pred_uncond
+                )
 
             latent = self.infer_noise_scheduler.step(
-                pred, timestep, latent
+                noise_pred, timestep, latent
             ).prev_sample
 
             progress_bar.update(1)

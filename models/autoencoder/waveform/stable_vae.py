@@ -539,6 +539,7 @@ if __name__ == '__main__':
     waveform, sr = torchaudio.load(
         "/hpc_stor03/sjtu_home/xuenan.xu/data/m4singer/Tenor-1#童话/0006.wav"
     )
+    waveform = waveform.mean(0, keepdim=True)
     waveform = torchaudio.functional.resample(
         waveform, sr, model_config["sample_rate"]
     )
