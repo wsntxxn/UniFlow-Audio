@@ -6,6 +6,11 @@ from pathlib import Path
 def transform_to_id(audio_file: Path, task: str) -> str:
     if task == "svs":
         audio_id = audio_file.stem.split("_")[0]
+    elif task=="sr":
+        audio_id = audio_file.stem
+        
+    else: 
+        audio_id=audio_file.stem
 
     return audio_id
 
