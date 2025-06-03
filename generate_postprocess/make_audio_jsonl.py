@@ -8,7 +8,8 @@ def transform_to_id(audio_file: Path, task: str) -> str:
         audio_id = audio_file.stem.split("_")[0]
     elif task=="sr":
         audio_id = audio_file.stem
-        
+    elif task=="tta":
+        audio_id = audio_file.stem
     else: 
         audio_id=audio_file.stem
 
