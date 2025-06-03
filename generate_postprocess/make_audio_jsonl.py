@@ -9,7 +9,7 @@ def transform_to_id(audio_file: Path, task: str) -> str:
     elif task=="sr":
         audio_id = audio_file.stem
     elif task=="tta":
-        audio_id = audio_file.stem
+        audio_id = audio_file.name
     else: 
         audio_id=audio_file.stem
 
