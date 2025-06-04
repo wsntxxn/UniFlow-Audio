@@ -122,6 +122,11 @@ def evaluate(args):
         for metric, values in results.items():
             if metric == "CLAP_score":
                 print_msg = f"{metric}: {np.mean(list(values.values())):.3f}"
+                if args.clap_per_audio:
+                    for audio_id, score in values.items():
+                        score_msg = f"{audio_id}: {score[0][0]:.3f}"
+                        #print(score_msg)
+                        print(score_msg, file=writer)
             else:
                 print_msg = f"{metric}: {values:.3f}"
             print(print_msg)
@@ -170,8 +175,14 @@ if __name__ == '__main__':
     parser.add_argument(
         "--data_sr", 
         type=int, 
-        default=16000,
+        default=48000,
         help="target sample rate"
+    )
+    parser.add_argument(
+        "--clap_per_audio",
+        "-p",
+        action="store_true",
+        help="calculate and store CLAP score for each audio clip"
     )
     
     args = parser.parse_args()
