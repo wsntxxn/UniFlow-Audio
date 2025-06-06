@@ -1,3 +1,10 @@
+
+# python generate_postprocess/make_audio_jsonl.py  \
+#     --audio_dir "/cpfs_shared/jiahao.mei/code/x_to_audio_generation/experiments/DummyContentAudioDiffusion/double_content+cross_attn_adapter_init_8gpus/inference/text_to_audio" \
+#     --task tta \
+#     --output_file "./tta_files.jsonl"
+
+
 import argparse
 import json
 from pathlib import Path
@@ -9,7 +16,7 @@ def transform_to_id(audio_file: Path, task: str) -> str:
     elif task=="sr":
         audio_id = audio_file.stem
     elif task=="tta":
-        audio_id = audio_file.name
+        audio_id = audio_file.stem[:12]+'.wav'
     else: 
         audio_id=audio_file.stem
 
