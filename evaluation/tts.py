@@ -28,7 +28,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 english_normalizer = EnglishTextNormalizer()
 
+# asr model: https://huggingface.co/nvidia/stt_en_conformer_transducer_xlarge
 
+# spkear model: https://huggingface.co/nvidia/speakerverification_en_titanet_large
 def get_audio_duration(filepath):
     try:
         metadata = torchaudio.info(filepath)

@@ -32,7 +32,7 @@ from tqdm import tqdm
 from copy import deepcopy
 
 # Ref: https://github.com/haoheliu/audioldm_eval/tree/main
-# The ref command for installing: pip install git+https://github.com/haoheliu/audioldm_eval
+# This script uses a locally modified version of audioldm_eval.
 from audioldm_eval import EvaluationHelper
 
 # Ref: https://github.com/LAION-AI/CLAP
@@ -121,7 +121,7 @@ def evaluate(args):
     assert gen_is_same_folder == True, "Generated audio files must be in the same folder."
     assert ref_is_same_folder == True, "Reference audio files must be in the same folder."
     gen_folder_path_symlink=create_symlink_folder(gen_folder_path)
-    eval_result = evaluator.main(gen_folder_path_symlink, ref_folder_path,recalculate=True)
+    eval_result = evaluator.main(gen_folder_path_symlink, ref_folder_path,recalculate=False)
 
     assert ref_aid_to_audios.keys() == gen_aid_to_audios.keys(
     ), "Reference and generated audio IDs do not match"
