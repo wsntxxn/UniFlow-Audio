@@ -3,6 +3,7 @@ import gc
 from pathlib import Path
 from collections import defaultdict
 
+import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils._pytree import tree_map
@@ -102,6 +103,69 @@ class AudioGenerationTrainer(Trainer):
             step=self.step,
         )
         logging_msg = f"epoch[{self.epoch}], train loss: {train_loss:.3f}, val loss: {val_loss:.3f}"
+        self.accelerator.print(logging_msg)
+        if self.accelerator.is_main_process:
+            self.logger.info(logging_msg)
+
+        torch.cuda.empty_cache()
+        gc.collect()
+
+
+@dataclass(kw_only=True)
+class MultiTaskAudioGenerationTrainer(AudioGenerationTrainer):
+    def on_validation_start(self):
+        super().on_validation_start()
+        self.val_task_sample_num = defaultdict(int)  # {task: num}
+        self.val_task_loss_dict = defaultdict(
+            lambda: defaultdict(float)
+        )  # {task: {loss_name: loss_value}}
+
+    def validation_step(self, batch, batch_idx):
+        output = self.model(**batch, loss_reduce=False)
+        output = self.accelerator.gather_for_metrics(output)
+        task_batch = np.array(
+            self.accelerator.gather_for_metrics(batch["task"])
+        )
+        # output: {"diff_loss": (bsz,), "local_duration_loss": (bsz,), ...}
+        tasks = set(task_batch.tolist())
+
+        for task in tasks:
+            task_mask = task_batch == task
+            self.val_task_sample_num[task] += task_mask.sum().item()
+            for key in output:
+                self.val_task_loss_dict[task][key] += output[key][ \
+                    task_mask].sum().item()
+
+        # get reduced loss
+        reduced_output = {}
+        for key in output:
+            if key == "local_duration_loss":
+                if batch["is_time_aligned"].sum() == 0:
+                    reduced_output[key] = (output[key] * 0.0).mean()
+                else:
+                    reduced_output[key] = output[key].sum() / \
+                        batch["is_time_aligned"].sum()
+            else:
+                reduced_output[key] = output[key].mean()
+        loss_dict = self.loss_fn(reduced_output)
+        for loss_name in loss_dict:
+            self.val_loss_dict[loss_name] += loss_dict[loss_name].item()
+        self.val_batch_num += 1
+
+    def on_train_epoch_end(self):
+        train_loss = self.train_loss / self.train_batch_num
+        val_loss = self.val_loss_dict["loss"] / self.val_batch_num
+        log_dict = {}
+        for task in self.val_task_loss_dict:
+            for loss_name in self.val_task_loss_dict[task]:
+                log_dict[f"val_{task}/{loss_name}"] = self.val_task_loss_dict[
+                    task][loss_name] / self.val_task_sample_num[task]
+        self.accelerator.log(
+            log_dict,
+            step=self.step,
+        )
+        logging_msg = f"epoch[{self.epoch}], train loss: {train_loss:.3f}," \
+                      f" val loss: {val_loss:.3f}"
         self.accelerator.print(logging_msg)
         if self.accelerator.is_main_process:
             self.logger.info(logging_msg)

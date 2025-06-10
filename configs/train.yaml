@@ -1,6 +1,6 @@
 defaults:
   - basic
-  - model: diffusion
+  - model: flow_matching
   - data@data_dict: train_val
   - loss@loss_fn: weighted_sum
   - _self_
@@ -57,7 +57,7 @@ epochs: 600
 epoch_length: 2000
 
 trainer:
-  _target_: audio_generation_trainer.AudioGenerationTrainer
+  _target_: audio_generation_trainer.MultiTaskAudioGenerationTrainer
   project_dir: ${exp_dir}
   logging_file: ${logging_file}
   gradient_accumulation_steps: ${gradient_accumulation_steps}

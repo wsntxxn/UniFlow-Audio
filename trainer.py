@@ -17,7 +17,6 @@ from accelerate import DistributedDataParallelKwargs
 import wandb
 
 from utils.accelerate_utilities import AcceleratorSaveTrainableParams
-from utils.torch_utilities import contains_nan, check_nan_in_batch
 
 
 @dataclass

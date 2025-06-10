@@ -430,19 +430,17 @@ class DurationAdapterMixin:
         self,
         pred: torch.Tensor,
         latent_mask: torch.Tensor,
+        reduce: bool,
     ):
         target = torch.log(
             latent_mask.sum(1) / self.latent_token_rate + self.offset
         )
-        loss = F.mse_loss(target, pred)
+        loss = F.mse_loss(target, pred, reduction="mean" if reduce else "none")
         return loss
 
     def get_local_duration_loss(
-        self,
-        ground_truth: torch.Tensor,
-        pred: torch.Tensor,
-        mask: torch.Tensor,
-        is_time_aligned: Sequence[bool],
+        self, ground_truth: torch.Tensor, pred: torch.Tensor,
+        mask: torch.Tensor, is_time_aligned: Sequence[bool], reduce: bool
     ):
         n_frames = torch.round(ground_truth / self.frame_resolution)
         target = torch.log(n_frames + self.offset)
@@ -452,11 +450,12 @@ class DurationAdapterMixin:
             reduce=False,
         )
         loss *= is_time_aligned
-        if is_time_aligned.sum().item() == 0:
-            loss *= 0.0
-            loss = loss.mean()
-        else:
-            loss = loss.sum() / is_time_aligned.sum()
+        if reduce:
+            if is_time_aligned.sum().item() == 0:
+                loss *= 0.0
+                loss = loss.mean()
+            else:
+                loss = loss.sum() / is_time_aligned.sum()
 
         return loss
 
@@ -672,12 +671,20 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         return context, context_mask, time_aligned_content
 
     def forward(
-        self, content: list[Any], duration: Sequence[float], task: list[str],
-        is_time_aligned: Sequence[bool], waveform: torch.Tensor,
-        waveform_lengths: torch.Tensor, instruction: torch.Tensor,
-        instruction_lengths: torch.Tensor, **kwargs
+        self,
+        content: list[Any],
+        duration: Sequence[float],
+        task: list[str],
+        is_time_aligned: Sequence[bool],
+        waveform: torch.Tensor,
+        waveform_lengths: torch.Tensor,
+        instruction: torch.Tensor,
+        instruction_lengths: torch.Tensor,
+        loss_reduce: bool = True,
+        **kwargs
     ):
         device = self.dummy_param.device
+        loss_reduce = self.training or (loss_reduce and not self.training)
 
         self.autoencoder.eval()
         with torch.no_grad():
@@ -702,12 +709,15 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         local_duration_pred = local_duration_pred[:, :trunc_ta_length]
         ta_content_mask = content_mask[:, :trunc_ta_length]
         local_duration_loss = self.get_local_duration_loss(
-            duration, local_duration_pred, ta_content_mask, is_time_aligned
+            duration,
+            local_duration_pred,
+            ta_content_mask,
+            is_time_aligned,
+            reduce=loss_reduce
         )
 
         global_duration_loss = self.get_global_duration_loss(
-            global_duration_pred,
-            latent_mask,
+            global_duration_pred, latent_mask, reduce=loss_reduce
         )
 
         # --------------------------------------------------------------------
@@ -764,7 +774,7 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         pred = pred.transpose(1, self.autoencoder.time_dim)
         target = target.transpose(1, self.autoencoder.time_dim)
         diff_loss = F.mse_loss(pred, target, reduction="none")
-        diff_loss = loss_with_mask(diff_loss, latent_mask)
+        diff_loss = loss_with_mask(diff_loss, latent_mask, reduce=loss_reduce)
         return {
             "diff_loss": diff_loss,
             "local_duration_loss": local_duration_loss,
