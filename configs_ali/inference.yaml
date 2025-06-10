@@ -1,18 +1,25 @@
 defaults:
   - basic
-  - data@test_data_dict: test
+  - data@data_dict: test
   - _self_
 
 
 test_dataloader:
   _target_: torch.utils.data.DataLoader
-  dataset: ${test_data_dict.data_list.0}
+  dataset: 
+      _target_: data_module.dataset.TaskGroupedAudioGenConcatDataset
+      datasets: ${data_dict.test_data_list}
+  sampler:
+    _target_: data_module.sampler.InferenceTaskIteratingSampler
+    shuffle: false
   batch_size: 1 # per device batch size
   shuffle: False
   num_workers: 4
   collate_fn:
     _target_: data_module.collate_function.PaddingCollate
     pad_keys: ["instruction"]
+
+
 
 wav_dir: inference
 

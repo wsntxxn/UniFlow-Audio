@@ -44,7 +44,7 @@ content_encoder:
     embed_dim: ${...content_dim}
   video_encoder:
     _target_: models.content_encoder.vision_encoder.MlpVideoEncoder
-    video_feat_dim: 512
+    video_feat_dim: 1024
     embed_dim: ${...content_dim}
   phoneme_encoder:
     _target_: models.content_encoder.midi_encoder.FastSpeech2PhonemeEncoder

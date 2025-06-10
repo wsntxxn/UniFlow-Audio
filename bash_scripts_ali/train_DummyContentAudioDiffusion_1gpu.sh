@@ -1,9 +1,9 @@
-# nohup bash bash_scripts/train_DummyContentAudioDiffusion_1gpu.sh > logs/train_DummyContentAudioDiffusion_1gpu.log 2>&1  &
+# nohup bash bash_scripts_ali/train_DummyContentAudioDiffusion_1gpu.sh > logs/train_DummyContentAudioDiffusion_1gpu.log 2>&1  &
 echo "Current time: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')" 
 echo "Running script name: $(basename "$0")" 
 
-CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file configs/accelerate/nvidia/1gpu.yaml train.py \
-    --config_dir configs_ali \
+CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file configs_ali/accelerate/nvidia/1gpu.yaml train.py \
+    --config-path configs_ali \
     warmup_params.warmup_steps=2000 \
     data@data_dict=train_init \
     train_dataloader.batch_size=8 \

@@ -1,0 +1,18 @@
+train:
+  _target_: data_module.dataset.VideoToAudioDataset
+  content: data/vggsound-clip/train/content.jsonl
+  audio: data/vggsound-clip/train/audio.jsonl
+  target_sr: ${sample_rate}
+  task_instruction: ${instruction_embedding}
+val:
+  _target_: data_module.dataset.VideoToAudioDataset
+  content: data/vggsound/content.jsonl
+  audio: data/vggsound/audio.jsonl
+  target_sr: ${sample_rate}
+  task_instruction: ${instruction_embedding}
+  max_samples: ${max_val_samples}
+test:
+  _target_: data_module.dataset.VideoToAudioDataset
+  content: data/vggsound-clip/val/content.jsonl
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1

@@ -1,0 +1,5 @@
+test:
+  _target_: data_module.dataset.TextToSpeechDataset
+  content: data/voiceflow/test/phoneme.jsonl
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1

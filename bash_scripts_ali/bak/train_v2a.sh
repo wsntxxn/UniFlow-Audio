@@ -1,4 +1,4 @@
-accelerate launch --config_file configs/accelerate/nvidia/1gpus.yaml train.py \
+accelerate launch --config_file configs_ali/accelerate/nvidia/1gpus.yaml train.py \
     warmup_params.warmup_steps=2000 \
     train_dataloader.batch_size=8 \
     train_dataloader.num_workers=8 \

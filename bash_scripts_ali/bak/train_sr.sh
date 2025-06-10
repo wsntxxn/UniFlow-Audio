@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file /hpc_stor03/sjtu_home/ye.tao/workspace/x_to_audio_generation/configs/accelerate/nvidia/1gpus.yaml /hpc_stor03/sjtu_home/ye.tao/workspace/x_to_audio_generation/train.py \
+CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file /hpc_stor03/sjtu_home/ye.tao/workspace/x_to_audio_generation/configs_ali/accelerate/nvidia/1gpus.yaml /hpc_stor03/sjtu_home/ye.tao/workspace/x_to_audio_generation/train.py \
     epoch_length=10000 \
     epochs=100 \
     data@data_dict=audio_sr \

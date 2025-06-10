@@ -1,9 +1,12 @@
-# bash ./bash_scripts/infer.sh > logs/infer.log 2>&1
+# nohup bash ./bash_scripts_ali/infer.sh > logs/infer.log 2>&1 &
 export HF_HOME="/nas-wulanchabu/jiahao.mei/hf_home"
-CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file configs/accelerate/1gpu.yaml inference.py \
+CUDA_VISIBLE_DEVICES=1 accelerate launch --config_file configs_ali/accelerate/nvidia/1gpu.yaml inference.py \
+    --config-path configs_ali \
+    --config-name inference_no_sampler \
     data@data_dict=tta \
-    +exp_dir=experiments/tts_tta/audiocaps \
-    +use_best=true \
+    +exp_dir=experiments/DummyContentAudioDiffusion/dummy_content+cross_attn_adapter_init_8gpus \
+    +use_best=false \
+    # infer_args.guidance_scale=0.0 
     # +ckpt_dir=experiments/tta/epoch_81
 
 

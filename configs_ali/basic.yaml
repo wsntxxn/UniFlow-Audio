@@ -3,6 +3,8 @@ sample_rate: 24000
 downsampling_ratio: 480
 seed: 42
 
+max_val_samples: 1000 # max sample for each dataset. When the max_samples parameter is set, shuffling is enabled by default.
+
 hydra:
   output_subdir: null
   run:

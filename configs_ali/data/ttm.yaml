@@ -1,0 +1,13 @@
+defaults:
+  - default
+  - _self_
+
+train_data_list:
+  - ${..musiccaps.train} #ttm
+
+
+val_data_list:
+  - ${..musiccaps.val} #ttm
+
+test_data_list:
+  - ${..musiccaps.test}

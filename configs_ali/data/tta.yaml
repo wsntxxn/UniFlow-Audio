@@ -7,3 +7,6 @@ train_data_list:
 
 val_data_list:
   - ${..audiocaps.val}
+
+test_data_list:
+  - ${..audiocaps.test}

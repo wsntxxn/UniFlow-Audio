@@ -2,8 +2,8 @@
 echo "Current time: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')" 
 echo "Running script name: $(basename "$0")" 
 
-accelerate launch --config_file configs/accelerate/nvidia/4gpus.yaml train.py \
-    --config_dir configs_ali \
+accelerate launch --config_file configs_ali/accelerate/nvidia/4gpus.yaml train.py \
+    --config-path configs_ali \
     data@data_dict=train_init \
     train_dataloader.batch_size=16 \
     val_dataloader.batch_size=16 \

@@ -1,4 +1,4 @@
-# nohup bash bash_scripts/train_multitask_tts_8gpus.sh > logs/train_multitask_tts_8gpus.log 2>&1  &
+# nohup bash bash_scripts_ali/train_multitask_tts_8gpus.sh > logs/train_multitask_tts_8gpus.log 2>&1  &
 echo "Current time: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')" 
 echo "Running script name: $(basename "$0")" 
 accelerate launch --config_file configs/accelerate/8gpus.yaml train.py \

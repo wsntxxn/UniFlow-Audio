@@ -7,3 +7,7 @@ train_data_list:
 
 val_data_list:
   - ${..libritts.val}
+
+
+test_data_list:
+  - ${..libritts.test}

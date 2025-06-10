@@ -3,7 +3,10 @@ defaults:
   - _self_
 
 train_data_list:
-  - ${..ljspeech_se.train}
+  - ${..VCTK+Demand.train} #se
 
 val_data_list:
-  - ${..ljspeech_se.val}
+  - ${..VCTK+Demand.val} #se
+
+test_data_list:
+  - ${..VCTK+Demand.test}

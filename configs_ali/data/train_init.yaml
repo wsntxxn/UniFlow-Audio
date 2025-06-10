@@ -4,7 +4,7 @@ defaults:
 
 train_data_list:
   - ${..audiocaps.train} #tta
-  - ${..clotho.train}
+  # - ${..clotho.train}
   - ${..musiccaps.train} #ttm
   - ${..libritts.train} #tts
   - ${..moisesdb.train} #sr
@@ -17,7 +17,7 @@ train_data_list:
 
 val_data_list:
   - ${..audiocaps.val} #tta
-  - ${..clotho.val}
+  # - ${..clotho.val}
   - ${..musiccaps.val} #ttm
   - ${..libritts.val} #tts
   - ${..moisesdb.val} #sr
@@ -26,3 +26,16 @@ val_data_list:
   - ${..VCTK+Demand.val} #se
   - ${..VCTK+Wham.val}
   - ${..m4singer.val} #svs
+
+
+test_data_list:
+  - ${..audiocaps.test}        # tta
+  # - ${..clotho.test}
+  - ${..musiccaps.test}        # ttm
+  - ${..libritts.test}         # tts
+  - ${..moisesdb.test}         # sr
+  - ${..musdb.test}
+  - ${..TTS-HQ.test}
+  - ${..VCTK+Demand.test}      # se
+  - ${..VCTK+Wham.test}
+  - ${..m4singer.test}         # svs

@@ -1,6 +1,6 @@
 defaults:
   - basic
-  - model: diffusion
+  -  model@model: diffusion
   - data@data_dict: train_val
   - loss@loss_fn: weighted_sum
   - _self_
@@ -31,7 +31,7 @@ val_dataloader:
     _target_: data_module.dataset.AudioGenConcatDataset
     datasets: ${data_dict.val_data_list}
   batch_size: 24 # per device batch size
-  shuffle: False
+  shuffle: False 
   num_workers: 16
   collate_fn:
     _target_: data_module.collate_function.PaddingCollate
@@ -56,8 +56,7 @@ lr_scheduler:
 
 epochs: 600
 epoch_length: 1000
-val_epoch_length: null
-max_val_samlpes: 1000
+
 
 
 trainer:
@@ -65,6 +64,7 @@ trainer:
   project_dir: ${exp_dir}
   logging_file: ${logging_file}
   gradient_accumulation_steps: ${gradient_accumulation_steps}
+  max_grad_norm: 1.0
   epochs: ${epochs}
   epoch_length: ${epoch_length}
   save_last_k: 4

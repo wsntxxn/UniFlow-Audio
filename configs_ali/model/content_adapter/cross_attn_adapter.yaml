@@ -1,0 +1,14 @@
+_target_: models.content_adapter.CrossAttentionAdapter
+content_dim: ${..content_dim}
+d_out: ${..content_dim}
+prefix_dim: 1024
+num_heads: 16
+dropout: 0.2
+duration_grad_scale: 0.1
+duration_predictor:
+  _target_: models.content_adapter.DurationPredictor
+  in_channels: ${...content_dim}
+  filter_channels: 512
+  n_layers: 5
+  kernel_size: 3
+  p_dropout: 0.5

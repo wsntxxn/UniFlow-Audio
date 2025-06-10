@@ -1,7 +1,7 @@
 N_LAYERS=24
 D_MODEL=1024
 
-CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file configs/accelerate/nvidia/1gpu.yaml train.py \
+CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file configs_ali/accelerate/nvidia/1gpu.yaml train.py \
     train_dataloader.batch_size=12 \
     val_dataloader.batch_size=12 \
     data@data_dict=svs_opencpop \

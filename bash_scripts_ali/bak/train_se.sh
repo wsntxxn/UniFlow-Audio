@@ -1,4 +1,4 @@
-accelerate launch --config_file configs/accelerate/nvidia/1gpu.yaml train.py \
+accelerate launch --config_file configs_ali/accelerate/nvidia/1gpu.yaml train.py \
     epoch_length=10000 \
     epochs=100 \
     data@data_dict=se \
