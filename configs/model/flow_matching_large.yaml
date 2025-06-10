@@ -4,8 +4,6 @@ defaults:
   - content_adapter: cross_attn_adapter
   - _self_
 
-embed_dim: 1280
-depth: 32
 
 content_dim: 1024
 frame_resolution: 0.005
@@ -15,6 +13,8 @@ cfg_drop_ratio: 0.2
 backbone:
   context_dim: ${..content_dim}
   ta_context_dim: ${..content_dim}
+  embed_dim: 1280
+  depth: 32
 
 _target_: models.flow_matching.DummyContentAudioFlowMatching
 content_encoder:
