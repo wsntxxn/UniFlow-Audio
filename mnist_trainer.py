@@ -36,7 +36,7 @@ def create_dataloaders(batch_size=64):
         download=True,
         transform=transform
     )
-    ds_train = RandomNaNDatasetWrapper(ds_train, p=0.001)
+    # ds_train = RandomNaNDatasetWrapper(ds_train, p=0.001)
     ds_val = torchvision.datasets.MNIST(
         root="/mnt/cloudstorfs/sjtu_home/xuenan.xu/data/mnist",
         train=False,
@@ -97,6 +97,7 @@ class MnistTrainer(Trainer):
         preds = self.model(features)
         loss = self.loss_fn(preds, labels)
         lr = self.optimizer.param_groups[0]["lr"]
+        self.accelerator.log({"train/lr": lr}, step=self.step)
         return loss
 
     def on_validation_start(self):
@@ -130,6 +131,7 @@ class MnistTrainer(Trainer):
             self.logger.info(
                 f"epoch[{self.epoch}]@{nowtime} --> eval_metric= {100 * eval_metric:.2f}%"
             )
+        self.accelerator.log({"val/accuracy": eval_metric}, step=self.step)
 
     def on_train_epoch_end(self):
         if self.accelerator.is_main_process:
@@ -159,6 +161,7 @@ experiment_dir = "experiments/mnist"
 trainer = MnistTrainer(
     project_dir=experiment_dir,
     logging_file=experiment_dir + "/train.log",
+    logger="tensorboard",
     wandb_config=WandbConfig(
         project="test_mnist", save_dir=experiment_dir, name="test1"
     ),
@@ -173,7 +176,7 @@ trainer = MnistTrainer(
     save_every_n_epochs=1,
     save_every_n_steps=500,
     save_last_k=3,
-    metric_monitor=MetricMonitor(metric_name="accuracy", mode="max")
-    # resume_from_checkpoint="experiments/mnist/checkpoints/step_2000"
+    metric_monitor=MetricMonitor(metric_name="accuracy", mode="max"),
+    resume_from_checkpoint="experiments/mnist/checkpoints/step_1000"
 )
 trainer.train(42)

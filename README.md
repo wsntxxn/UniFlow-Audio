@@ -27,6 +27,20 @@ indicates that config in `${config_path}/data/train.yaml` (where `${config_path}
 
 Generally, `a@b: c` means `${config_path}/a/c.yaml` will be loaded and set as the value of `b`.
 
+### Hydra Override Examples
+
+#### Example 1
+```bash
+python inference.py +data_dict.vggsound_clip.test.max_samples=100
+```
+When we use `vggsound_clip` data, we need to directly override the most inner field instead of the pointer (pointed by the default list).
+
+#### Example 2
+```bash
+accelerate launch train.py \
+  model/content_adapter=prefix_adapter
+```
+This is an example of overriding a config group in the config that is not at the top level.
 
 ## Configure Training
 
@@ -83,16 +97,5 @@ accelerate launch --config_file configs/accelerate/8gpus.yaml train.py \
 ```
 
 ## TODO
-- [x] Design the derivation of `total_training_steps`, determine whether it can be obtained before dataloader instantiation
-- [x] Implement best checkpoint hook
-- [x] Implement inference for diffusion models
-- [x] Add loss mask to support variable length target
-- [ ] Add duration adapter to the model to support TTS
-- [ ] Add `PhonemeEncoder` to implement TTS
-- [ ] Implement singing voice synthesis
-- [ ] Implement speech enhancement, search and find current SOTA of speech enhancement
-- [ ] Implement audio super-resolution, search and find current SOTA of audio super-resolution
-- [ ] Add instruction-tuned large language model encoder to encode instruction and concat with content  
-- [ ] Implement `flow_matching.py`
 - [ ] Implement the fusion of time-independent and time-varying condition
 - [ ] Implement evaluation metrics of several tasks

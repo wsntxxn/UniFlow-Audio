@@ -2,13 +2,10 @@
 #   --audio_dir '/cpfs_shared/jiahao.mei/code/x_to_audio_generation/experiments/voiceflow_infer' \
 #   --xp_name voiceflow
 
-
-
 # python evaluation/tts.py  \
 #     --audio_dir '/cpfs_shared/jiahao.mei/code/x_to_audio_generation/experiments/voiceflow_infer' \
 #     --libritts_txt_dir '/cpfs_shared/jiahao.mei/data/tts/LibriTTS' \
 #     --xp_name voiceflow
-
 
 import os
 import json
@@ -29,6 +26,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 english_normalizer = EnglishTextNormalizer()
 
 # asr model: https://huggingface.co/nvidia/stt_en_conformer_transducer_xlarge
+
 
 # spkear model: https://huggingface.co/nvidia/speakerverification_en_titanet_large
 def get_audio_duration(filepath):
@@ -54,13 +52,14 @@ def load_asr_model(model_name, lang='en', ckpt_dir=""):
         elif lang == "en":
             from faster_whisper import WhisperModel
             model_size = "large-v3" if ckpt_dir == "" else ckpt_dir
-            model = WhisperModel(model_size,
-                                 device="cuda",
-                                 compute_type="float16")
+            model = WhisperModel(
+                model_size, device="cuda", compute_type="float16"
+            )
     elif model_name == "nemo":  # requires numpy<2.0
         import nemo.collections.asr as nemo_asr
         model = nemo_asr.models.EncDecRNNTBPEModel.from_pretrained(
-            "nvidia/stt_en_conformer_transducer_xlarge")
+            "nvidia/stt_en_conformer_transducer_xlarge"
+        )
 
     return model
 
@@ -117,14 +116,16 @@ def extract_utt_id(filepath):
     return utt_id
 
 
-def evaluate_tts(audio_dir, libritts_txt_dir, output_path, model_name,
-                 xp_name):
+def evaluate_tts(
+    audio_dir, libritts_txt_dir, output_path, model_name, xp_name
+):
     print("Loading ASR model...")
     asr_model = load_asr_model(model_name)
 
     print("Loading speaker embedding model...")
     speaker_model = nemo_asr.models.EncDecSpeakerLabelModel.from_pretrained(
-        "nvidia/speakerverification_en_titanet_large")
+        "nvidia/speakerverification_en_titanet_large"
+    )
 
     print("Building reference transcript map...")
     ref_map = get_libritts_text_mapping(libritts_txt_dir)
@@ -156,9 +157,9 @@ def evaluate_tts(audio_dir, libritts_txt_dir, output_path, model_name,
         reference = ref_map[utt_id]
         try:
             if model_name == 'whisper':
-                segments, _ = asr_model.transcribe(wav_path,
-                                                   beam_size=5,
-                                                   language="en")
+                segments, _ = asr_model.transcribe(
+                    wav_path, beam_size=5, language="en"
+                )
                 pred_text = ""
                 for segment in segments:
                     pred_text += " " + segment.text
@@ -204,8 +205,9 @@ def evaluate_tts(audio_dir, libritts_txt_dir, output_path, model_name,
     avg_sim = np.mean(similarities) if similarities else 0.0
 
     if output_path == '':
-        output_path = './evaluation/result/' + '_'.join(
-            ["tts_results", model_name, xp_name]) + '.jsonl'
+        output_path = './evaluation/result/' + '_'.join([
+            "tts_results", model_name, xp_name
+        ]) + '.jsonl'
 
     with open(output_path, 'w') as f:
         for r in results:
@@ -235,21 +237,27 @@ if __name__ == "__main__":
         '--libritts_txt_dir',
         type=str,
         default='/cpfs_shared/jiahao.mei/data/tts/LibriTTS/test-clean',
-        help='Directory for LibriTTS test-clean files')
-    parser.add_argument('--output_path',
-                        type=str,
-                        default='',
-                        help='Output path for evaluation results')
-    parser.add_argument('--model_name',
-                        type=str,
-                        default='nemo',
-                        help='Name of ASR model to use')
-    parser.add_argument('--xp_name',
-                        type=str,
-                        default='',
-                        help='Experiment name')
+        help='Directory for LibriTTS test-clean files'
+    )
+    parser.add_argument(
+        '--output_path',
+        type=str,
+        default='',
+        help='Output path for evaluation results'
+    )
+    parser.add_argument(
+        '--model_name',
+        type=str,
+        default='nemo',
+        help='Name of ASR model to use'
+    )
+    parser.add_argument(
+        '--xp_name', type=str, default='', help='Experiment name'
+    )
 
     args = parser.parse_args()
 
-    evaluate_tts(args.audio_dir, args.libritts_txt_dir, args.output_path,
-                 args.model_name, args.xp_name)
+    evaluate_tts(
+        args.audio_dir, args.libritts_txt_dir, args.output_path,
+        args.model_name, args.xp_name
+    )

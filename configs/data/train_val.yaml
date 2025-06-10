@@ -10,7 +10,7 @@ train_data_list:
   - ${..musdb.train}
   - ${..moises.train}
   - ${..ljspeech_se.train}
-  - ${..vggsound_cavp.train}
+  - ${..vggsound_clip.train}
 
 val_data_list:
   - ${..libritts.val}
@@ -20,4 +20,4 @@ val_data_list:
   - ${..musdb.val}
   - ${..moises.val}
   - ${..ljspeech_se.val}
-  - ${..vggsound_cavp.val}
+  - ${..vggsound_clip.val}

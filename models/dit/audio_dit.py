@@ -506,10 +506,10 @@ class AudioUDiT(UDiT):
                 context_mask=context_mask,
                 extras=self.extras
             )
-            if not self.training:
-                print(
-                    f"block {blk_idx}, min: {x.min().item()}, max: {x.max().item()}, std: {x.std().item()}"
-                )
+            # if not self.training:
+            #     print(
+            #         f"in block {blk_idx}, min: {x.min().item()}, max: {x.max().item()}, std: {x.std().item()}"
+            #     )
             if self.use_skip:
                 skips.append(x)
 
@@ -524,7 +524,7 @@ class AudioUDiT(UDiT):
             context_mask=context_mask,
             extras=self.extras
         )
-        for blk in self.out_blocks:
+        for blk_idx, blk in enumerate(self.out_blocks):
             if self.use_skip:
                 skip = skips.pop()
                 if controlnet_skips:
@@ -547,6 +547,10 @@ class AudioUDiT(UDiT):
                 context_mask=context_mask,
                 extras=self.extras
             )
+            # if not self.training:
+            #     print(
+            #         f"out block {blk_idx}, min: {x.min().item()}, max: {x.max().item()}, std: {x.std().item()}"
+            #     )
 
         x = self.final_block(x, time_ada=time_ada_final, extras=self.extras)
 

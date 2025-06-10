@@ -25,6 +25,7 @@ class WandbConfig:
     project: str
     save_dir: str | Path
     name: str
+    resume_id: str | None = None
 
 
 class LRSchedulerInterval(str, Enum):
@@ -90,6 +91,7 @@ class Trainer(CheckpointMixin):
     config_dict: dict | None = None
     project_dir: str | Path
     checkpoint_dir: str | Path = None
+    logger: str = "wandb"
     wandb_config: WandbConfig | None = None
 
     train_dataloader: StatefulDataLoader | DataLoader
@@ -119,7 +121,7 @@ class Trainer(CheckpointMixin):
     def setup_accelerator(self) -> None:
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
         self.accelerator = AcceleratorSaveTrainableParams(
-            log_with="wandb",
+            log_with=self.logger,
             gradient_accumulation_steps=self.gradient_accumulation_steps,
             project_dir=self.project_dir,
             step_scheduler_with_optimizer=(
@@ -268,9 +270,8 @@ class Trainer(CheckpointMixin):
 
             with self.accelerator.accumulate(self.model):
                 loss = self.training_step(batch, batch_idx)
-                self.accelerator.log(
-                    {"train/loss": loss.item()}, step=self.step
-                )
+                self.accelerator.log({"train/loss": loss.item()},
+                                     step=self.step)
 
                 self.accelerator.backward(loss)
 
@@ -360,11 +361,12 @@ class Trainer(CheckpointMixin):
             self.accelerator.init_trackers(
                 self.wandb_config.project,
                 init_kwargs={
-                    "wandb":
-                        {
-                            "name": self.wandb_config.name,
-                            "dir": self.wandb_config.save_dir
-                        }
+                    "wandb": {
+                        "name": self.wandb_config.name,
+                        "dir": self.wandb_config.save_dir,
+                        "id": self.wandb_config.resume_id,
+                        "resume": "allow",
+                    }
                 }
             )
 

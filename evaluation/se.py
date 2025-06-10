@@ -10,8 +10,6 @@ python evaluation/se.py  \
     "/cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/VCTK+Demand/test/metadata_audio.jsonl"
 
 """
-import sys
-sys.path.append("./")
 from scipy.signal import stft, get_window, correlate, resample
 from scipy.linalg import solve_toeplitz, toeplitz
 from pesq import pesq as pesq_inner  # pip install https://github.com/ludlows/python-pesq/archive/master.zip
@@ -40,13 +38,13 @@ from utils.general import read_jsonl_to_mapping
 #  pip3 install pystoi
 #
 
+
 def extractOverlappedWindows(x, nperseg, noverlap, window=None):
     # source: https://github.com/scipy/scipy/blob/v1.2.1/scipy/signal/spectral.py
     step = nperseg - noverlap
     shape = x.shape[:-1] + ((x.shape[-1] - noverlap) // step, nperseg)
     strides = x.strides[:-1] + (step * x.strides[-1], x.strides[-1])
-    result = np.lib.stride_tricks.as_strided(x, shape=shape,
-                                             strides=strides)
+    result = np.lib.stride_tricks.as_strided(x, shape=shape, strides=strides)
     if window is not None:
         result = window * result
     return result
@@ -56,16 +54,25 @@ def SNRseg(clean_speech, processed_speech, fs, frameLen=0.03, overlap=0.75):
     eps = np.finfo(np.float64).eps
 
     winlength = round(frameLen * fs)  # window length in samples
-    skiprate = int(np.floor((1 - overlap) * frameLen * fs))  # window skip in samples
+    skiprate = int(
+        np.floor((1 - overlap) * frameLen * fs)
+    )  # window skip in samples
     MIN_SNR = -10  # minimum SNR in dB
     MAX_SNR = 35  # maximum SNR in dB
 
-    hannWin = 0.5 * (1 - np.cos(2 * np.pi * np.arange(1, winlength + 1) / (winlength + 1)))
-    clean_speech_framed = extractOverlappedWindows(clean_speech, winlength, winlength - skiprate, hannWin)
-    processed_speech_framed = extractOverlappedWindows(processed_speech, winlength, winlength - skiprate, hannWin)
+    hannWin = 0.5 * (
+        1 - np.cos(2 * np.pi * np.arange(1, winlength + 1) / (winlength + 1))
+    )
+    clean_speech_framed = extractOverlappedWindows(
+        clean_speech, winlength, winlength - skiprate, hannWin
+    )
+    processed_speech_framed = extractOverlappedWindows(
+        processed_speech, winlength, winlength - skiprate, hannWin
+    )
 
     signal_energy = np.power(clean_speech_framed, 2).sum(-1)
-    noise_energy = np.power(clean_speech_framed - processed_speech_framed, 2).sum(-1)
+    noise_energy = np.power(clean_speech_framed - processed_speech_framed,
+                            2).sum(-1)
 
     segmental_snr = 10 * np.log10(signal_energy / (noise_energy + eps) + eps)
     segmental_snr[segmental_snr < MIN_SNR] = MIN_SNR
@@ -81,15 +88,17 @@ def fwSNRseg(cleanSig, enhancedSig, fs, frameLen=0.03, overlap=0.75):
     cleanSig = cleanSig.astype(np.float64) + eps
     enhancedSig = enhancedSig.astype(np.float64) + eps
     winlength = round(frameLen * fs)  # window length in samples
-    skiprate = int(np.floor((1 - overlap) * frameLen * fs))  # window skip in samples
+    skiprate = int(
+        np.floor((1 - overlap) * frameLen * fs)
+    )  # window skip in samples
     max_freq = fs / 2  # maximum bandwidth
     num_crit = 25  # number of critical bands
-    n_fft = 2 ** np.ceil(np.log2(2 * winlength))
+    n_fft = 2**np.ceil(np.log2(2 * winlength))
     n_fftby2 = int(n_fft / 2)
     gamma = 0.2
 
-    cent_freq = np.zeros((num_crit,))
-    bandwidth = np.zeros((num_crit,))
+    cent_freq = np.zeros((num_crit, ))
+    bandwidth = np.zeros((num_crit, ))
 
     cent_freq[0] = 50.0000
     bandwidth[0] = 70.0000
@@ -142,39 +151,65 @@ def fwSNRseg(cleanSig, enhancedSig, fs, frameLen=0.03, overlap=0.75):
     cent_freq[24] = 3597.63
     bandwidth[24] = 346.136
 
-    W = np.array([0.003, 0.003, 0.003, 0.007, 0.010, 0.016, 0.016, 0.017, 0.017, 0.022,
-                  0.027, 0.028, 0.030, 0.032, 0.034, 0.035, 0.037, 0.036, 0.036, 0.033,
-                  0.030, 0.029, 0.027, 0.026, 0.026])
+    W = np.array([
+        0.003, 0.003, 0.003, 0.007, 0.010, 0.016, 0.016, 0.017, 0.017, 0.022,
+        0.027, 0.028, 0.030, 0.032, 0.034, 0.035, 0.037, 0.036, 0.036, 0.033,
+        0.030, 0.029, 0.027, 0.026, 0.026
+    ])
 
     bw_min = bandwidth[0]
     min_factor = np.exp(-30.0 / (2.0 * 2.303))  # % -30 dB point of filter
 
-    all_f0 = np.zeros((num_crit,))
+    all_f0 = np.zeros((num_crit, ))
     crit_filter = np.zeros((num_crit, int(n_fftby2)))
     j = np.arange(0, n_fftby2)
 
     for i in range(num_crit):
         f0 = (cent_freq[i] / max_freq) * (n_fftby2)
-        all_f0[i] = np.floor(f0);
-        bw = (bandwidth[i] / max_freq) * (n_fftby2);
-        norm_factor = np.log(bw_min) - np.log(bandwidth[i]);
-        crit_filter[i, :] = np.exp(-11 * (((j - np.floor(f0)) / bw) ** 2) + norm_factor)
-        crit_filter[i, :] = crit_filter[i, :] * (crit_filter[i, :] > min_factor)
+        all_f0[i] = np.floor(f0)
+        bw = (bandwidth[i] / max_freq) * (n_fftby2)
+        norm_factor = np.log(bw_min) - np.log(bandwidth[i])
+        crit_filter[
+            i, :] = np.exp(-11 * (((j - np.floor(f0)) / bw)**2) + norm_factor)
+        crit_filter[
+            i, :] = crit_filter[i, :] * (crit_filter[i, :] > min_factor)
 
-    num_frames = len(cleanSig) / skiprate - (winlength / skiprate)  # number of frames
+    num_frames = len(cleanSig) / skiprate - (
+        winlength / skiprate
+    )  # number of frames
     start = 1  # starting sample
     # window     = 0.5*(1 - cos(2*pi*(1:winlength).T/(winlength+1)));
 
-    hannWin = 0.5 * (1 - np.cos(2 * np.pi * np.arange(1, winlength + 1) / (winlength + 1)))
-    f, t, Zxx = stft(cleanSig[0:int(num_frames) * skiprate + int(winlength - skiprate)], fs=fs, window=hannWin,
-                     nperseg=winlength, noverlap=winlength - skiprate, nfft=n_fft, detrend=False, return_onesided=True,
-                     boundary=None, padded=False)
+    hannWin = 0.5 * (
+        1 - np.cos(2 * np.pi * np.arange(1, winlength + 1) / (winlength + 1))
+    )
+    f, t, Zxx = stft(
+        cleanSig[0:int(num_frames) * skiprate + int(winlength - skiprate)],
+        fs=fs,
+        window=hannWin,
+        nperseg=winlength,
+        noverlap=winlength - skiprate,
+        nfft=n_fft,
+        detrend=False,
+        return_onesided=True,
+        boundary=None,
+        padded=False
+    )
     clean_spec = np.abs(Zxx)
     clean_spec = clean_spec[:-1, :]
     clean_spec = (clean_spec / clean_spec.sum(0))
-    f, t, Zxx = stft(enhancedSig[0:int(num_frames) * skiprate + int(winlength - skiprate)], fs=fs, window=hannWin,
-                     nperseg=winlength, noverlap=winlength - skiprate, nfft=n_fft, detrend=False, return_onesided=True,
-                     boundary=None, padded=False)
+    f, t, Zxx = stft(
+        enhancedSig[0:int(num_frames) * skiprate + int(winlength - skiprate)],
+        fs=fs,
+        window=hannWin,
+        nperseg=winlength,
+        noverlap=winlength - skiprate,
+        nfft=n_fft,
+        detrend=False,
+        return_onesided=True,
+        boundary=None,
+        padded=False
+    )
     enh_spec = np.abs(Zxx)
     enh_spec = enh_spec[:-1, :]
     enh_spec = (enh_spec / enh_spec.sum(0))
@@ -184,7 +219,7 @@ def fwSNRseg(cleanSig, enhancedSig, fs, frameLen=0.03, overlap=0.75):
     error_energy = np.power(clean_energy - processed_energy, 2)
     error_energy[error_energy < eps] = eps
     W_freq = np.power(clean_energy, gamma)
-    SNRlog = 10 * np.log10((clean_energy ** 2) / error_energy)
+    SNRlog = 10 * np.log10((clean_energy**2) / error_energy)
     fwSNR = np.sum(W_freq * SNRlog, 0) / np.sum(W_freq, 0)
     distortion = fwSNR.copy()
     distortion[distortion < -10] = -10
@@ -219,9 +254,9 @@ def lpcoeff(speech_frame, model_order):
         R.append(np.sum(first * second))
 
     # (2) Lev-Durbin
-    a = np.ones((model_order,))
-    E = np.zeros((model_order + 1,))
-    rcoeff = np.zeros((model_order,))
+    a = np.ones((model_order, ))
+    E = np.zeros((model_order + 1, ))
+    rcoeff = np.zeros((model_order, ))
     E[0] = R[0]
     for i in range(model_order):
         if i == 0:
@@ -253,18 +288,26 @@ def llr(clean_speech, processed_speech, fs, frameLen=0.03, overlap=0.75):
     eps = np.finfo(np.float64).eps
     alpha = 0.95
     winlength = round(frameLen * fs)  # window length in samples
-    skiprate = int(np.floor((1 - overlap) * frameLen * fs))  # window skip in samples
+    skiprate = int(
+        np.floor((1 - overlap) * frameLen * fs)
+    )  # window skip in samples
     if fs < 10000:
         P = 10  # LPC Analysis Order
     else:
         P = 16  # this could vary depending on sampling frequency.
 
-    hannWin = 0.5 * (1 - np.cos(2 * np.pi * np.arange(1, winlength + 1) / (winlength + 1)))
-    clean_speech_framed = extractOverlappedWindows(clean_speech, winlength, winlength - skiprate, hannWin)
-    processed_speech_framed = extractOverlappedWindows(processed_speech, winlength, winlength - skiprate, hannWin)
+    hannWin = 0.5 * (
+        1 - np.cos(2 * np.pi * np.arange(1, winlength + 1) / (winlength + 1))
+    )
+    clean_speech_framed = extractOverlappedWindows(
+        clean_speech, winlength, winlength - skiprate, hannWin
+    )
+    processed_speech_framed = extractOverlappedWindows(
+        processed_speech, winlength, winlength - skiprate, hannWin
+    )
     numFrames = clean_speech_framed.shape[0]
-    numerators = np.zeros((numFrames - 1,))
-    denominators = np.zeros((numFrames - 1,))
+    numerators = np.zeros((numFrames - 1, ))
+    denominators = np.zeros((numFrames - 1, ))
 
     for ii in range(numFrames - 1):
         A_clean, R_clean = lpcoeff(clean_speech_framed[ii, :], P)
@@ -311,14 +354,16 @@ def wss(clean_speech, processed_speech, fs, frameLen=0.03, overlap=0.75):
     clean_speech = clean_speech.astype(np.float64) + eps
     processed_speech = processed_speech.astype(np.float64) + eps
     winlength = round(frameLen * fs)  # window length in samples
-    skiprate = int(np.floor((1 - overlap) * frameLen * fs))  # window skip in samples
+    skiprate = int(
+        np.floor((1 - overlap) * frameLen * fs)
+    )  # window skip in samples
     max_freq = fs / 2  # maximum bandwidth
     num_crit = 25  # number of critical bands
-    n_fft = 2 ** np.ceil(np.log2(2 * winlength))
+    n_fft = 2**np.ceil(np.log2(2 * winlength))
     n_fftby2 = int(n_fft / 2)
 
-    cent_freq = np.zeros((num_crit,))
-    bandwidth = np.zeros((num_crit,))
+    cent_freq = np.zeros((num_crit, ))
+    bandwidth = np.zeros((num_crit, ))
 
     cent_freq[0] = 50.0000
     bandwidth[0] = 70.0000
@@ -371,14 +416,16 @@ def wss(clean_speech, processed_speech, fs, frameLen=0.03, overlap=0.75):
     cent_freq[24] = 3597.63
     bandwidth[24] = 346.136
 
-    W = np.array([0.003, 0.003, 0.003, 0.007, 0.010, 0.016, 0.016, 0.017, 0.017, 0.022, 0.027,
-                  0.028, 0.030, 0.032, 0.034, 0.035, 0.037, 0.036, 0.036, 0.033, 0.030, 0.029,
-                  0.027, 0.026, 0.026])
+    W = np.array([
+        0.003, 0.003, 0.003, 0.007, 0.010, 0.016, 0.016, 0.017, 0.017, 0.022,
+        0.027, 0.028, 0.030, 0.032, 0.034, 0.035, 0.037, 0.036, 0.036, 0.033,
+        0.030, 0.029, 0.027, 0.026, 0.026
+    ])
 
     bw_min = bandwidth[0]
     min_factor = np.exp(-30.0 / (2.0 * 2.303))  # % -30 dB point of filter
 
-    all_f0 = np.zeros((num_crit,))
+    all_f0 = np.zeros((num_crit, ))
     crit_filter = np.zeros((num_crit, int(n_fftby2)))
     j = np.arange(0, n_fftby2)
 
@@ -387,24 +434,49 @@ def wss(clean_speech, processed_speech, fs, frameLen=0.03, overlap=0.75):
         all_f0[i] = np.floor(f0)
         bw = (bandwidth[i] / max_freq) * (n_fftby2)
         norm_factor = np.log(bw_min) - np.log(bandwidth[i])
-        crit_filter[i, :] = np.exp(-11 * (((j - np.floor(f0)) / bw) ** 2) + norm_factor)
-        crit_filter[i, :] = crit_filter[i, :] * (crit_filter[i, :] > min_factor)
+        crit_filter[
+            i, :] = np.exp(-11 * (((j - np.floor(f0)) / bw)**2) + norm_factor)
+        crit_filter[
+            i, :] = crit_filter[i, :] * (crit_filter[i, :] > min_factor)
 
-    num_frames = len(clean_speech) / skiprate - (winlength / skiprate)  # number of frames
+    num_frames = len(clean_speech) / skiprate - (
+        winlength / skiprate
+    )  # number of frames
     start = 1  # starting sample
 
-    hannWin = 0.5 * (1 - np.cos(2 * np.pi * np.arange(1, winlength + 1) / (winlength + 1)))
-    scale = np.sqrt(1.0 / hannWin.sum() ** 2)
+    hannWin = 0.5 * (
+        1 - np.cos(2 * np.pi * np.arange(1, winlength + 1) / (winlength + 1))
+    )
+    scale = np.sqrt(1.0 / hannWin.sum()**2)
 
-    f, t, Zxx = stft(clean_speech[0:int(num_frames) * skiprate + int(winlength - skiprate)], fs=fs, window=hannWin,
-                     nperseg=winlength, noverlap=winlength - skiprate, nfft=n_fft, detrend=False, return_onesided=True,
-                     boundary=None, padded=False)
+    f, t, Zxx = stft(
+        clean_speech[0:int(num_frames) * skiprate + int(winlength - skiprate)],
+        fs=fs,
+        window=hannWin,
+        nperseg=winlength,
+        noverlap=winlength - skiprate,
+        nfft=n_fft,
+        detrend=False,
+        return_onesided=True,
+        boundary=None,
+        padded=False
+    )
     clean_spec = np.power(np.abs(Zxx) / scale, 2)
     clean_spec = clean_spec[:-1, :]
 
-    f, t, Zxx = stft(processed_speech[0:int(num_frames) * skiprate + int(winlength - skiprate)], fs=fs, window=hannWin,
-                     nperseg=winlength, noverlap=winlength - skiprate, nfft=n_fft, detrend=False, return_onesided=True,
-                     boundary=None, padded=False)
+    f, t, Zxx = stft(
+        processed_speech[0:int(num_frames) * skiprate +
+                         int(winlength - skiprate)],
+        fs=fs,
+        window=hannWin,
+        nperseg=winlength,
+        noverlap=winlength - skiprate,
+        nfft=n_fft,
+        detrend=False,
+        return_onesided=True,
+        boundary=None,
+        padded=False
+    )
     proc_spec = np.power(np.abs(Zxx) / scale, 2)
     proc_spec = proc_spec[:-1, :]
 
@@ -426,20 +498,30 @@ def wss(clean_speech, processed_speech, fs, frameLen=0.03, overlap=0.75):
     clean_loc_peaks = np.zeros_like(log_clean_energy_slope)
     proc_loc_peaks = np.zeros_like(log_proc_energy_slope)
     for ii in range(numFrames):
-        clean_loc_peaks[:, ii] = findLocPeaks(log_clean_energy_slope[:, ii], log_clean_energy[:, ii])
-        proc_loc_peaks[:, ii] = findLocPeaks(log_proc_energy_slope[:, ii], log_proc_energy[:, ii])
+        clean_loc_peaks[:, ii] = findLocPeaks(
+            log_clean_energy_slope[:, ii], log_clean_energy[:, ii]
+        )
+        proc_loc_peaks[:, ii] = findLocPeaks(
+            log_proc_energy_slope[:, ii], log_proc_energy[:, ii]
+        )
 
     Wmax_clean = Kmax / (Kmax + dBMax_clean - log_clean_energy[:-1, :])
-    Wlocmax_clean = Klocmax / (Klocmax + clean_loc_peaks - log_clean_energy[:-1, :])
+    Wlocmax_clean = Klocmax / (
+        Klocmax + clean_loc_peaks - log_clean_energy[:-1, :]
+    )
     W_clean = Wmax_clean * Wlocmax_clean
 
     Wmax_proc = Kmax / (Kmax + dBMax_processed - log_proc_energy[:-1])
-    Wlocmax_proc = Klocmax / (Klocmax + proc_loc_peaks - log_proc_energy[:-1, :])
+    Wlocmax_proc = Klocmax / (
+        Klocmax + proc_loc_peaks - log_proc_energy[:-1, :]
+    )
     W_proc = Wmax_proc * Wlocmax_proc
 
     W = (W_clean + W_proc) / 2.0
 
-    distortion = np.sum(W * (log_clean_energy_slope - log_proc_energy_slope) ** 2, axis=0)
+    distortion = np.sum(
+        W * (log_clean_energy_slope - log_proc_energy_slope)**2, axis=0
+    )
     distortion = distortion / np.sum(W, axis=0)
     distortion = np.sort(distortion)
     distortion = distortion[:int(round(len(distortion) * alpha))]
@@ -451,20 +533,26 @@ def pesq(clean_speech, processed_speech, fs):
         if fs == 8000:
             pesq_mos = pesq_inner(fs, clean_speech, processed_speech, 'nb')
             pesq_mos = 46607 / 14945 - (
-                    2000 * np.log(1 / (pesq_mos / 4 - 999 / 4000) - 1)) / 2989  # remap to raw pesq score
+                2000 * np.log(1 / (pesq_mos / 4 - 999 / 4000) - 1)
+            ) / 2989  # remap to raw pesq score
 
         elif fs == 16000:
             pesq_mos = pesq_inner(fs, clean_speech, processed_speech, 'wb')
         elif fs >= 16000:
             numSamples = round(len(clean_speech) / fs * 16000)
-            pesq_mos = pesq_inner(fs, resample(clean_speech, numSamples),
-                                  resample(processed_speech, numSamples), 'wb')
+            pesq_mos = pesq_inner(
+                fs, resample(clean_speech, numSamples),
+                resample(processed_speech, numSamples), 'wb'
+            )
         else:
             numSamples = round(len(clean_speech) / fs * 8000)
-            pesq_mos = pesq_inner(fs, resample(clean_speech, numSamples),
-                                  resample(processed_speech, numSamples), 'nb')
+            pesq_mos = pesq_inner(
+                fs, resample(clean_speech, numSamples),
+                resample(processed_speech, numSamples), 'nb'
+            )
             pesq_mos = 46607 / 14945 - (
-                    2000 * np.log(1 / (pesq_mos / 4 - 999 / 4000) - 1)) / 2989  # remap to raw pesq score
+                2000 * np.log(1 / (pesq_mos / 4 - 999 / 4000) - 1)
+            ) / 2989  # remap to raw pesq score
     except PesqError:
         return 0.0
     return pesq_mos
@@ -486,7 +574,6 @@ def composite(clean_speech, processed_speech, fs):
     Covl = 1.594 + 0.805 * pesq_mos - 0.512 * llr_mean - 0.007 * wss_dist
     Covl = np.max((1, Covl))
     Covl = np.min((5, Covl))  # limit values to [1, 5]
-
     '''Simplified version for fast debug'''
     # segSNR, Csig, Cbak, Covl = 0, 0, 0, 0
     return segSNR, pesq_mos, Csig, Cbak, Covl, Stoi
@@ -552,24 +639,51 @@ def compareone_load_wav(args):
 def compare_complex(esti_list, label_list, frame_list, feat_type='sqrt'):
     all_csig_list, all_cbak_list, all_covl_list, all_pesq_list, all_ssnr_list, all_stoi_list = [], [], [], [], [], []
     with torch.no_grad():
-        esti_mag, esti_phase = torch.norm(esti_list, dim=1), torch.atan2(esti_list[:, -1, :, :], esti_list[:, 0, :, :])
-        label_mag, label_phase = torch.norm(label_list, dim=1), torch.atan2(label_list[:, -1, :, :],
-                                                                            label_list[:, 0, :, :])
+        esti_mag, esti_phase = torch.norm(esti_list, dim=1), torch.atan2(
+            esti_list[:, -1, :, :], esti_list[:, 0, :, :]
+        )
+        label_mag, label_phase = torch.norm(label_list, dim=1), torch.atan2(
+            label_list[:, -1, :, :], label_list[:, 0, :, :]
+        )
         if feat_type == 'sqrt':
-            esti_mag = esti_mag ** 2
-            esti_com = torch.stack((esti_mag * torch.cos(esti_phase), esti_mag * torch.sin(esti_phase)), dim=1)
-            label_mag = label_mag ** 2
-            label_com = torch.stack((label_mag * torch.cos(label_phase), label_mag * torch.sin(label_phase)), dim=1)
+            esti_mag = esti_mag**2
+            esti_com = torch.stack((
+                esti_mag * torch.cos(esti_phase),
+                esti_mag * torch.sin(esti_phase)
+            ),
+                                   dim=1)
+            label_mag = label_mag**2
+            label_com = torch.stack((
+                label_mag * torch.cos(label_phase),
+                label_mag * torch.sin(label_phase)
+            ),
+                                    dim=1)
         elif feat_type == 'cubic':
-            esti_mag = esti_mag ** (10 / 3)
-            esti_com = torch.stack((esti_mag * torch.cos(esti_phase), esti_mag * torch.sin(esti_phase)), dim=1)
-            label_mag = label_mag ** (10 / 3)
-            label_com = torch.stack((label_mag * torch.cos(label_phase), label_mag * torch.sin(label_phase)), dim=1)
+            esti_mag = esti_mag**(10 / 3)
+            esti_com = torch.stack((
+                esti_mag * torch.cos(esti_phase),
+                esti_mag * torch.sin(esti_phase)
+            ),
+                                   dim=1)
+            label_mag = label_mag**(10 / 3)
+            label_com = torch.stack((
+                label_mag * torch.cos(label_phase),
+                label_mag * torch.sin(label_phase)
+            ),
+                                    dim=1)
         elif feat_type == 'log_1x':
             esti_mag = torch.exp(esti_mag) - 1
-            esti_com = torch.stack((esti_mag * torch.cos(esti_phase), esti_mag * torch.sin(esti_phase)), dim=1)
+            esti_com = torch.stack((
+                esti_mag * torch.cos(esti_phase),
+                esti_mag * torch.sin(esti_phase)
+            ),
+                                   dim=1)
             label_mag = torch.exp(label_mag) - 1
-            label_com = torch.stack((label_mag * torch.cos(label_phase), label_mag * torch.sin(label_phase)), dim=1)
+            label_com = torch.stack((
+                label_mag * torch.cos(label_phase),
+                label_mag * torch.sin(label_phase)
+            ),
+                                    dim=1)
         else:
             esti_com = esti_list
             label_com = label_list
@@ -577,15 +691,31 @@ def compare_complex(esti_list, label_list, frame_list, feat_type='sqrt'):
         utt_num = label_list.size()[0]
         for i in range(utt_num):
             # print("utt_num: ", i)
-            tf_esti = esti_com[i, :, :, :].unsqueeze(dim=0).permute(0, 3, 2, 1).cpu()
-            tf_esti_com = torch.complex(tf_esti[:, :, :, 0], tf_esti[:, :, :, 1])
-            t_esti = torch.istft(tf_esti_com, n_fft=320, hop_length=160, win_length=320,
-                                 window=torch.hann_window(320)).transpose(1, 0).squeeze(dim=-1).numpy()
-            tf_label = label_com[i, :, :, :].unsqueeze(dim=0).permute(0, 3, 2, 1).cpu()
-            tf_label_com = torch.complex(tf_label[:, :, :, 0], tf_label[:, :, :, 1])
-            t_label = torch.istft(tf_label_com, n_fft=320, hop_length=160, win_length=320,
-                                  window=torch.hann_window(320)).transpose(1, 0).squeeze(
-                dim=-1).numpy()
+            tf_esti = esti_com[i, :, :, :].unsqueeze(dim=0
+                                                    ).permute(0, 3, 2, 1).cpu()
+            tf_esti_com = torch.complex(
+                tf_esti[:, :, :, 0], tf_esti[:, :, :, 1]
+            )
+            t_esti = torch.istft(
+                tf_esti_com,
+                n_fft=320,
+                hop_length=160,
+                win_length=320,
+                window=torch.hann_window(320)
+            ).transpose(1, 0).squeeze(dim=-1).numpy()
+            tf_label = label_com[i, :, :, :].unsqueeze(dim=0
+                                                      ).permute(0, 3, 2,
+                                                                1).cpu()
+            tf_label_com = torch.complex(
+                tf_label[:, :, :, 0], tf_label[:, :, :, 1]
+            )
+            t_label = torch.istft(
+                tf_label_com,
+                n_fft=320,
+                hop_length=160,
+                win_length=320,
+                window=torch.hann_window(320)
+            ).transpose(1, 0).squeeze(dim=-1).numpy()
             t_len = (frame_list[i] - 1) * 160
             t_esti, t_label = t_esti[:t_len], t_label[:t_len]
             esti_utts.append(t_esti)
@@ -600,8 +730,10 @@ def compare_complex(esti_list, label_list, frame_list, feat_type='sqrt'):
             all_pesq_list.append(batch_result[3])
             all_ssnr_list.append(batch_result[4])
             all_stoi_list.append(batch_result[5])
-    return np.mean(all_csig_list), np.mean(all_cbak_list), np.mean(all_covl_list), np.mean(all_pesq_list), np.mean(
-        all_ssnr_list), np.mean(all_stoi_list)
+    return np.mean(all_csig_list), np.mean(all_cbak_list), np.mean(
+        all_covl_list
+    ), np.mean(all_pesq_list), np.mean(all_ssnr_list), np.mean(all_stoi_list)
+
 
 def load_jsonl(jsonl_path):
     data = {}
@@ -611,6 +743,7 @@ def load_jsonl(jsonl_path):
             data[item['audio_id']] = item['audio']
     return data
 
+
 def compare_jsonl(ref_jsonl, deg_jsonl, output_file, use_tqdm=True):
     from multiprocessing import cpu_count
     from multiprocessing import Pool
@@ -619,13 +752,21 @@ def compare_jsonl(ref_jsonl, deg_jsonl, output_file, use_tqdm=True):
     ref_dict = load_jsonl(ref_jsonl)
     deg_dict = load_jsonl(deg_jsonl)
     common_ids = sorted(set(ref_dict.keys()) & set(deg_dict.keys()))
-    args = [(ref_dict[audio_id], deg_dict[audio_id]) for audio_id in common_ids]
+    args = [(ref_dict[audio_id], deg_dict[audio_id])
+            for audio_id in common_ids]
 
     n = np.min([np.max([cpu_count() - 2, 1]), 20])
     pool = Pool(processes=n)
     import tqdm
     if use_tqdm:
-        res = list(tqdm.tqdm(pool.imap(compareone_load_wav, args), total=len(args), desc="Calculating", ncols=60))
+        res = list(
+            tqdm.tqdm(
+                pool.imap(compareone_load_wav, args),
+                total=len(args),
+                desc="Calculating",
+                ncols=60
+            )
+        )
     else:
         res = list(pool.imap(compareone_load_wav, args))
     pool.close()
@@ -637,7 +778,10 @@ def compare_jsonl(ref_jsonl, deg_jsonl, output_file, use_tqdm=True):
         f.write('time: %.3f\n' % (t2 - t1))
         f.write('ref= %s\n' % ref_jsonl)
         f.write('deg= %s\n' % deg_jsonl)
-        f.write('csig:%6.4f cbak:%6.4f covl:%6.4f pesq:%6.4f ssnr:%6.4f stoi:%6.4f\n' % tuple(pm))
+        f.write(
+            'csig:%6.4f cbak:%6.4f covl:%6.4f pesq:%6.4f ssnr:%6.4f stoi:%6.4f\n'
+            % tuple(pm)
+        )
     return res
 
 
@@ -654,13 +798,14 @@ def compare(refdir, degdir, uuid_jsonl, use_tqdm=True):
     pool = Pool(processes=n)
     reffiles = sorted(glob.glob('%s/*.wav' % refdir))
     degfiles = sorted(glob.glob('%s/*.wav' % degdir))
-    uuid2ref_audio_path = read_jsonl_to_mapping(uuid_jsonl,
-                                                key_col='UUID',
-                                                value_col='WavPath')
+    uuid2ref_audio_path = read_jsonl_to_mapping(
+        uuid_jsonl, key_col='UUID', value_col='WavPath'
+    )
 
     degfiles = sorted(
-    degfiles,
-    key=lambda p: uuid2ref_audio_path[os.path.splitext(os.path.basename(p))[0]]
+        degfiles,
+        key=lambda p: uuid2ref_audio_path[os.path.
+                                          splitext(os.path.basename(p))[0]]
     )
 
     assert len(reffiles) == len(degfiles)
@@ -669,9 +814,10 @@ def compare(refdir, degdir, uuid_jsonl, use_tqdm=True):
     args = list(zip(reffiles, degfiles))
     if use_tqdm:
         res = list(
-            tqdm.tqdm(pool.imap(compareone_load_wav, args),
-                      "Calculating",
-                      ncols=60))
+            tqdm.tqdm(
+                pool.imap(compareone_load_wav, args), "Calculating", ncols=60
+            )
+        )
     else:
         res = list(pool.imap(compareone_load_wav, args))
     pool.close()
@@ -684,7 +830,7 @@ if __name__ == "__main__":
     import sys, time
 
     t1 = time.time()
-    res = compare(sys.argv[1], sys.argv[2],sys.argv[3])
+    res = compare(sys.argv[1], sys.argv[2], sys.argv[3])
     t2 = time.time()
 
     pm = np.array([x[0:] for x in res])
@@ -693,8 +839,10 @@ if __name__ == "__main__":
     print('time: %.3f' % (t2 - t1))
     print('ref=', sys.argv[1])
     print('deg=', sys.argv[2])
-    print('csig:%6.4f cbak:%6.4f covl:%6.4f pesq:%6.4f ssnr:%6.4f stoi:%6.4f' % tuple(pm))
-
+    print(
+        'csig:%6.4f cbak:%6.4f covl:%6.4f pesq:%6.4f ssnr:%6.4f stoi:%6.4f' %
+        tuple(pm)
+    )
 
     # 指标列名
     headers = ['csig', 'cbak', 'covl', 'pesq', 'ssnr', 'stoi']

@@ -38,19 +38,19 @@ def main():
     if "exp_dir" in config:
         use_best = config.get("use_best", True)
         exp_dir = Path(config["exp_dir"])
-        #use best ckpt
-        if use_best:
+        if use_best:  # use best ckpt
             ckpt_path: Path = sorted((exp_dir / "checkpoints").iterdir()
                                     )[0] / "model.safetensors"
-        else:
-            # use last ckpt
+        else:  # use last ckpt
             ckpt_path: Path = sorted((exp_dir / "checkpoints").iterdir()
                                     )[-1] / "model.safetensors"
     elif "ckpt_dir" in config:
         ckpt_dir = Path(config["ckpt_dir"])
         ckpt_path = ckpt_dir / "model.safetensors"
         exp_dir = ckpt_dir.parent.parent
-    print(f'\n ckpt path:{ckpt_path}\n ')
+
+    print(f'\n ckpt path: {ckpt_path}\n ')
+
     exp_config = OmegaConf.load(exp_dir / "config.yaml")
     model: LoadPretrainedBase = hydra.utils.instantiate(exp_config["model"])
     state_dict = load_file(ckpt_path)

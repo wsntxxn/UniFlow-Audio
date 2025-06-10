@@ -1,4 +1,4 @@
-# Usage: 
+# Usage:
 # python evaluation/tta.py \
 #   --ref_audio_jsonl /cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/audiocaps/test/audio.jsonl \
 #   --ref_caption_jsonl  /cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/audiocaps/test/caption.jsonl \
@@ -14,8 +14,7 @@
 #   --gen_audio_jsonl /cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/audiocaps/test/audio.jsonl \
 #   --output_file evaluation/result/tta.jsonl \
 #   -c 16
-import sys
-sys.path.append('./')
+
 import torch
 import argparse
 from collections import defaultdict
@@ -28,7 +27,7 @@ import numpy as np
 import librosa
 from sklearn.metrics.pairwise import cosine_similarity
 from pathlib import Path
-from tqdm import tqdm 
+from tqdm import tqdm
 from copy import deepcopy
 
 # Ref: https://github.com/haoheliu/audioldm_eval/tree/main
@@ -41,12 +40,13 @@ import laion_clap
 
 from utils.general import read_jsonl_to_mapping
 
-
 import os
 import shutil
 from pathlib import Path
 
-CLAP_MODEL_PATH="/cpfs_shared/jiahao.mei/hf_home/hub/models--lukewys--laion_clap/snapshots/b3708341862f581175dba5c356a4ebf74a9b6651/630k-audioset-best.pt"
+CLAP_MODEL_PATH = "/cpfs_shared/jiahao.mei/hf_home/hub/models--lukewys--laion_clap/snapshots/b3708341862f581175dba5c356a4ebf74a9b6651/630k-audioset-best.pt"
+
+
 def create_symlink_folder(gen_folder_path: str) -> str:
     gen_folder = Path(gen_folder_path).resolve()
     parent_dir = gen_folder.parent
@@ -55,29 +55,34 @@ def create_symlink_folder(gen_folder_path: str) -> str:
     # 如果软链接目录已存在，先删除
     if link_folder.exists():
         shutil.rmtree(link_folder)
-    
+
     link_folder.mkdir()
 
     # 遍历原始目录中的所有文件，创建软链接
     for file in gen_folder.iterdir():
         if file.is_file():
-            link_name = link_folder / (file.stem[:12]+'.wav')  # 可自定义重命名逻辑
+            link_name = link_folder / (file.stem[:12] + '.wav')  # 可自定义重命名逻辑
             link_name.symlink_to(file.resolve())
 
     return str(link_folder)
 
+
 def compute_clap_metrics(entry: tuple[str, str, str], args):
     audio_id, ref_caption, gen_audio = entry
 
-    audio, _ = librosa.load(gen_audio, sr = 48000)         
+    audio, _ = librosa.load(gen_audio, sr=48000)
     with torch.no_grad():
-        text_embed = args.clap_scorer.get_text_embedding([ref_caption, ""], use_tensor=False)[:1]
-        audio_embed = args.clap_scorer.get_audio_embedding_from_data(x = audio.reshape(1, -1), use_tensor=False)
+        text_embed = args.clap_scorer.get_text_embedding([ref_caption, ""],
+                                                         use_tensor=False)[:1]
+        audio_embed = args.clap_scorer.get_audio_embedding_from_data(
+            x=audio.reshape(1, -1), use_tensor=False
+        )
         clap_sim = cosine_similarity(text_embed, audio_embed)
 
     return audio_id, {
         "CLAP_score": clap_sim,
     }
+
 
 def get_common_folder_path(audio_dict):
     """
@@ -91,44 +96,53 @@ def get_common_folder_path(audio_dict):
     is_same_folder -- Boolean indicating if all audios are in the same folder
     """
     if not audio_dict:
-        return None, False   
+        return None, False
     paths = list(audio_dict.values())
     parent_folders = [os.path.dirname(path) for path in paths]
     common_prefix = str(Path(os.path.commonpath(parent_folders)).resolve())
-    is_same_folder = all(parent == parent_folders[0] for parent in parent_folders)
-    
+    is_same_folder = all(
+        parent == parent_folders[0] for parent in parent_folders
+    )
+
     return common_prefix, is_same_folder
+
 
 def evaluate(args):
     """Calculate FAD, FD, KL, etc. socres."""
     ref_aid_to_audios = read_jsonl_to_mapping(
-        args.ref_audio_jsonl, "audio_id", "audio",base_path='/cpfs_shared/jiahao.mei/data/tta'
+        args.ref_audio_jsonl,
+        "audio_id",
+        "audio",
+        base_path='/cpfs_shared/jiahao.mei/data/tta'
     )
     gen_aid_to_audios = read_jsonl_to_mapping(
         args.gen_audio_jsonl, "audio_id", "audio"
     )
-    keys=deepcopy(list(ref_aid_to_audios.keys()))
+    keys = deepcopy(list(ref_aid_to_audios.keys()))
     for key in keys:
         if key not in gen_aid_to_audios:
             ref_aid_to_audios.pop(key)
-
-    
     """Calculate ldm eval score: FAD, FD, KL score"""
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     evaluator = EvaluationHelper(16000, args.device, backbone="cnn14")
-    gen_folder_path, gen_is_same_folder = get_common_folder_path(gen_aid_to_audios)
-    ref_folder_path, ref_is_same_folder = get_common_folder_path(ref_aid_to_audios)
+    gen_folder_path, gen_is_same_folder = get_common_folder_path(
+        gen_aid_to_audios
+    )
+    ref_folder_path, ref_is_same_folder = get_common_folder_path(
+        ref_aid_to_audios
+    )
     assert gen_is_same_folder == True, "Generated audio files must be in the same folder."
     assert ref_is_same_folder == True, "Reference audio files must be in the same folder."
-    gen_folder_path_symlink=create_symlink_folder(gen_folder_path)
-    eval_result = evaluator.main(gen_folder_path_symlink, ref_folder_path,recalculate=False)
+    gen_folder_path_symlink = create_symlink_folder(gen_folder_path)
+    eval_result = evaluator.main(
+        gen_folder_path_symlink, ref_folder_path, recalculate=False
+    )
 
     assert ref_aid_to_audios.keys() == gen_aid_to_audios.keys(
     ), "Reference and generated audio IDs do not match"
- 
+
     results = defaultdict(dict)
     results.update(eval_result)
-
     """The CLAP calculation still needs to be verified."""
 
     audio_ids = list(ref_aid_to_audios.keys())
@@ -137,10 +151,10 @@ def evaluate(args):
     )
     entries = [(aid, ref_aid_to_captions[aid], gen_aid_to_audios[aid])
                for aid in audio_ids]
-    
+
     clap_scorer = laion_clap.CLAP_Module(enable_fusion=False)
     # If CLAP fails to load, set verbose=False to True to check errors.
-    clap_scorer.load_ckpt(ckpt=CLAP_MODEL_PATH,verbose=False)
+    clap_scorer.load_ckpt(ckpt=CLAP_MODEL_PATH, verbose=False)
     clap_scorer.eval()
     args.clap_scorer = clap_scorer
 
@@ -154,7 +168,7 @@ def evaluate(args):
         ):
             for metric, value in metrics.items():
                 results[metric][audio_id] = value
-    # Sequential           
+    # Sequential
     # for entry in entries:
     #     audio_id, metrics = compute_clap_metrics(entry, args)
     #     for metric, value in metrics.items():
@@ -176,11 +190,10 @@ def evaluate(args):
                 print_msg = f"{metric}: {values:.3f}"
                 print(print_msg)
                 print(print_msg, file=writer)
-            
-    
+
 
 if __name__ == '__main__':
-    multiprocessing.set_start_method('spawn', force=True) 
+    multiprocessing.set_start_method('spawn', force=True)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -224,7 +237,7 @@ if __name__ == '__main__':
         action="store_true",
         help="calculate and store CLAP score for each audio clip"
     )
-    
+
     args = parser.parse_args()
 
     evaluate(args)

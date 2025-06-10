@@ -16,9 +16,11 @@ def main(args):
 
     for audio_file in tqdm(files):
         audio_id = audio_file.stem
+        if audio_id not in aid_to_video:
+            continue
         video_file = aid_to_video[audio_id]
         output_file = output_dir / f"{audio_id}.mp4"
-        merge_audio_video(audio_file, video_file, output_file)
+        merge_audio_video(audio_file, video_file, output_file, args.backend)
 
 
 if __name__ == '__main__':
@@ -37,6 +39,12 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "--output_dir", type=str, required=True, help="output directory"
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["moviepy", "ffmpeg"],
+        default="ffmpeg",
+        help="backend for merging audio and video"
     )
     args = parser.parse_args()
     main(args)

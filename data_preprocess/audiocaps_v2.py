@@ -22,7 +22,7 @@ parser.add_argument(
     "--tango_test_ref",
     type=str,
     default="/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/"
-    "XToAudioGeneration-master/data_preprocess/audiocaps_tango/"
+    "XToAudioGeneration-master-v1/data_preprocess/audiocaps_tango/"
     "tango_raw_data/test_audiocaps_subset.json"
 )
 args = parser.parse_args()
@@ -54,7 +54,7 @@ for split in ["train", "val", "test"]:
     (TARGET_AUDIOCAPS_DIR / split).mkdir(parents=True, exist_ok=True)
     processed_aids = set()
     with open(TARGET_AUDIOCAPS_DIR / split / "audio.jsonl", "w") as audio_writer, \
-        open(TARGET_AUDIOCAPS_DIR / split / "text.jsonl", "w") as text_writer:
+        open(TARGET_AUDIOCAPS_DIR / split / "caption.jsonl", "w") as text_writer:
         for i, row in data_df.iterrows():
             youtube_id = row["youtube_id"]
             audio_id = f"Y{youtube_id}.wav"
@@ -65,12 +65,10 @@ for split in ["train", "val", "test"]:
             if audio_id in processed_aids:
                 continue
             audio_writer.write(
-                json.dumps(
-                    {
-                        "audio_id": audio_id,
-                        "audio": aid_to_h5path[audio_id]
-                    }
-                ) + "\n"
+                json.dumps({
+                    "audio_id": audio_id,
+                    "audio": aid_to_h5path[audio_id]
+                }) + "\n"
             )
             if split == "test":
                 caption = test_tango_ref[audio_id]
@@ -79,7 +77,7 @@ for split in ["train", "val", "test"]:
             text_writer.write(
                 json.dumps({
                     "audio_id": audio_id,
-                    "text": caption
+                    "caption": caption
                 }) + "\n"
             )
             processed_aids.add(audio_id)

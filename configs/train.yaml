@@ -1,6 +1,6 @@
 defaults:
   - basic
-  - model@model: diffusion
+  - model: diffusion
   - data@data_dict: train_val
   - loss@loss_fn: weighted_sum
   - _self_
@@ -46,7 +46,7 @@ gradient_accumulation_steps: 1
 
 optimizer:
   _target_: torch.optim.AdamW
-  lr: !!float 1e-4
+  lr: !!float 5e-5
   weight_decay: 0.01
 
 lr_scheduler:
@@ -66,11 +66,14 @@ trainer:
   epoch_length: ${epoch_length}
   save_last_k: 2
   early_stop: Null
+  logger: tensorboard
   wandb_config:
     _target_: trainer.WandbConfig
-    project: x_to_audio_generation
+    # project: x_to_audio_generation
+    project: runs
     save_dir: ${exp_dir}
     name: ${exp_name}
+    resume_id: Null
   metric_monitor:
     _target_: trainer.MetricMonitor
     metric_name: loss
