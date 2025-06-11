@@ -1,5 +1,6 @@
-from torch.utils.data import Sampler, BatchSampler
+import math
 import numpy as np
+from torch.utils.data import Sampler, BatchSampler
 
 from data_module.dataset import TaskGroupedAudioGenConcatDataset
 
@@ -52,7 +53,7 @@ class TaskIteratingSampler(Sampler):
         return max(self.task_data_sizes.values())
 
 
-class TaskGroupedBatchSampler(BatchSampler):
+class TaskGroupedIteratingBatchSampler(BatchSampler):
     """
     Batch sampler that yields batches whose samples all come from the
     same task. Tasks are visited round-robin: batch1 (task1), batch2 (task2),
@@ -114,3 +115,63 @@ class TaskGroupedBatchSampler(BatchSampler):
     def __len__(self):
         # unused for an infinite sampler
         return max(self.task_data_sizes.values()) // self.batch_size
+
+
+class TaskGroupedSequentialBatchSampler(BatchSampler):
+    """
+    Batch sampler that yields batches whose samples all come from the
+    same task. 
+    """
+    def __init__(
+        self,
+        data_source: TaskGroupedAudioGenConcatDataset,
+        batch_size: int,
+        shuffle: bool = True,
+        drop_last: bool = False,
+    ):
+        if batch_size <= 0:
+            raise ValueError("batch_size must be a positive int")
+
+        self.tasks: list[str] = list(data_source.tasks)
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.drop_last = drop_last
+
+        self.task_data_idxs: dict[str, np.ndarray] = {}
+        self.task_data_sizes: dict[str, int] = {}
+        self.task_data_ptr: dict[str, int] = {}
+
+        for task in self.tasks:
+            size = int(data_source.task_to_cum_sum_lengths[task][-1])
+            self.task_data_sizes[task] = size
+            self.task_data_ptr[task] = 0
+
+            idxs = np.arange(size, dtype=np.int64)
+            if shuffle:
+                np.random.shuffle(idxs)
+            self.task_data_idxs[task] = idxs
+
+        self._num_batches = 0
+        for size in self.task_data_sizes.values():
+            if drop_last:
+                self._num_batches += size // batch_size
+            else:
+                self._num_batches += math.ceil(size / batch_size)
+
+    def __iter__(self):
+        for task in self.tasks:  # 顺序遍历 task
+            idxs = self.task_data_idxs[task]
+            size = self.task_data_sizes[task]
+            ptr = 0
+
+            while ptr < size:
+                end = min(ptr + self.batch_size, size)
+                batch_idxs = idxs[ptr:end]
+                if len(batch_idxs) < self.batch_size and self.drop_last:
+                    break
+
+                yield [(task, idx) for idx in batch_idxs]
+                ptr = end
+
+    def __len__(self) -> int:
+        return self._num_batches

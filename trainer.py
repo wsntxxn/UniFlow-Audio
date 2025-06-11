@@ -6,7 +6,7 @@ from pathlib import Path
 from dataclasses import dataclass
 
 import numpy as np
-from tqdm import trange
+from tqdm import trange, tqdm
 from torchdata.stateful_dataloader import StatefulDataLoader
 from torch.utils.data import DataLoader
 import torch.distributed as dist
@@ -167,8 +167,17 @@ class Trainer(CheckpointMixin):
 
         self.on_validation_start()
 
+        pbar = tqdm(
+            total=len(self.val_dataloader),
+            desc="Validation",
+            disable=not self.accelerator.is_local_main_process
+        )
+
         for batch_idx, batch in enumerate(self.val_dataloader):
             self.validation_step(batch, batch_idx)
+            pbar.update()
+
+        pbar.close()
 
         self.on_validation_end()
         self.model.train()

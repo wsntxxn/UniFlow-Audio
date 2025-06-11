@@ -21,7 +21,7 @@ from trainer import Trainer
 register_omegaconf_resolvers()
 
 
-def setup_train_dataloader_args(config: dict):
+def setup_dataloader_args(config: dict):
     args = {}
     if "sampler" in config:
         data_source = hydra.utils.instantiate(
@@ -31,6 +31,7 @@ def setup_train_dataloader_args(config: dict):
             config["sampler"], data_source=data_source, _convert_="all"
         )
         args["sampler"] = sampler
+        config.pop("sampler")
     elif "batch_sampler" in config:
         data_source = hydra.utils.instantiate(
             config["dataset"], _convert_="all"
@@ -39,6 +40,7 @@ def setup_train_dataloader_args(config: dict):
             config["batch_sampler"], data_source=data_source, _convert_="all"
         )
         args["batch_sampler"] = batch_sampler
+        config.pop("batch_sampler")
     return args
 
 
@@ -64,12 +66,13 @@ def main():
     state = PartialState()
 
     model: CountParamsBase = hydra.utils.instantiate(config["model"])
-    train_data_args = setup_train_dataloader_args(config["train_dataloader"])
+    train_data_args = setup_dataloader_args(config["train_dataloader"])
     train_dataloader = hydra.utils.instantiate(
         config["train_dataloader"], **train_data_args, _convert_="all"
     )
+    val_data_args = setup_dataloader_args(config["val_dataloader"])
     val_dataloader = hydra.utils.instantiate(
-        config["val_dataloader"], _convert_="all"
+        config["val_dataloader"], **val_data_args, _convert_="all"
     )
     optimizer = hydra.utils.instantiate(
         config["optimizer"], params=model.parameters(), _convert_="all"

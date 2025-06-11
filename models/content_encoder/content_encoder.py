@@ -167,7 +167,7 @@ class BatchedContentEncoder(ContentEncoder):
         if task == "audio_super_resolution" or task == "speech_enhancement":
             content_dict = {
                 "waveform":
-                    batch_content["content"].float().to(device),
+                    batch_content["content"].unsqueeze(1).float().to(device),
                 "waveform_lengths":
                     batch_content["content_lengths"].long().to(device),
             }
@@ -196,7 +196,7 @@ class BatchedContentEncoder(ContentEncoder):
                 "is_slur":
                     batch_content["is_slur"].long().to(device),
                 "lengths":
-                    batch_content["phoneme_lengths"].long().to(device),
+                    batch_content["phoneme_lengths"].long().cpu(),
             }
             if "spk" in batch_content:
                 if self.midi_encoder.spk_config.encoding_format == "id":
@@ -210,7 +210,7 @@ class BatchedContentEncoder(ContentEncoder):
         elif task == "text_to_speech":
             content_dict = {
                 "phoneme": batch_content["phoneme"].long().to(device),
-                "lengths": batch_content["phoneme_lengths"].long().to(device),
+                "lengths": batch_content["phoneme_lengths"].long().cpu(),
             }
             if "spk" in batch_content:
                 if self.phoneme_encoder.spk_config.encoding_format == "id":

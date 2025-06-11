@@ -512,7 +512,7 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
         else:
             frame_num = content.size(1) // self.downsampling_ratio
         duration_value = self.downsampling_ratio / self.target_sr
-        duration = np.full(frame_num, duration_value)
+        duration = np.full(frame_num, duration_value, dtype=np.float32)
         return duration
 
     def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
@@ -608,7 +608,7 @@ class TaskGroupedAudioGenConcatDataset(Dataset):
 if __name__ == '__main__':
 
     from tqdm import tqdm
-    from data_module.sampler import TaskIteratingSampler, TaskGroupedBatchSampler
+    from data_module.sampler import TaskIteratingSampler, TaskGroupedBatchSampler, TaskGroupedSequentialBatchSampler
     from data_module.collate_function import PaddingCollate, PaddingCollateWithAnyContent
 
     dataset = TaskGroupedAudioGenConcatDataset(
@@ -653,9 +653,9 @@ if __name__ == '__main__':
             ),
             VideoToAudioDataset(
                 content=
-                "/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/train/content.jsonl",
+                "/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/val/content.jsonl",
                 audio=
-                "/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/train/audio.jsonl",
+                "/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/val/audio.jsonl",
                 video_fps=10,
                 target_sr=24000,
                 task_instruction=
@@ -664,8 +664,8 @@ if __name__ == '__main__':
         ]
     )
     # sampler = TaskIteratingSampler(dataset, shuffle=True)
-    batch_sampler = TaskGroupedBatchSampler(
-        dataset, batch_size=4, shuffle=True
+    batch_sampler = TaskGroupedSequentialBatchSampler(
+        dataset, batch_size=16, shuffle=False
     )
 
     collate_fn = PaddingCollateWithAnyContent(
@@ -679,6 +679,7 @@ if __name__ == '__main__':
     dataloader = torch.utils.data.DataLoader(
         dataset,
         collate_fn=collate_fn,
+        num_workers=8,
         # sampler=sampler,
         # batch_size=4,
         batch_sampler=batch_sampler
