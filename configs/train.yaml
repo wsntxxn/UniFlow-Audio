@@ -1,6 +1,6 @@
 defaults:
   - basic
-  - model: flow_matching
+  - model: flow_matching_small
   - data@data_dict: train_val
   - loss@loss_fn: weighted_sum
   - _self_

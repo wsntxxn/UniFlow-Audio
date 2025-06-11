@@ -608,8 +608,8 @@ class TaskGroupedAudioGenConcatDataset(Dataset):
 if __name__ == '__main__':
 
     from tqdm import tqdm
-    from data_module.sampler import TaskIteratingSampler
-    from data_module.collate_function import PaddingCollate
+    from data_module.sampler import TaskIteratingSampler, TaskGroupedBatchSampler
+    from data_module.collate_function import PaddingCollate, PaddingCollateWithAnyContent
 
     dataset = TaskGroupedAudioGenConcatDataset(
         datasets=[
@@ -650,16 +650,38 @@ if __name__ == '__main__':
                 task_instruction=
                 "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
                 instruction_idx=1
+            ),
+            VideoToAudioDataset(
+                content=
+                "/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/train/content.jsonl",
+                audio=
+                "/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/train/audio.jsonl",
+                video_fps=10,
+                target_sr=24000,
+                task_instruction=
+                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
             )
         ]
     )
-    sampler = TaskIteratingSampler(dataset, shuffle=True)
+    # sampler = TaskIteratingSampler(dataset, shuffle=True)
+    batch_sampler = TaskGroupedBatchSampler(
+        dataset, batch_size=4, shuffle=True
+    )
 
-    collate_fn = PaddingCollate(
-        pad_keys=["waveform", "duration", "instruction"]
+    collate_fn = PaddingCollateWithAnyContent(
+        pad_keys=["waveform", "duration", "instruction"],
+        content_pad_keys=[
+            "phoneme", "phoneme_duration", "midi", "midi_duration", "is_slur",
+            "frames"
+        ],
+        content_torchify_keys=["spk"]
     )
     dataloader = torch.utils.data.DataLoader(
-        dataset, collate_fn=collate_fn, batch_size=4, sampler=sampler
+        dataset,
+        collate_fn=collate_fn,
+        # sampler=sampler,
+        # batch_size=4,
+        batch_sampler=batch_sampler
     )
 
     batch_idx = 0

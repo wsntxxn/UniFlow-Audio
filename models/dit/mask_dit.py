@@ -437,29 +437,27 @@ class UDiT(nn.Module):
             raise NotImplementedError
 
         logger.info(f'use long skip connection: {skip}')
-        self.in_blocks = nn.ModuleList(
-            [
-                DiTBlock(
-                    dim=embed_dim,
-                    context_dim=context_dim,
-                    num_heads=num_heads,
-                    mlp_ratio=mlp_ratio,
-                    qkv_bias=qkv_bias,
-                    qk_scale=qk_scale,
-                    qk_norm=qk_norm,
-                    act_layer=act_layer,
-                    norm_layer=norm_layer,
-                    time_fusion=time_fusion,
-                    ada_sola_rank=ada_sola_rank,
-                    ada_sola_alpha=ada_sola_alpha,
-                    skip=False,
-                    skip_norm=False,
-                    rope_mode=self.rope,
-                    context_norm=context_norm,
-                    use_checkpoint=use_checkpoint
-                ) for _ in range(depth // 2)
-            ]
-        )
+        self.in_blocks = nn.ModuleList([
+            DiTBlock(
+                dim=embed_dim,
+                context_dim=context_dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                qk_scale=qk_scale,
+                qk_norm=qk_norm,
+                act_layer=act_layer,
+                norm_layer=norm_layer,
+                time_fusion=time_fusion,
+                ada_sola_rank=ada_sola_rank,
+                ada_sola_alpha=ada_sola_alpha,
+                skip=False,
+                skip_norm=False,
+                rope_mode=self.rope,
+                context_norm=context_norm,
+                use_checkpoint=use_checkpoint
+            ) for _ in range(depth // 2)
+        ])
 
         self.mid_block = DiTBlock(
             dim=embed_dim,
@@ -481,29 +479,27 @@ class UDiT(nn.Module):
             use_checkpoint=use_checkpoint
         )
 
-        self.out_blocks = nn.ModuleList(
-            [
-                DiTBlock(
-                    dim=embed_dim,
-                    context_dim=context_dim,
-                    num_heads=num_heads,
-                    mlp_ratio=mlp_ratio,
-                    qkv_bias=qkv_bias,
-                    qk_scale=qk_scale,
-                    qk_norm=qk_norm,
-                    act_layer=act_layer,
-                    norm_layer=norm_layer,
-                    time_fusion=time_fusion,
-                    ada_sola_rank=ada_sola_rank,
-                    ada_sola_alpha=ada_sola_alpha,
-                    skip=skip,
-                    skip_norm=skip_norm,
-                    rope_mode=self.rope,
-                    context_norm=context_norm,
-                    use_checkpoint=use_checkpoint
-                ) for _ in range(depth // 2)
-            ]
-        )
+        self.out_blocks = nn.ModuleList([
+            DiTBlock(
+                dim=embed_dim,
+                context_dim=context_dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                qk_scale=qk_scale,
+                qk_norm=qk_norm,
+                act_layer=act_layer,
+                norm_layer=norm_layer,
+                time_fusion=time_fusion,
+                ada_sola_rank=ada_sola_rank,
+                ada_sola_alpha=ada_sola_alpha,
+                skip=skip,
+                skip_norm=skip_norm,
+                rope_mode=self.rope,
+                context_norm=context_norm,
+                use_checkpoint=use_checkpoint
+            ) for _ in range(depth // 2)
+        ])
 
         # FinalLayer block
         self.use_conv = use_conv
@@ -560,7 +556,7 @@ class UDiT(nn.Module):
         # Basic init for all layers
         def _basic_init(module):
             if isinstance(module, nn.Linear):
-                torch.nn.init.xavier_uniform_(module.weight)
+                nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     nn.init.constant_(module.bias, 0)
 
@@ -677,14 +673,11 @@ class UDiT(nn.Module):
             time_token = self.time_pe(time_token)
             x = torch.cat((time_token, x), dim=1)
             if x_mask is not None:
-                x_mask = torch.cat(
-                    [
-                        torch.ones(
-                            B, time_token.shape[1], device=x_mask.device
-                        ).bool(), x_mask
-                    ],
-                    dim=1
-                )
+                x_mask = torch.cat([
+                    torch.ones(B, time_token.shape[1],
+                               device=x_mask.device).bool(), x_mask
+                ],
+                                   dim=1)
             time_token = None
 
         skips = []

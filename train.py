@@ -21,6 +21,27 @@ from trainer import Trainer
 register_omegaconf_resolvers()
 
 
+def setup_train_dataloader_args(config: dict):
+    args = {}
+    if "sampler" in config:
+        data_source = hydra.utils.instantiate(
+            config["dataset"], _convert_="all"
+        )
+        sampler = hydra.utils.instantiate(
+            config["sampler"], data_source=data_source, _convert_="all"
+        )
+        args["sampler"] = sampler
+    elif "batch_sampler" in config:
+        data_source = hydra.utils.instantiate(
+            config["dataset"], _convert_="all"
+        )
+        batch_sampler = hydra.utils.instantiate(
+            config["batch_sampler"], data_source=data_source, _convert_="all"
+        )
+        args["batch_sampler"] = batch_sampler
+    return args
+
+
 def main():
 
     configs = []
@@ -43,22 +64,10 @@ def main():
     state = PartialState()
 
     model: CountParamsBase = hydra.utils.instantiate(config["model"])
-    if "sampler" in config["train_dataloader"]:
-        data_source = hydra.utils.instantiate(
-            config["train_dataloader"]["dataset"], _convert_="all"
-        )
-        sampler = hydra.utils.instantiate(
-            config["train_dataloader"]["sampler"],
-            data_source=data_source,
-            _convert_="all"
-        )
-        train_dataloader = hydra.utils.instantiate(
-            config["train_dataloader"], sampler=sampler, _convert_="all"
-        )
-    else:
-        train_dataloader = hydra.utils.instantiate(
-            config["train_dataloader"], _convert_="all"
-        )
+    train_data_args = setup_train_dataloader_args(config["train_dataloader"])
+    train_dataloader = hydra.utils.instantiate(
+        config["train_dataloader"], **train_data_args, _convert_="all"
+    )
     val_dataloader = hydra.utils.instantiate(
         config["val_dataloader"], _convert_="all"
     )

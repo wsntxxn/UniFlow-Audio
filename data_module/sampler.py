@@ -1,4 +1,4 @@
-from torch.utils.data import Sampler
+from torch.utils.data import Sampler, BatchSampler
 import numpy as np
 
 from data_module.dataset import TaskGroupedAudioGenConcatDataset
@@ -50,3 +50,67 @@ class TaskIteratingSampler(Sampler):
     def __len__(self):
         # unused for an infinite sampler
         return max(self.task_data_sizes.values())
+
+
+class TaskGroupedBatchSampler(BatchSampler):
+    """
+    Batch sampler that yields batches whose samples all come from the
+    same task. Tasks are visited round-robin: batch1 (task1), batch2 (task2),
+    It is *infinite*; stop when the enclosing `DataLoader` has produced enough batches.
+    """
+    def __init__(
+        self,
+        data_source: TaskGroupedAudioGenConcatDataset,
+        batch_size: int,
+        shuffle: bool = True,
+    ):
+        if batch_size <= 0:
+            raise ValueError("batch_size must be a positive int")
+
+        self.tasks = data_source.tasks  # e.g. ["task1", "task2", ...]
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+        self.task_data_ptr = {}
+        self.task_data_sizes = {}
+        self.task_data_idxs = {}
+
+        for task in self.tasks:
+            self.task_data_ptr[task] = 0
+            self.task_data_sizes[task] = int(
+                data_source.task_to_cum_sum_lengths[task][-1]
+            )
+            self.task_data_idxs[task] = np.arange(self.task_data_sizes[task])
+            if shuffle:
+                np.random.shuffle(self.task_data_idxs[task])
+
+    def __iter__(self):
+        task_ptr = 0
+        num_tasks = len(self.tasks)
+
+        while True:
+            task = self.tasks[task_ptr]
+            idx_list = self.task_data_idxs[task]
+            data_ptr = self.task_data_ptr[task]
+
+            # build a batch with all samples from the same task
+            batch = []
+            for _ in range(self.batch_size):
+                batch.append((task, idx_list[data_ptr]))
+
+                # advance pointer
+                data_ptr = (data_ptr + 1) % self.task_data_sizes[task]
+                if data_ptr == 0 and self.shuffle:  # epoch over for this task
+                    np.random.shuffle(self.task_data_idxs[task])
+
+            # update `task_data_ptr`
+            self.task_data_ptr[task] = data_ptr
+
+            yield batch
+
+            # advance to next task
+            task_ptr = (task_ptr + 1) % num_tasks
+
+    def __len__(self):
+        # unused for an infinite sampler
+        return max(self.task_data_sizes.values()) // self.batch_size

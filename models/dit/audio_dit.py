@@ -12,7 +12,7 @@ from .modules import (
 )
 
 
-class AudioDiTBlock(DiTBlock):
+class LayerFusionDiTBlock(DiTBlock):
     """
     A modified DiT block with time aligned context add to latent.
     """
@@ -200,7 +200,7 @@ class AudioDiTBlock(DiTBlock):
         return x
 
 
-class AudioUDiT(UDiT):
+class LayerFusionAudioDiT(UDiT):
     def __init__(
         self,
         img_size=224,
@@ -345,7 +345,7 @@ class AudioUDiT(UDiT):
             raise NotImplementedError
 
         self.in_blocks = nn.ModuleList([
-            AudioDiTBlock(
+            LayerFusionDiTBlock(
                 dim=embed_dim,
                 ta_context_dim=ta_context_dim,
                 ta_context_fusion=ta_context_fusion,
@@ -369,7 +369,7 @@ class AudioUDiT(UDiT):
             ) for i in range(depth // 2)
         ])
 
-        self.mid_block = AudioDiTBlock(
+        self.mid_block = LayerFusionDiTBlock(
             dim=embed_dim,
             ta_context_dim=ta_context_dim,
             context_dim=context_dim,
@@ -393,7 +393,7 @@ class AudioUDiT(UDiT):
         )
 
         self.out_blocks = nn.ModuleList([
-            AudioDiTBlock(
+            LayerFusionDiTBlock(
                 dim=embed_dim,
                 ta_context_dim=ta_context_dim,
                 context_dim=context_dim,
@@ -555,3 +555,95 @@ class AudioUDiT(UDiT):
         x = self.final_block(x, time_ada=time_ada_final, extras=self.extras)
 
         return x
+
+
+class InputFusionAudioDiT(UDiT):
+    def __init__(
+        self,
+        img_size=224,
+        patch_size=16,
+        in_chans=3,
+        input_type='2d',
+        out_chans=None,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        mlp_ratio=4,
+        qkv_bias=False,
+        qk_scale=None,
+        qk_norm=None,
+        act_layer='gelu',
+        norm_layer='layernorm',
+        context_norm=False,
+        use_checkpoint=False,
+        time_fusion='token',
+        ada_sola_rank=None,
+        ada_sola_alpha=None,
+        cls_dim=None,
+        ta_context_dim=768,
+        context_dim=768,
+        context_fusion='concat',
+        context_max_length=128,
+        context_pe_method='sinu',
+        pe_method='abs',
+        rope_mode='none',
+        use_conv=True,
+        skip=True,
+        skip_norm=True
+    ):
+        super().__init__(
+            img_size,
+            patch_size,
+            in_chans,
+            input_type,
+            out_chans,
+            embed_dim,
+            depth,
+            num_heads,
+            mlp_ratio,
+            qkv_bias,
+            qk_scale,
+            qk_norm,
+            act_layer,
+            norm_layer,
+            context_norm,
+            use_checkpoint,
+            time_fusion,
+            ada_sola_rank,
+            ada_sola_alpha,
+            cls_dim,
+            context_dim,
+            context_fusion,
+            context_max_length,
+            context_pe_method,
+            pe_method,
+            rope_mode,
+            use_conv,
+            skip,
+            skip_norm,
+        )
+        self.input_proj = nn.Linear(in_chans + ta_context_dim, in_chans)
+        nn.init.xavier_uniform_(self.input_proj.weight)
+        nn.init.constant_(self.input_proj.bias, 0)
+
+    def forward(
+        self,
+        x,
+        timesteps,
+        time_aligned_context,
+        context,
+        x_mask=None,
+        context_mask=None,
+        cls_token=None,
+        controlnet_skips=None
+    ):
+        x = self.input_proj(torch.cat([x, time_aligned_context], dim=-1))
+        return super().forward(
+            x=x,
+            timesteps=timesteps,
+            context=context,
+            x_mask=x_mask,
+            context_mask=context_mask,
+            cls_token=cls_token,
+            controlnet_skips=controlnet_skips
+        )

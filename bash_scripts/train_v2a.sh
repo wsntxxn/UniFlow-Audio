@@ -7,4 +7,6 @@ accelerate launch --config_file configs/accelerate/nvidia/4gpus.yaml train.py \
     data@data_dict=v2a_vggsound_clip \
     epoch_length=2000 \
     epochs=100 \
-    ~trainer.wandb_config
+    trainer.logger=wandb \
+    ~trainer.wandb_config \
+    +trainer.resume_from_checkpoint=experiments/vggsound_dummy_content_fm/checkpoints/epoch_53
