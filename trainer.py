@@ -15,6 +15,7 @@ import torch.nn as nn
 from accelerate.utils import set_seed, broadcast
 from accelerate import DistributedDataParallelKwargs
 import wandb
+from swanlab.integration.accelerate import SwanLabTracker
 
 from utils.accelerate_utilities import AcceleratorSaveTrainableParams
 
@@ -119,8 +120,16 @@ class Trainer(CheckpointMixin):
 
     def setup_accelerator(self) -> None:
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+        if self.logger == "swanlab" and self.wandb_config is not None:
+            tracker = SwanLabTracker(
+                run_name=self.wandb_config.project,
+                experiment_name=self.wandb_config.name
+            )
+        else:
+            tracker = self.logger
+
         self.accelerator = AcceleratorSaveTrainableParams(
-            log_with=self.logger,
+            log_with=tracker,
             gradient_accumulation_steps=self.gradient_accumulation_steps,
             project_dir=self.project_dir,
             step_scheduler_with_optimizer=(

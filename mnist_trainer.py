@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 from dataclasses import dataclass
 import random
 import datetime
@@ -31,14 +32,14 @@ class RandomNaNDatasetWrapper(torch.utils.data.Dataset):
 def create_dataloaders(batch_size=64):
     transform = transforms.Compose([transforms.ToTensor()])
     ds_train = torchvision.datasets.MNIST(
-        root="/mnt/cloudstorfs/sjtu_home/xuenan.xu/data/mnist",
+        root=os.path.expanduser("~/data/mnist"),
         train=True,
         download=True,
         transform=transform
     )
     # ds_train = RandomNaNDatasetWrapper(ds_train, p=0.001)
     ds_val = torchvision.datasets.MNIST(
-        root="/mnt/cloudstorfs/sjtu_home/xuenan.xu/data/mnist",
+        root=os.path.expanduser("~/data/mnist"),
         train=False,
         download=True,
         transform=transform
@@ -161,7 +162,7 @@ experiment_dir = "experiments/mnist"
 trainer = MnistTrainer(
     project_dir=experiment_dir,
     logging_file=experiment_dir + "/train.log",
-    logger="tensorboard",
+    logger="swanlab",
     wandb_config=WandbConfig(
         project="test_mnist", save_dir=experiment_dir, name="test1"
     ),
@@ -177,6 +178,6 @@ trainer = MnistTrainer(
     save_every_n_steps=500,
     save_last_k=3,
     metric_monitor=MetricMonitor(metric_name="accuracy", mode="max"),
-    resume_from_checkpoint="experiments/mnist/checkpoints/step_1000"
+    # resume_from_checkpoint="experiments/mnist/checkpoints/step_1000"
 )
 trainer.train(42)

@@ -9,6 +9,7 @@ einops
 transformers
 alias_free_torch
 h5py
-torchaudio==2.1.0
+torchaudio
 soundfile
 tensorboard
+swanlab
