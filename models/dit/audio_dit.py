@@ -637,7 +637,10 @@ class InputFusionAudioDiT(UDiT):
         cls_token=None,
         controlnet_skips=None
     ):
-        x = self.input_proj(torch.cat([x, time_aligned_context], dim=-1))
+        x = self.input_proj(
+            torch.cat([x.transpose(1, 2), time_aligned_context], dim=-1)
+        )
+        x = x.transpose(1, 2)
         return super().forward(
             x=x,
             timesteps=timesteps,

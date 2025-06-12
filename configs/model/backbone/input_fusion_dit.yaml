@@ -20,8 +20,6 @@ ada_sola_rank: 32
 ada_sola_alpha: 32
 cls_dim: null
 ta_context_dim: 1024
-ta_context_fusion: 'add'
-ta_context_norm: true
 context_dim: 1024
 context_fusion: 'cross'
 context_max_length: null

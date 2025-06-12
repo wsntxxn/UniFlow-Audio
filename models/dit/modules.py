@@ -176,26 +176,26 @@ class PatchEmbed(nn.Module):
 
 class PositionalConvEmbedding(nn.Module):
     """
-    Relative positional embedding used in HuBERT
+    Convolutional positional embedding used in F5-TTS.
     """
-    def __init__(self, dim=768, kernel_size=128, groups=16):
+    def __init__(self, dim=768, kernel_size=31, groups=16):
         super().__init__()
-        self.conv = nn.Conv1d(
-            dim,
-            dim,
-            kernel_size=kernel_size,
-            padding=kernel_size // 2,
-            groups=groups,
-            bias=True
-        )
-        self.conv = nn.utils.parametrizations.weight_norm(
-            self.conv, name="weight", dim=2
+        assert kernel_size % 2 != 0
+        self.conv1d = nn.Sequential(
+            nn.Conv1d(
+                dim, dim, kernel_size, groups=groups, padding=kernel_size // 2
+            ),
+            nn.Mish(),
+            nn.Conv1d(
+                dim, dim, kernel_size, groups=groups, padding=kernel_size // 2
+            ),
+            nn.Mish(),
         )
 
     def forward(self, x):
-        # B C T
-        x = self.conv(x)
-        x = F.gelu(x[:, :, :-1])
+        # B T C
+        x = self.conv1d(x.transpose(1, 2))
+        x = x.transpose(1, 2)
         return x
 
 
