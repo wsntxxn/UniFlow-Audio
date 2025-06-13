@@ -123,7 +123,8 @@ class Trainer(CheckpointMixin):
         if self.logger == "swanlab" and self.wandb_config is not None:
             tracker = SwanLabTracker(
                 run_name=self.wandb_config.project,
-                experiment_name=self.wandb_config.name
+                experiment_name=self.wandb_config.name,
+                # logdir=self.wandb_config.save_dir,
             )
         else:
             tracker = self.logger

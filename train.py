@@ -1,4 +1,5 @@
 from pathlib import Path
+from copy import deepcopy
 import multiprocessing as mp
 
 mp.set_start_method("spawn", force=True)
@@ -22,6 +23,7 @@ register_omegaconf_resolvers()
 
 
 def setup_dataloader_args(config: dict):
+    dataloader_config = deepcopy(config)
     args = {}
     if "sampler" in config:
         data_source = hydra.utils.instantiate(
@@ -31,7 +33,7 @@ def setup_dataloader_args(config: dict):
             config["sampler"], data_source=data_source, _convert_="all"
         )
         args["sampler"] = sampler
-        config.pop("sampler")
+        dataloader_config.pop("sampler")
     elif "batch_sampler" in config:
         data_source = hydra.utils.instantiate(
             config["dataset"], _convert_="all"
@@ -40,8 +42,8 @@ def setup_dataloader_args(config: dict):
             config["batch_sampler"], data_source=data_source, _convert_="all"
         )
         args["batch_sampler"] = batch_sampler
-        config.pop("batch_sampler")
-    return args
+        dataloader_config.pop("batch_sampler")
+    return args, dataloader_config
 
 
 def main():
@@ -59,20 +61,29 @@ def main():
     if "resume_from_checkpoint" in config["trainer"]:
         ckpt_dir = Path(config["trainer"]["resume_from_checkpoint"])
         exp_dir = ckpt_dir.parent.parent
-        config = OmegaConf.load(exp_dir / "config.yaml")
-        config["trainer"]["resume_from_checkpoint"] = ckpt_dir.__str__()
+        resumed_config = OmegaConf.load(exp_dir / "config.yaml")
+        resumed_config["trainer"].update({
+            "resume_from_checkpoint": ckpt_dir.__str__(),
+            "wandb_config": config["trainer"]
+                            ["wandb_config"],  # for resume wandb runs
+        })
+        config = resumed_config
 
     # helper state for accessing information about the current training environment
     state = PartialState()
 
     model: CountParamsBase = hydra.utils.instantiate(config["model"])
-    train_data_args = setup_dataloader_args(config["train_dataloader"])
-    train_dataloader = hydra.utils.instantiate(
-        config["train_dataloader"], **train_data_args, _convert_="all"
+    train_data_args, train_dataloader_config = setup_dataloader_args(
+        config["train_dataloader"]
     )
-    val_data_args = setup_dataloader_args(config["val_dataloader"])
+    train_dataloader = hydra.utils.instantiate(
+        train_dataloader_config, **train_data_args, _convert_="all"
+    )
+    val_data_args, val_dataloader_config = setup_dataloader_args(
+        config["val_dataloader"]
+    )
     val_dataloader = hydra.utils.instantiate(
-        config["val_dataloader"], **val_data_args, _convert_="all"
+        val_dataloader_config, **val_data_args, _convert_="all"
     )
     optimizer = hydra.utils.instantiate(
         config["optimizer"], params=model.parameters(), _convert_="all"

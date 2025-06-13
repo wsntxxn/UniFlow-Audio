@@ -1,6 +1,6 @@
 train:
   _target_: data_module.dataset.TextToSpeechDataset
-  content: data/libritts/phoneme_train.jsonl
+  content: data/libritts/phoneme_train_below_20s.jsonl
   audio: /hpc_stor03/sjtu_home/jiahao.mei/data/libritts/train_500h/audio.jsonl
   base_content_path: /hpc_stor03/sjtu_home/jiahao.mei
   base_audio_path: /hpc_stor03/public/shared/data/tts
