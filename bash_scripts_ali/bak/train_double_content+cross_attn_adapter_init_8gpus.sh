@@ -2,7 +2,8 @@
 echo "Current time: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')" 
 echo "Running script name: $(basename "$0")" 
 
-TORCH_NCCL_TRACE_BUFFER_SIZE=67108864 NCCL_DEBUG=INFO  NCCL_ASYNC_ERROR_HANDLING=1 accelerate launch --config_file configs_ali/accelerate/nvidia/8gpus.yaml train.py \
+TORCH_NCCL_TRACE_BUFFER_SIZE=67108864 NCCL_DEBUG=INFO  NCCL_ASYNC_ERROR_HANDLING=1 
+accelerate launch --config_file configs_ali/accelerate/nvidia/8gpus.yaml train.py \
     --config-path configs_ali \
     model=diffusion_double_content+cross_attn_adapter \
     data@data_dict=train_init \

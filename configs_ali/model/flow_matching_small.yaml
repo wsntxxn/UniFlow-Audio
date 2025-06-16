@@ -1,0 +1,61 @@
+defaults:
+  - autoencoder: stable_vae
+  - backbone: layer_fusion_dit
+  - content_adapter: cross_attn_adapter
+  - _self_
+
+
+content_dim: 1024
+frame_resolution: 0.005
+duration_offset: 1.0
+cfg_drop_ratio: 0.2
+
+backbone:
+  context_dim: ${..content_dim}
+  ta_context_dim: ${..content_dim}
+  embed_dim: 768
+  depth: 16
+  num_heads: 12
+
+_target_: models.flow_matching.DummyContentAudioFlowMatching
+content_encoder:
+  _target_: models.content_encoder.content_encoder.ContentEncoder
+  embed_dim: ${..content_dim}
+  text_encoder:
+    _target_: models.content_encoder.text_encoder.T5TextEncoder
+    model_name: google/flan-t5-large
+    embed_dim: ${...content_dim}
+  midi_encoder:
+    _target_: models.content_encoder.midi_encoder.FastSpeech2MIDIEncoder
+    phone_vocab_size: 61
+    midi_vocab_size: 300
+    slur_vocab_size: 2
+    spk_config:
+      _target_: models.content_encoder.midi_encoder.SpkConfig
+      encoding_format: id
+      num_spk: 20
+    d_model: 512
+    num_layers: 4
+    num_heads: 2
+    ffn_kernel_size: 9
+    d_out: ${...content_dim}
+  audio_encoder:
+    _target_: models.autoencoder.waveform.stable_vae.StableVAEProjectorWrapper
+    vae_dim: ${...autoencoder.latent_dim}
+    embed_dim: ${...content_dim}
+  video_encoder:
+    _target_: models.content_encoder.vision_encoder.MlpVideoEncoder
+    video_feat_dim: 1024
+    embed_dim: ${...content_dim}
+  phoneme_encoder:
+    _target_: models.content_encoder.midi_encoder.FastSpeech2PhonemeEncoder
+    phone_vocab_size: 92
+    d_model: 512
+    num_layers: 4
+    num_heads: 2
+    ffn_kernel_size: 9
+    d_out: ${...content_dim}
+    spk_config:
+      _target_: models.content_encoder.midi_encoder.SpkConfig
+      encoding_format: embedding
+      spk_embed_dim: 256

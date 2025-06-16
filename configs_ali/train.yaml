@@ -1,7 +1,7 @@
 defaults:
   - basic
-  -  model@model: diffusion
-  - data@data_dict: train_val
+  -  model@model: flow_matching
+  - data@data_dict: train_all
   - loss@loss_fn: weighted_sum
   - _self_
 
@@ -18,6 +18,14 @@ train_dataloader:
   sampler:
     _target_: data_module.sampler.TaskIteratingSampler
     shuffle: true
+    task_sampling_weights:
+      text_to_audio: 2
+      text_to_music: 4
+      text_to_speech: 3
+      audio_super_resolution: 1
+      speech_enhancement:  2
+      singing_voice_synthesis: 1
+      video_to_audio: 5
   batch_size: 24 # per device batch size
   num_workers: 16
   collate_fn:
@@ -60,7 +68,7 @@ epoch_length: 1000
 
 
 trainer:
-  _target_: audio_generation_trainer.AudioGenerationTrainer
+  _target_: audio_generation_trainer.MultiTaskAudioGenerationTrainer
   project_dir: ${exp_dir}
   logging_file: ${logging_file}
   gradient_accumulation_steps: ${gradient_accumulation_steps}
@@ -69,11 +77,13 @@ trainer:
   epoch_length: ${epoch_length}
   save_last_k: 4
   early_stop: Null
+  logger: tensorboard
   wandb_config:
     _target_: trainer.WandbConfig
     project: x_to_audio_generation
     save_dir: ${exp_dir}
     name: ${exp_name}
+    resume_id: Null
   metric_monitor:
     _target_: trainer.MetricMonitor
     metric_name: loss

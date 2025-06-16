@@ -7,7 +7,6 @@ defaults:
   - datasets@opencpop: opencpop
   - datasets@TTS-HQ: TTS-HQ
   - datasets@VCTK+Wham: VCTK+Wham
-  # - datasets@visualsound_cavp: visualsound_cavp
   - datasets@clotho: clotho
   - datasets@libritts: libritts
   - datasets@m4singer: m4singer

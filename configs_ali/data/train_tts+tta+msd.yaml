@@ -5,7 +5,7 @@ defaults:
 train_data_list:
   - ${..audiocaps.train} #tta
   # - ${..clotho.train}
-  # - ${..msd.train} #ttm
+  - ${..msd.train} #ttm
   - ${..libritts.train} #tts
   # - ${..moisesdb.train} #sr
   # - ${..musdb.train}
@@ -18,7 +18,7 @@ train_data_list:
 val_data_list:
   - ${..audiocaps.val} #tta
   # - ${..clotho.val}
-  # - ${..msd.val} #ttm
+  - ${..msd.val} #ttm
   - ${..libritts.val} #tts
   # - ${..moisesdb.val} #sr
   # - ${..musdb.val}

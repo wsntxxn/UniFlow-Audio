@@ -56,6 +56,7 @@ val:
   target_sr: ${sample_rate}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
+  max_samples: ${max_val_samples}
 test:
   _target_: data_module.dataset.TextToSpeechDataset
   content: data/libritts/test/phoneme.jsonl

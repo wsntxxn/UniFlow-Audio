@@ -1,12 +1,12 @@
 train:
-  _target_: data_module.dataset.TextToAudioDataset
+  _target_: data_module.dataset.TextToMusicDataset
   content: data/musiccaps/train/caption.jsonl
   audio: data/musiccaps/train/audio.jsonl
   target_sr: ${sample_rate}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
 val:
-  _target_: data_module.dataset.TextToAudioDataset
+  _target_: data_module.dataset.TextToMusicDataset
   content: data/musiccaps/val/caption.jsonl
   audio: data/musiccaps/val/audio.jsonl
   target_sr: ${sample_rate}
@@ -14,7 +14,7 @@ val:
   task_instruction: ${instruction_embedding}
   max_samples: ${max_val_samples}
 test:
-  _target_: data_module.dataset.TextToAudioDataset
+  _target_: data_module.dataset.TextToMusicDataset
   content: data/musiccaps/test/caption.jsonl
   task_instruction: ${instruction_embedding}
   instruction_idx: 1

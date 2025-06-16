@@ -22,7 +22,7 @@ val_data_list:
   - ${..audiocapsv2.val} #tta
   # - ${..clotho.val}
   - ${..musiccaps.val} #ttm
-  - ${..msd.train} 
+  - ${..msd.val} 
   - ${..libritts.val} #tts
   - ${..moisesdb.val} #sr
   - ${..musdb.val}
@@ -49,4 +49,4 @@ test_data_list:
   - ${..LJSpeech+Musan.test}
   - ${..Libritts+Wham.test}
   - ${..m4singer.test}         # svs
-  - ${..vggsound_clip.val} #vta
+  - ${..vggsound_clip.test} #vta
