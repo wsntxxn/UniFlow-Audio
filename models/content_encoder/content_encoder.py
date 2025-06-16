@@ -47,7 +47,7 @@ class ContentEncoder(nn.Module):
                 la_content_output_dict = {
                     "output": zero_la_content,
                 }
-            elif task == "text_to_audio":
+            elif task == "text_to_audio" or task == "text_to_music":
                 content_output_dict = self.text_encoder([content])
                 la_content_output_dict = {
                     "output": zero_la_content,
