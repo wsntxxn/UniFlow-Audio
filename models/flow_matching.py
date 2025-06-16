@@ -473,7 +473,9 @@ class DurationAdapterMixin:
         global_pred: predicted duration value, processed by logarithmic and offset
         local_pred: predicted latent length 
         """
-        pred_from_local = local_pred.sum(1)
+        # avoid error accumulation for each frame
+        pred_from_local = torch.round(local_pred * self.latent_token_rate)
+        pred_from_local = pred_from_local.sum(1) / self.latent_token_rate
         global_pred = torch.exp(global_pred) - self.offset
         result = pred_from_local
         result[~is_time_aligned] = global_pred[~is_time_aligned]
