@@ -556,9 +556,12 @@ class CrossAttentionAudioFlowMatching(
     def forward(
         self, content: list[Any], task: list[str], waveform: torch.Tensor,
         waveform_lengths: torch.Tensor, instruction: torch.Tensor,
-        instruction_lengths: torch.Tensor, **kwargs
+        instruction_lengths: torch.Tensor, 
+        loss_reduce: bool = True,
+        **kwargs
     ):
         device = self.dummy_param.device
+        loss_reduce = self.training or (loss_reduce and not self.training)
 
         self.autoencoder.eval()
         with torch.no_grad():
@@ -575,7 +578,7 @@ class CrossAttentionAudioFlowMatching(
         global_duration_loss = self.get_global_duration_loss(
             global_duration_pred,
             latent_mask,
-            reduce=True
+            reduce=loss_reduce
             
         )
 
@@ -601,7 +604,7 @@ class CrossAttentionAudioFlowMatching(
         pred = pred.transpose(1, self.autoencoder.time_dim)
         target = target.transpose(1, self.autoencoder.time_dim)
         diff_loss = F.mse_loss(pred.float(), target.float(), reduction="none")
-        diff_loss = loss_with_mask(diff_loss, latent_mask)
+        diff_loss = loss_with_mask(diff_loss, latent_mask,reduce=loss_reduce)
 
         return {
             "diff_loss": diff_loss,
@@ -696,15 +699,6 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
          length_aligned_content) = self.encode_content_with_instruction(
              content, task, device, instruction, instruction_lengths)
 
-        # 选出content_mask.sum(1) 最大的索引
-        content_idx = content_mask.sum(1).argmax()
-        print(
-            f'task  {task[content_idx]},conent_len:{content_mask.sum(1)[content_idx]}'
-        )
-        waveform_idx = latent_mask.sum(1).argmax()
-        print(
-            f'task  {task[waveform_idx]},waveform_len:{latent_mask.sum(1)[waveform_idx]}'
-        )
         # truncate unused non time aligned duration prediction
         if is_time_aligned.sum() > 0:
             trunc_ta_length = content_mask[is_time_aligned].sum(1).max()
