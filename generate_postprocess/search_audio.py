@@ -4,10 +4,11 @@
 #     --task tta \
 #     --output_file "./tta_files.jsonl"
 
-import os
+
 import argparse
 import json
 from pathlib import Path
+from glob import glob
 
 
 def transform_to_id(audio_file: Path, task: str) -> str:
@@ -26,27 +27,33 @@ def transform_to_id(audio_file: Path, task: str) -> str:
 def generate_jsonl(args) -> None:
     audio_dir = Path(args.audio_dir)
     task = args.task
-    audio_files = sorted(audio_dir.iterdir())
+    # audio_files = sorted(audio_dir.iterdir())
 
-    os.makedirs(Path(args.output_file).parent, exist_ok=True)
+    audio_files_list = list(glob(f"{args.audio_dir}/*.wav"))
 
     with open(args.output_file, 'w') as writer:
-        for audio_file in audio_files:
-            audio_id = transform_to_id(audio_file, task)
-
-            if audio_file.suffix != '.wav':
-                # "should hold only wav in dir"
-                continue
-
-            writer.write(
-                json.dumps(
-                    {
-                        "audio_id": audio_id,
-                        "audio": str(audio_file.resolve())
-                    },
-                    ensure_ascii=False,
-                ) + "\n"
-            )
+        for audio_file in audio_files_list:
+            audio_id = transform_to_id(Path(audio_file), task)
+            if task == 'vta':
+                writer.write(
+                    json.dumps(
+                        {
+                            "audio_id": audio_id,
+                            "video": str(audio_file.resolve())
+                        },
+                        ensure_ascii=False,
+                    ) + "\n"
+                )
+            else:
+                writer.write(
+                    json.dumps(
+                        {
+                            "audio_id": audio_id,
+                            "audio": str(audio_file.resolve())
+                        },
+                        ensure_ascii=False,
+                    ) + "\n"
+                )
 
 
 if __name__ == '__main__':
