@@ -98,7 +98,9 @@ class AudioWaveformDataset(HDF5DatasetMixin):
             try:
                 # on guizhou file system, using cached h5py.File will cause OOM error
                 if self.use_h5_cache:
-                    waveform = read_from_h5(audio_id, audio_path, self.h5_cache)
+                    waveform = read_from_h5(
+                        audio_id, audio_path, self.h5_cache
+                    )
                 else:
                     waveform = read_from_h5(audio_id, audio_path)
                 if audio_path not in self.h5_src_sr_map:
@@ -109,24 +111,24 @@ class AudioWaveformDataset(HDF5DatasetMixin):
             except Exception:
                 print(f"Failed to load audio from {audio_path}")
                 with open('./broken_audio_list.txt', 'a') as f:
-                    f.write(audio_id+','+audio_path + '\n')
+                    f.write(audio_id + ',' + audio_path + '\n')
                 return torch.zeros([100], dtype=torch.float32)
         else:
             try:
                 waveform, orig_sr = torchaudio.load(audio_path)
-                
+
             except Exception:
                 print(f"Failed to load audio from {audio_path}")
                 with open('./broken_audio_list.txt', 'a') as f:
-                    f.write(audio_id+','+audio_path + '\n')
+                    f.write(audio_id + ',' + audio_path + '\n')
                 return torch.zeros([100], dtype=torch.float32)
             # average multi-channel to single-channel
             waveform = waveform.mean(0)
 
         if self.target_sr:
-            waveform = torchaudio.functional.resample(waveform,
-                                                      orig_freq=orig_sr,
-                                                      new_freq=self.target_sr)
+            waveform = torchaudio.functional.resample(
+                waveform, orig_freq=orig_sr, new_freq=self.target_sr
+            )
         return waveform
 
 
@@ -310,6 +312,7 @@ class TextToAudioDataset(AudioGenerationDataset):
         yid_stem = Path(audio_id).stem
         return content_or_path, f"{yid_stem}_{content_or_path.replace(' ', '_')}"
 
+
 @dataclass
 class TextToMusicDataset(TextToAudioDataset):
 
@@ -340,8 +343,13 @@ class TextToMusicDataset(TextToAudioDataset):
                 audio_path = str(self.base_audio_path / audio_path)
             waveform = self.load_waveform(audio_id, audio_path)
             # randomly select a segment
-            if self.max_frame_num is not None and len(waveform) > self.max_frame_num:
-                start_index = random.randint(0, len(waveform) - self.max_frame_num) if self.random_crop else 0
+            if self.max_frame_num is not None and len(
+                waveform
+            ) > self.max_frame_num:
+                start_index = random.randint(
+                    0,
+                    len(waveform) - self.max_frame_num
+                ) if self.random_crop else 0
                 waveform = waveform[start_index:start_index +
                                     self.max_frame_num]
         else:  # inference, only content is available
@@ -349,6 +357,7 @@ class TextToMusicDataset(TextToAudioDataset):
 
         duration = self.load_duration(content, waveform)
         return content, waveform, duration, item_name
+
 
 @dataclass
 class VideoToAudioDataset(AudioGenerationDataset):
@@ -634,7 +643,6 @@ class AudioGenConcatDataset(Dataset):
 
 
 class TaskGroupedAudioGenConcatDataset(Dataset):
-
     def __init__(self, datasets: list[AudioGenerationDataset]):
         self.datasets = datasets
         task_to_data_sizes = defaultdict(list)

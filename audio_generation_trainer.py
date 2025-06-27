@@ -123,6 +123,9 @@ class MultiTaskAudioGenerationTrainer(AudioGenerationTrainer):
     def validation_step(self, batch, batch_idx):
         output = self.model(**batch, loss_reduce=False)
         output = self.accelerator.gather_for_metrics(output)
+        is_time_aligned = self.accelerator.gather_for_metrics(
+            batch["is_time_aligned"]
+        )
         task_batch = np.array(
             self.accelerator.gather_for_metrics(batch["task"])
         )
@@ -140,11 +143,11 @@ class MultiTaskAudioGenerationTrainer(AudioGenerationTrainer):
         reduced_output = {}
         for key in output:
             if key == "local_duration_loss":
-                if batch["is_time_aligned"].sum() == 0:
+                if is_time_aligned.sum() == 0:
                     reduced_output[key] = (output[key] * 0.0).mean()
                 else:
-                    reduced_output[key] = output[key].sum() / \
-                        batch["is_time_aligned"].sum()
+                    reduced_output[key] = output[key].sum(
+                    ) / is_time_aligned.sum()
             else:
                 reduced_output[key] = output[key].mean()
         loss_dict = self.loss_fn(reduced_output)

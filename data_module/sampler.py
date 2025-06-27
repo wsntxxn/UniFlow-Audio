@@ -6,11 +6,12 @@ from data_module.dataset import TaskGroupedAudioGenConcatDataset
 
 
 class TaskIteratingSampler(Sampler):
-
-    def __init__(self,
-                 data_source: TaskGroupedAudioGenConcatDataset,
-                 shuffle: bool = True,
-                 task_sampling_weights: dict = None):
+    def __init__(
+        self,
+        data_source: TaskGroupedAudioGenConcatDataset,
+        shuffle: bool = True,
+        task_sampling_weights: dict = None
+    ):
         self.tasks = data_source.tasks
         # add extra task sampling times for some tasks
         if task_sampling_weights:
@@ -30,7 +31,8 @@ class TaskIteratingSampler(Sampler):
         for task in self.tasks:
             self.task_data_ptr[task] = 0
             self.task_data_sizes[task] = int(
-                data_source.task_to_cum_sum_lengths[task][-1])
+                data_source.task_to_cum_sum_lengths[task][-1]
+            )
             self.task_data_idxs[task] = np.arange(self.task_data_sizes[task])
             if shuffle:
                 np.random.shuffle(self.task_data_idxs[task])
@@ -60,10 +62,11 @@ class TaskIteratingSampler(Sampler):
 
 class InferenceTaskIteratingSampler(Sampler):
     # Finite sampler for inference
-    def __init__(self,
-                 data_source,
-                 shuffle=False,
-                 ):
+    def __init__(
+        self,
+        data_source,
+        shuffle=False,
+    ):
         self.tasks = data_source.tasks
         self.task_data_idxs = {}
         for task in self.tasks:
@@ -99,7 +102,6 @@ class TaskGroupedIteratingBatchSampler(BatchSampler):
     same task. Tasks are visited round-robin: batch1 (task1), batch2 (task2),
     It is *infinite*; stop when the enclosing `DataLoader` has produced enough batches.
     """
-
     def __init__(
         self,
         data_source: TaskGroupedAudioGenConcatDataset,
@@ -120,7 +122,8 @@ class TaskGroupedIteratingBatchSampler(BatchSampler):
         for task in self.tasks:
             self.task_data_ptr[task] = 0
             self.task_data_sizes[task] = int(
-                data_source.task_to_cum_sum_lengths[task][-1])
+                data_source.task_to_cum_sum_lengths[task][-1]
+            )
             self.task_data_idxs[task] = np.arange(self.task_data_sizes[task])
             if shuffle:
                 np.random.shuffle(self.task_data_idxs[task])
@@ -162,7 +165,6 @@ class TaskGroupedSequentialBatchSampler(BatchSampler):
     Batch sampler that yields batches whose samples all come from the
     same task. 
     """
-
     def __init__(
         self,
         data_source: TaskGroupedAudioGenConcatDataset,

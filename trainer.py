@@ -9,7 +9,6 @@ import numpy as np
 from tqdm import trange, tqdm
 from torchdata.stateful_dataloader import StatefulDataLoader
 from torch.utils.data import DataLoader
-import torch.distributed as dist
 import torch
 import torch.nn as nn
 from accelerate.utils import set_seed, broadcast
@@ -91,7 +90,7 @@ class Trainer(CheckpointMixin):
     config_dict: dict | None = None
     project_dir: str | Path
     checkpoint_dir: str | Path = None
-    logger: str = "wandb"
+    logger: str = "wandb"  # "wandb" | "swanlab" | "tensorboard"
     wandb_config: WandbConfig | None = None
 
     train_dataloader: StatefulDataLoader | DataLoader
@@ -127,6 +126,10 @@ class Trainer(CheckpointMixin):
                 # logdir=self.wandb_config.save_dir,
             )
         else:
+            assert self.logger in ("wandb", "tensorboard"), (
+                f"Unsupported logger: {self.logger}. "
+                "Supported loggers are 'wandb' and 'tensorboard'."
+            )
             tracker = self.logger
 
         self.accelerator = AcceleratorSaveTrainableParams(

@@ -7,10 +7,12 @@ import os
 MAX_FILE_NAME_LENGTH = 50
 
 
-def read_jsonl_to_mapping(jsonl_file: Union[str, Path],
-                          key_col: str,
-                          value_col: str,
-                          base_path=None) -> Dict[str, str]:
+def read_jsonl_to_mapping(
+    jsonl_file: Union[str, Path],
+    key_col: str,
+    value_col: str,
+    base_path=None
+) -> Dict[str, str]:
     """
     Read two columns, indicated by `key_col` and `value_col`, from the
     given jsonl file to return the mapping dict
