@@ -1,6 +1,6 @@
 """
 python evaluation/se.py 
-    refdir:reference audio dir   
+    refdir: reference audio dir   
     degdir: degraded audio dir
     uuid2wav file
 
@@ -10,18 +10,24 @@ python evaluation/se.py  \
     "/cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/VCTK+Demand/test/metadata_audio.jsonl"
 
 """
-from scipy.signal import stft, get_window, correlate, resample
-from scipy.linalg import solve_toeplitz, toeplitz
+import glob
+import time
+import os
+import sys
+import json
+import argparse
+from multiprocessing import cpu_count, Pool
+
+from scipy.signal import stft, resample
+from scipy.linalg import toeplitz
 from pesq import pesq as pesq_inner  # pip install https://github.com/ludlows/python-pesq/archive/master.zip
 from pesq import PesqError
 # from pypesq import pesq
 import librosa
 from pystoi.stoi import stoi  # https://github.com/mpariente/pystoi
 import numpy as np
+import tqdm
 import torch
-import sys
-import json
-import os
 
 from utils.general import read_jsonl_to_mapping
 
@@ -580,8 +586,6 @@ def composite(clean_speech, processed_speech, fs):
 
 
 def compareone(args):
-    import soundfile as sf
-    import numpy as np
 
     # clean, processed = args
     # c,fc = sf.read(clean)
@@ -605,21 +609,22 @@ def compareone(args):
 
 
 def compareone_load_wav(args):
-    import soundfile as sf
-    import numpy as np
 
     clean, processed = args
-
     c, fc = librosa.load(clean, sr=16000)
     p, fp = librosa.load(processed, sr=16000)
-
-    # c, p = args
 
     # 如果长度相差在1600帧(0.1s)以内，则裁剪为相同长度
     if abs(len(c) - len(p)) <= 1600:
         min_len = min(len(c), len(p))
         c = c[:min_len]
         p = p[:min_len]
+    else:
+        max_len = max(len(c), len(p))
+        if len(c) < max_len:
+            c = np.pad(c, (0, max_len - len(c)), 'constant')
+        else:
+            p = np.pad(p, (0, max_len - len(p)), 'constant')
 
     assert len(c) == len(p), 'c.shape=%r, p.shape=%r' % (c.shape, p.shape)
     # assert fc == fp, 'fc=%d fp=%d'%(fc,fp)
@@ -745,10 +750,7 @@ def load_jsonl(jsonl_path):
 
 
 def compare_jsonl(ref_jsonl, deg_jsonl, output_file, use_tqdm=True):
-    from multiprocessing import cpu_count
-    from multiprocessing import Pool
-    import numpy as np
-    import glob, os
+
     ref_dict = load_jsonl(ref_jsonl)
     deg_dict = load_jsonl(deg_jsonl)
     common_ids = sorted(set(ref_dict.keys()) & set(deg_dict.keys()))
@@ -757,7 +759,7 @@ def compare_jsonl(ref_jsonl, deg_jsonl, output_file, use_tqdm=True):
 
     n = np.min([np.max([cpu_count() - 2, 1]), 20])
     pool = Pool(processes=n)
-    import tqdm
+
     if use_tqdm:
         res = list(
             tqdm.tqdm(
@@ -786,10 +788,6 @@ def compare_jsonl(ref_jsonl, deg_jsonl, output_file, use_tqdm=True):
 
 
 def compare(refdir, degdir, uuid_jsonl, use_tqdm=True):
-    from multiprocessing import cpu_count
-    from multiprocessing import Pool
-    import numpy as np
-    import glob, os
 
     if os.path.isfile(refdir) and os.path.isfile(degdir):
         return [compareone_load_wav([refdir, degdir])]
@@ -810,12 +808,14 @@ def compare(refdir, degdir, uuid_jsonl, use_tqdm=True):
 
     assert len(reffiles) == len(degfiles)
 
-    import tqdm
     args = list(zip(reffiles, degfiles))
     if use_tqdm:
         res = list(
             tqdm.tqdm(
-                pool.imap(compareone_load_wav, args), "Calculating", ncols=60
+                pool.imap(compareone_load_wav, args),
+                "Calculating",
+                ncols=60,
+                total=len(args)
             )
         )
     else:
@@ -826,11 +826,24 @@ def compare(refdir, degdir, uuid_jsonl, use_tqdm=True):
 
 
 if __name__ == "__main__":
-    import numpy as np
-    import sys, time
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--ref_dir', type=str, help='clean reference directory', required=True
+    )
+    parser.add_argument(
+        '--gen_dir', type=str, help='generated directory', required=True
+    )
+    parser.add_argument(
+        '--uuid_jsonl', type=str, help='uuid jsonl file', required=True
+    )
+    parser.add_argument(
+        '--output_file', type=str, help='output file', required=True
+    )
+
+    args = parser.parse_args()
     t1 = time.time()
-    res = compare(sys.argv[1], sys.argv[2], sys.argv[3])
+    res = compare(args.ref_dir, args.gen_dir, args.uuid_jsonl)
     t2 = time.time()
 
     pm = np.array([x[0:] for x in res])
@@ -855,20 +868,10 @@ if __name__ == "__main__":
 
     # 打印标题
     header_line = ','.join(h.center(col_width) for h in headers)
-    print(header_line)
 
     # 打印对应的数值
     value_line = ','.join(f'{v:^{col_width}.4f}' for v in pm)
-    print(value_line)
-"""
-    ref_file = sys.argv[1]
-    deg_file = sys.argv[2]
 
-    output_file ='/hpc_stor03/sjtu_home/zihao.zheng/DOSE/src/DOSE/result.txt'
-
-    with open(output_file, 'w') as f:
-        f.write('time: %.3f\n' % (t2 - t1))
-        f.write('ref= %s\n' % ref_file)
-        f.write('deg= %s\n' % deg_file)
-        f.write('csig:%6.4f cbak:%6.4f covl:%6.4f pesq:%6.4f ssnr:%6.4f stoi:%6.4f\n' % tuple(pm))
-"""
+    with open(args.output_file, 'w') as f:
+        f.write(header_line + '\n')
+        f.write(value_line + '\n')

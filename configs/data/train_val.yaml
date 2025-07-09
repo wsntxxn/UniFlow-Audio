@@ -3,21 +3,45 @@ defaults:
   - _self_
 
 train_data_list:
+  # tts
   - ${..libritts.train}
+  # tta
   - ${..audiocaps.train}
+  # svs
   - ${..m4singer.train}
-  - ${..TTSHQ.train}
+  # sr
+  - ${..ttshq.train}
   - ${..musdb.train}
   - ${..moises.train}
-  - ${..ljspeech_se.train}
+  # se
+  - ${..ljspeech+musan.train}
+  - ${..libritts_100+wham.train}
+  - ${..libritts_360+wham.train}
+  - ${..voicebank+demand.train}
+  - ${..vctk+wham.train}
+  # v2a
   - ${..vggsound_clip.train}
+  # ttm
+  - ${..msd.train}
 
 val_data_list:
+  # tts
   - ${..libritts.val}
+  # tta
   - ${..audiocaps.val}
+  # svs
   - ${..m4singer.val}
-  - ${..TTSHQ.val}
+  # sr
+  - ${..ttshq.val}
   - ${..musdb.val}
   - ${..moises.val}
-  - ${..ljspeech_se.val}
+  # se
+  - ${..ljspeech+musan.val}
+  - ${..libritts_100+wham.val}
+  - ${..libritts_360+wham.val}
+  - ${..voicebank+demand.val}
+  - ${..vctk+wham.val}
+  # v2a
   - ${..vggsound_clip.val}
+  # ttm
+  - ${..msd.val}

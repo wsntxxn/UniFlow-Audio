@@ -17,8 +17,9 @@ from audioldm_eval.audio.tools import save_pickle, load_pickle, write_json, load
 from ssr_eval.metrics import AudioMetrics
 import audioldm_eval.audio as Audio
 
-
 torch.serialization.add_safe_globals([np.core.multiarray._reconstruct])
+
+
 class EvaluationHelper:
     def __init__(self, sampling_rate, device, backbone="mert") -> None:
 
@@ -30,7 +31,7 @@ class EvaluationHelper:
             use_activation=False,
             verbose=True,
         )
-        
+
         # self.passt_model = get_basic_model(mode="logits")
         # self.passt_model.eval()
         # self.passt_model.to(self.device)
@@ -39,14 +40,20 @@ class EvaluationHelper:
         self.frechet.model = self.frechet.model.to(device)
 
         features_list = ["2048", "logits"]
-        
+
         if self.backbone == "mert":
-            self.mel_model = AutoModel.from_pretrained("m-a-p/MERT-v1-95M", trust_remote_code=True)
-            self.processor = Wav2Vec2FeatureExtractor.from_pretrained("m-a-p/MERT-v1-95M",trust_remote_code=True)
+            self.mel_model = AutoModel.from_pretrained(
+                "m-a-p/MERT-v1-95M", trust_remote_code=True
+            )
+            self.processor = Wav2Vec2FeatureExtractor.from_pretrained(
+                "m-a-p/MERT-v1-95M", trust_remote_code=True
+            )
             self.target_sample_rate = self.processor.sampling_rate
-            self.resampler = T.Resample(orig_freq=self.sampling_rate, new_freq=self.target_sample_rate).to(self.device)
+            self.resampler = T.Resample(
+                orig_freq=self.sampling_rate, new_freq=self.target_sample_rate
+            ).to(self.device)
         elif self.backbone == "cnn14":
-            # torch.serialization.add_safe_globals([np.ndarray]) 
+            # torch.serialization.add_safe_globals([np.ndarray])
             if self.sampling_rate == 16000:
                 self.mel_model = Cnn14(
                     features_list=features_list,
@@ -79,7 +86,9 @@ class EvaluationHelper:
         if self.sampling_rate == 16000:
             self._stft = Audio.TacotronSTFT(512, 160, 512, 64, 16000, 50, 8000)
         elif self.sampling_rate == 32000:
-            self._stft = Audio.TacotronSTFT(1024, 320, 1024, 64, 32000, 50, 14000)
+            self._stft = Audio.TacotronSTFT(
+                1024, 320, 1024, 64, 32000, 50, 14000
+            )
         else:
             raise ValueError(
                 "We only support the evaluation on 16kHz and 32kHz sampling rate."
@@ -94,7 +103,8 @@ class EvaluationHelper:
         generate_files_path,
         groundtruth_path,
         limit_num=None,
-        recalculate=True
+        recalculate=True,
+        num_workers=4,
     ):
         print("Generted files", generate_files_path)
         print("Target files", groundtruth_path)
@@ -106,7 +116,14 @@ class EvaluationHelper:
             generate_files_path, groundtruth_path, limit_num=limit_num
         )
 
-        metrics = self.calculate_metrics(generate_files_path, groundtruth_path, same_name, limit_num,recalculate=recalculate) # recalculate = True
+        metrics = self.calculate_metrics(
+            generate_files_path,
+            groundtruth_path,
+            same_name,
+            limit_num,
+            num_workers=num_workers,
+            recalculate=recalculate
+        )  # recalculate = True
 
         return metrics
 
@@ -131,8 +148,8 @@ class EvaluationHelper:
 
         intersect_keys = keyset1.intersection(keyset2)
         if (
-            len(intersect_keys) / len(keyset1) > threshold
-            and len(intersect_keys) / len(keyset2) > threshold
+            len(intersect_keys) / len(keyset1) > threshold and
+            len(intersect_keys) / len(keyset2) > threshold
         ):
             print(
                 "+Two path have %s intersection files out of total %s & %s files. Processing two folder with same_name=True"
@@ -196,20 +213,29 @@ class EvaluationHelper:
                 print("Infinite value encountered in psnr %s " % filename)
                 continue
             psnr_avg.append(psnrval)
-            data_range = max(np.max(mel_gen), np.max(mel_target)) - min(np.min(mel_gen), np.min(mel_target))
+            data_range = max(np.max(mel_gen), np.max(mel_target)
+                            ) - min(np.min(mel_gen), np.min(mel_target))
             ssim_avg.append(ssim(mel_gen, mel_target, data_range=data_range))
         return {"psnr": np.mean(psnr_avg), "ssim": np.mean(ssim_avg)}
 
-    def calculate_metrics(self, generate_files_path, groundtruth_path, same_name, limit_num=None, calculate_psnr_ssim=True, calculate_lsd=True, recalculate=True):
+    def calculate_metrics(
+        self,
+        generate_files_path,
+        groundtruth_path,
+        same_name,
+        limit_num=None,
+        num_workers=4,
+        calculate_psnr_ssim=True,
+        calculate_lsd=True,
+        recalculate=True
+    ):
         # Generation, target
         torch.manual_seed(0)
-
-        num_workers = 6
 
         outputloader = DataLoader(
             WaveDataset(
                 generate_files_path,
-                self.sampling_rate, # TODO
+                self.sampling_rate,  # TODO
                 # 32000,
                 limit_num=limit_num,
             ),
@@ -221,7 +247,7 @@ class EvaluationHelper:
         resultloader = DataLoader(
             WaveDataset(
                 groundtruth_path,
-                self.sampling_rate, # TODO
+                self.sampling_rate,  # TODO
                 # 32000,
                 limit_num=limit_num,
             ),
@@ -234,26 +260,31 @@ class EvaluationHelper:
 
         # FAD
         ######################################################################################################################
-        if(recalculate): 
+        if (recalculate):
             print("Calculate FAD score from scratch")
-        fad_score = self.frechet.score(generate_files_path, groundtruth_path, limit_num=limit_num, recalculate=recalculate)
+        fad_score = self.frechet.score(
+            generate_files_path,
+            groundtruth_path,
+            limit_num=limit_num,
+            recalculate=recalculate
+        )
         out.update(fad_score)
         print("FAD: %s" % fad_score)
         ######################################################################################################################
-        
+
         # PANNs or PassT or mert
         ######################################################################################################################
         cache_path = groundtruth_path + "classifier_logits_feature_cache.pkl"
-        if(os.path.exists(cache_path) and not recalculate):
+        if (os.path.exists(cache_path) and not recalculate):
             print("reload", cache_path)
             featuresdict_2 = load_pickle(cache_path)
         else:
             print("Extracting features from %s." % groundtruth_path)
             featuresdict_2 = self.get_featuresdict(resultloader)
             save_pickle(featuresdict_2, cache_path)
-        
+
         cache_path = generate_files_path + "classifier_logits_feature_cache.pkl"
-        if(os.path.exists(cache_path) and not recalculate):
+        if (os.path.exists(cache_path) and not recalculate):
             print("reload", cache_path)
             featuresdict_1 = load_pickle(cache_path)
         else:
@@ -264,7 +295,7 @@ class EvaluationHelper:
         metric_kl, kl_ref, paths_1 = calculate_kl(
             featuresdict_1, featuresdict_2, "logits", same_name
         )
-        
+
         out.update(metric_kl)
         # Iception score
         metric_isc = calculate_isc(
@@ -276,7 +307,9 @@ class EvaluationHelper:
         )
         out.update(metric_isc)
         # FD
-        if("2048" in featuresdict_1.keys() and "2048" in featuresdict_2.keys()):
+        if (
+            "2048" in featuresdict_1.keys() and "2048" in featuresdict_2.keys()
+        ):
             metric_fid = calculate_fid(
                 featuresdict_1, featuresdict_2, feat_layer_name="2048"
             )
@@ -284,7 +317,7 @@ class EvaluationHelper:
 
         # Metrics for Autoencoder
         ######################################################################################################################
-        if(calculate_psnr_ssim or calculate_lsd):
+        if (calculate_psnr_ssim or calculate_lsd):
             pairedloader = DataLoader(
                 MelPairedDataset(
                     generate_files_path,
@@ -299,13 +332,15 @@ class EvaluationHelper:
                 sampler=None,
                 num_workers=16,
             )
-            
-        if(calculate_lsd):
+
+        if (calculate_lsd):
             metric_lsd = self.calculate_lsd(pairedloader, same_name=same_name)
             out.update(metric_lsd)
 
-        if(calculate_psnr_ssim):
-            metric_psnr_ssim = self.calculate_psnr_ssim(pairedloader, same_name=same_name)
+        if (calculate_psnr_ssim):
+            metric_psnr_ssim = self.calculate_psnr_ssim(
+                pairedloader, same_name=same_name
+            )
             out.update(metric_psnr_ssim)
 
         # metric_kid = calculate_kid(
@@ -338,16 +373,15 @@ class EvaluationHelper:
             # f'SSIM_STFT: {out.get("ssim_stft", float("nan")):.5f}',
         )
 
-
         # Define a consistent column width for centering
         COL_WIDTH = 20
 
         # First, print the header row
         print(
-            f'{"FAD":^{COL_WIDTH}}'     # Centered "FAD" within COL_WIDTH
-            f'{"FD":^{COL_WIDTH}}'      # Centered "FD" within COL_WIDTH
-            f'{"KL":^{COL_WIDTH}}'      # Centered "KL" within COL_WIDTH
-            f'{"IS":^{COL_WIDTH}}' # Centered "IS (Std)" within COL_WIDTH
+            f'{"FAD":^{COL_WIDTH}}'  # Centered "FAD" within COL_WIDTH
+            f'{"FD":^{COL_WIDTH}}'  # Centered "FD" within COL_WIDTH
+            f'{"KL":^{COL_WIDTH}}'  # Centered "KL" within COL_WIDTH
+            f'{"IS":^{COL_WIDTH}}'  # Centered "IS (Std)" within COL_WIDTH
         )
 
         # Then, print the values row
@@ -361,35 +395,42 @@ class EvaluationHelper:
         # Using .5f for 5 decimal places for consistency
         print(
             # Corrected f-string syntax: {value:alignment_character_width.precision_type}
-            f'{val_fad:^{COL_WIDTH}.5f}' # Center val_fad, 5 decimal places, within COL_WIDTH
+            f'{val_fad:^{COL_WIDTH}.5f}'  # Center val_fad, 5 decimal places, within COL_WIDTH
             f'{val_fd:^{COL_WIDTH}.5f}'  # Center val_fd, 5 decimal places, within COL_WIDTH
             f'{val_kl:^{COL_WIDTH}.5f}'  # Center val_kl, 5 decimal places, within COL_WIDTH
-            f'{val_is_mean:^{COL_WIDTH}}' # Center the pre-formatted IS string within COL_WIDTH
+            f'{val_is_mean:^{COL_WIDTH}}'  # Center the pre-formatted IS string within COL_WIDTH
         )
         result = {
-            "frechet_distance": out.get("frechet_distance", float("nan")),
-            "frechet_audio_distance": out.get("frechet_audio_distance", float("nan")),
-            "kullback_leibler_divergence_sigmoid": out.get(
-                "kullback_leibler_divergence_sigmoid", float("nan")
-            ),
-            "kullback_leibler_divergence_softmax": out.get(
-                "kullback_leibler_divergence_softmax", float("nan")
-            ),
-            "lsd": out.get("lsd", float("nan")),
-            "psnr": out.get("psnr", float("nan")),
-            "ssim": out.get("ssim", float("nan")),
+            "frechet_distance":
+                out.get("frechet_distance", float("nan")),
+            "frechet_audio_distance":
+                out.get("frechet_audio_distance", float("nan")),
+            "kullback_leibler_divergence_sigmoid":
+                out.get("kullback_leibler_divergence_sigmoid", float("nan")),
+            "kullback_leibler_divergence_softmax":
+                out.get("kullback_leibler_divergence_softmax", float("nan")),
+            "lsd":
+                out.get("lsd", float("nan")),
+            "psnr":
+                out.get("psnr", float("nan")),
+            "ssim":
+                out.get("ssim", float("nan")),
             # "ssim_stft": out.get("ssim_stft", float("nan")),
-            "inception_score_mean": out.get("inception_score_mean", float("nan")),
-            "inception_score_std": out.get("inception_score_std", float("nan")),
-            "kernel_inception_distance_mean": out.get(
-                "kernel_inception_distance_mean", float("nan")
-            ),
-            "kernel_inception_distance_std": out.get(
-                "kernel_inception_distance_std", float("nan")
-            ),
+            "inception_score_mean":
+                out.get("inception_score_mean", float("nan")),
+            "inception_score_std":
+                out.get("inception_score_std", float("nan")),
+            "kernel_inception_distance_mean":
+                out.get("kernel_inception_distance_mean", float("nan")),
+            "kernel_inception_distance_std":
+                out.get("kernel_inception_distance_std", float("nan")),
         }
 
-        json_path = os.path.join(os.path.dirname(generate_files_path), self.get_current_time()+"_"+os.path.basename(generate_files_path) + ".json")
+        json_path = os.path.join(
+            os.path.dirname(generate_files_path),
+            self.get_current_time() + "_" +
+            os.path.basename(generate_files_path) + ".json"
+        )
         write_json(result, json_path)
         return result
 
@@ -423,10 +464,21 @@ class EvaluationHelper:
                 with torch.no_grad():
                     if self.backbone == "mert":
                         waveform = self.resampler(waveform[0])
-                        mert_input = self.processor(waveform, sampling_rate=self.target_sample_rate, return_tensors="pt").to(self.device)
-                        mert_output = self.mel_model(**mert_input, output_hidden_states=True)
-                        time_reduced_hidden_states = torch.stack(mert_output.hidden_states).squeeze().mean(dim=1)
-                        featuresdict = {"2048": time_reduced_hidden_states.cpu(), "logits": time_reduced_hidden_states.cpu()}
+                        mert_input = self.processor(
+                            waveform,
+                            sampling_rate=self.target_sample_rate,
+                            return_tensors="pt"
+                        ).to(self.device)
+                        mert_output = self.mel_model(
+                            **mert_input, output_hidden_states=True
+                        )
+                        time_reduced_hidden_states = torch.stack(
+                            mert_output.hidden_states
+                        ).squeeze().mean(dim=1)
+                        featuresdict = {
+                            "2048": time_reduced_hidden_states.cpu(),
+                            "logits": time_reduced_hidden_states.cpu()
+                        }
                     elif self.backbone == "cnn14":
                         featuresdict = self.mel_model(waveform)
 
@@ -440,7 +492,10 @@ class EvaluationHelper:
                 if out_meta is None:
                     out_meta = metadict
                 else:
-                    out_meta = {k: out_meta[k] + metadict[k] for k in out_meta.keys()}
+                    out_meta = {
+                        k: out_meta[k] + metadict[k]
+                        for k in out_meta.keys()
+                    }
             except Exception as e:
                 import ipdb
 
@@ -454,7 +509,7 @@ class EvaluationHelper:
     def sample_from(self, samples, number_to_use):
         assert samples.shape[0] >= number_to_use
         rand_order = np.random.permutation(samples.shape[0])
-        return samples[rand_order[: samples.shape[0]], :]
+        return samples[rand_order[:samples.shape[0]], :]
 
 
 if __name__ == "__main__":
@@ -471,7 +526,8 @@ if __name__ == "__main__":
         type=str,
         required=False,
         help="Audio sampling rate during evaluation",
-        default="/mnt/fast/datasets/audio/audioset/2million_audioset_wav/balanced_train_segments",
+        default=
+        "/mnt/fast/datasets/audio/audioset/2million_audioset_wav/balanced_train_segments",
     )
 
     parser.add_argument(
@@ -480,7 +536,8 @@ if __name__ == "__main__":
         type=str,
         required=False,
         help="Audio sampling rate during evaluation",
-        default="/mnt/fast/datasets/audio/audioset/2million_audioset_wav/eval_segments",
+        default=
+        "/mnt/fast/datasets/audio/audioset/2million_audioset_wav/eval_segments",
     )
 
     parser.add_argument(

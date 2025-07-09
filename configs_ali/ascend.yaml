@@ -3,7 +3,7 @@ defaults:
   - _self_
 
 trainer:
-  wandb_config:
+  logging_config:
     project: x_to_audio_generation_ascend
 
 model:

@@ -1,25 +1,32 @@
 train:
   _target_: data_module.dataset.AudioSuperResolutionDataset
-  content: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/musdb_test/train/content.jsonl  # frequency-cutoff audio
-  audio: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/musdb_test/train/audio.jsonl  # high-frequency enhanced audio
+  content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/train/content.jsonl  # frequency-cutoff audio
+  audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/train/audio.jsonl  # high-frequency enhanced audio
+  base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+  base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
   target_sr: ${sample_rate}
   downsampling_ratio: ${downsampling_ratio}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
   max_duration: 5.0
+  random_crop: true
 val:
   _target_: data_module.dataset.AudioSuperResolutionDataset
-  content: data/musdb/content.jsonl
-  audio: data/musdb/audio.jsonl
+  content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/val/content.jsonl  # frequency-cutoff audio
+  audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/val/audio.jsonl  # high-frequency enhanced audio
+  base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+  base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
   target_sr: ${sample_rate}
   downsampling_ratio: ${downsampling_ratio}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
   max_duration: 5.0
   random_crop: false
+  max_samples: ${max_val_samples}
 test:
   _target_: data_module.dataset.AudioSuperResolutionDataset
-  content: /hpc_stor03/sjtu_home/ye.tao/data/xtoaudio/musdb_test/test/content.jsonl
+  content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/test/content.jsonl
+  base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
   target_sr: ${sample_rate}
   downsampling_ratio: ${downsampling_ratio}
   use_h5_cache: false

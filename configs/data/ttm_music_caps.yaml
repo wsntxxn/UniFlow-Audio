@@ -1,0 +1,6 @@
+defaults:
+  - default
+  - _self_
+
+test_data_list:
+  - ${..music_caps.test}

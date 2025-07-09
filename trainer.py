@@ -19,12 +19,14 @@ from swanlab.integration.accelerate import SwanLabTracker
 from utils.accelerate_utilities import AcceleratorSaveTrainableParams
 
 
-@dataclass
-class WandbConfig:
+@dataclass(kw_only=True)
+class LoggingConfig:
+    report_to: str | None = "wandb"  # "wandb" | "swanlab" | "tensorboard"
     project: str
     save_dir: str | Path
     name: str
     resume_id: str | None = None
+    workspace: str | None = None  # organization name in SwanLab
 
 
 class LRSchedulerInterval(str, Enum):
@@ -90,8 +92,7 @@ class Trainer(CheckpointMixin):
     config_dict: dict | None = None
     project_dir: str | Path
     checkpoint_dir: str | Path = None
-    logger: str = "wandb"  # "wandb" | "swanlab" | "tensorboard"
-    wandb_config: WandbConfig | None = None
+    logging_config: LoggingConfig | None = None
 
     train_dataloader: StatefulDataLoader | DataLoader
     val_dataloader: StatefulDataLoader | DataLoader
@@ -119,18 +120,22 @@ class Trainer(CheckpointMixin):
 
     def setup_accelerator(self) -> None:
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
-        if self.logger == "swanlab" and self.wandb_config is not None:
-            tracker = SwanLabTracker(
-                run_name=self.wandb_config.project,
-                experiment_name=self.wandb_config.name,
-                # logdir=self.wandb_config.save_dir,
+        if self.logging_config is not None:
+            assert self.logging_config.report_to in (
+                "wandb", "swanlab", "tensorboard"
+            ), (
+                f"Unsupported logger: {self.logging_config.report_to}. "
+                "Supported loggers are 'wandb', 'swanlab', and 'tensorboard'."
             )
-        else:
-            assert self.logger in ("wandb", "tensorboard"), (
-                f"Unsupported logger: {self.logger}. "
-                "Supported loggers are 'wandb' and 'tensorboard'."
-            )
-            tracker = self.logger
+            if self.logging_config.report_to == "swanlab":
+                tracker = SwanLabTracker(
+                    run_name=self.logging_config.project,
+                    experiment_name=self.logging_config.name,
+                    logdir=self.logging_config.save_dir,
+                    workspace=self.logging_config.workspace,
+                )
+            else:
+                tracker = self.logging_config.report_to
 
         self.accelerator = AcceleratorSaveTrainableParams(
             log_with=tracker,
@@ -378,14 +383,14 @@ class Trainer(CheckpointMixin):
         self.val_data_iterator = iter(self.val_dataloader)
 
         self.accelerator.print(f"training start ............")
-        if self.wandb_config is not None:
+        if self.logging_config is not None:
             self.accelerator.init_trackers(
-                self.wandb_config.project,
+                self.logging_config.project,
                 init_kwargs={
                     "wandb": {
-                        "name": self.wandb_config.name,
-                        "dir": self.wandb_config.save_dir,
-                        "id": self.wandb_config.resume_id,
+                        "name": self.logging_config.name,
+                        "dir": self.logging_config.save_dir,
+                        "id": self.logging_config.resume_id,
                         "resume": "allow",
                     }
                 }

@@ -16,9 +16,14 @@ from multiprocessing.dummy import Pool as ThreadPool
 from audioldm_eval.datasets.load_mel import WaveDataset
 from torch.utils.data import DataLoader
 
+
 class FrechetAudioDistance:
     def __init__(
-        self, use_pca=False, use_activation=False, verbose=False, audio_load_worker=8
+        self,
+        use_pca=False,
+        use_activation=False,
+        verbose=False,
+        audio_load_worker=8
     ):
         self.__get_model(use_pca=use_pca, use_activation=use_activation)
         self.verbose = verbose
@@ -49,12 +54,12 @@ class FrechetAudioDistance:
             ),
             batch_size=1,
             sampler=None,
-            num_workers=8,
+            num_workers=4,
         )
         data_list = []
         print("Loading data to RAM")
         for batch in tqdm(outputloader):
-            data_list.append((batch[0][0,0], 16000))
+            data_list.append((batch[0][0, 0], 16000))
         return data_list
 
     def get_embeddings(self, x, sr=16000, limit_num=None):
@@ -68,7 +73,7 @@ class FrechetAudioDistance:
         """
         embd_lst = []
         x = self.load_audio_data(x)
-        if isinstance(x, list): 
+        if isinstance(x, list):
             try:
                 for audio, sr in tqdm(x, disable=(not self.verbose)):
                     embd = self.model.forward(audio.numpy(), sr)
@@ -78,9 +83,8 @@ class FrechetAudioDistance:
                     embd_lst.append(embd)
             except Exception as e:
                 print(
-                    "[Frechet Audio Distance] get_embeddings throw an exception: {}".format(
-                        str(e)
-                    )
+                    "[Frechet Audio Distance] get_embeddings throw an exception: {}"
+                    .format(str(e))
                 )
         else:
             raise AttributeError
@@ -151,27 +155,42 @@ class FrechetAudioDistance:
 
         tr_covmean = np.trace(covmean)
 
-        return diff.dot(diff) + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean
+        return diff.dot(diff) + np.trace(sigma1
+                                        ) + np.trace(sigma2) - 2 * tr_covmean
 
-    def score(self, background_dir, eval_dir, store_embds=False, limit_num=None, recalculate = False): 
+    def score(
+        self,
+        background_dir,
+        eval_dir,
+        store_embds=False,
+        limit_num=None,
+        recalculate=False
+    ):
         # background_dir: generated samples
         # eval_dir: groundtruth samples
         try:
             fad_target_folder_cache = eval_dir + "_fad_feature_cache.npy"
             fad_generated_folder_cache = background_dir + "_fad_feature_cache.npy"
 
-            if(not os.path.exists(fad_generated_folder_cache) or recalculate):
-                embds_background = self.get_embeddings(background_dir, limit_num=limit_num)
+            if (not os.path.exists(fad_generated_folder_cache) or recalculate):
+                embds_background = self.get_embeddings(
+                    background_dir, limit_num=limit_num
+                )
                 np.save(fad_generated_folder_cache, embds_background)
             else:
-                print("Reload fad_generated_folder_cache", fad_generated_folder_cache)
+                print(
+                    "Reload fad_generated_folder_cache",
+                    fad_generated_folder_cache
+                )
                 embds_background = np.load(fad_generated_folder_cache)
 
-            if(not os.path.exists(fad_target_folder_cache) or recalculate):
+            if (not os.path.exists(fad_target_folder_cache) or recalculate):
                 embds_eval = self.get_embeddings(eval_dir, limit_num=limit_num)
                 np.save(fad_target_folder_cache, embds_eval)
             else:
-                print("Reload fad_target_folder_cache", fad_target_folder_cache)
+                print(
+                    "Reload fad_target_folder_cache", fad_target_folder_cache
+                )
                 embds_eval = np.load(fad_target_folder_cache)
 
             if store_embds:
@@ -185,7 +204,9 @@ class FrechetAudioDistance:
                 return -1
 
             if len(embds_eval) == 0:
-                print("[Frechet Audio Distance] eval set dir is empty, exitting...")
+                print(
+                    "[Frechet Audio Distance] eval set dir is empty, exitting..."
+                )
                 return -1
 
             mu_background, sigma_background = self.calculate_embd_statistics(
@@ -200,5 +221,7 @@ class FrechetAudioDistance:
             return {"frechet_audio_distance": fad_score}
 
         except Exception as e:
-            print("[Frechet Audio Distance] exception thrown, {}".format(str(e)))
+            print(
+                "[Frechet Audio Distance] exception thrown, {}".format(str(e))
+            )
             return -1

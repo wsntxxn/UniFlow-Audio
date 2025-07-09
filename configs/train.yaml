@@ -1,6 +1,6 @@
 defaults:
   - basic
-  - model: flow_matching_small
+  - model: flow_matching_base
   - data@data_dict: train_val
   - loss@loss_fn: weighted_sum
   - _self_
@@ -17,8 +17,16 @@ train_dataloader:
   sampler:
     _target_: data_module.sampler.TaskIteratingSampler
     shuffle: true
+    task_sampling_weights:
+      text_to_audio: 2
+      text_to_music: 4
+      text_to_speech: 3
+      audio_super_resolution: 1
+      speech_enhancement:  2
+      singing_voice_synthesis: 1
+      video_to_audio: 5
   batch_size: 24 # per device batch size
-  num_workers: 4
+  num_workers: 12
   collate_fn:
     _target_: data_module.collate_function.PaddingCollate
     pad_keys: ["waveform", "duration", "instruction"]
@@ -30,8 +38,8 @@ val_dataloader:
     _target_: data_module.dataset.AudioGenConcatDataset
     datasets: ${data_dict.val_data_list}
   batch_size: 24 # per device batch size
-  shuffle: False
-  num_workers: 4
+  shuffle: false
+  num_workers: 12
   collate_fn:
     _target_: data_module.collate_function.PaddingCollate
     pad_keys: ["waveform",  "duration", "instruction"]
@@ -51,9 +59,10 @@ optimizer:
 
 lr_scheduler:
   _target_: "transformers.get_scheduler"
-  name: "linear"
+  # name: "linear"
+  name: "constant_with_warmup"
 
-epochs: 600
+epochs: 150
 epoch_length: 2000
 
 trainer:
@@ -66,14 +75,15 @@ trainer:
   epoch_length: ${epoch_length}
   save_last_k: 2
   early_stop: Null
-  logger: swanlab
-  wandb_config:
-    _target_: trainer.WandbConfig
-    # project: x_to_audio_generation
-    project: runs
+  logging_config:
+    _target_: trainer.LoggingConfig
+    report_to: swanlab
+    project: x_to_audio_pjlab
+    # project: runs
     save_dir: ${exp_dir}
     name: ${exp_name}
     resume_id: Null
+    workspace: xlance-maa
   metric_monitor:
     _target_: trainer.MetricMonitor
     metric_name: loss

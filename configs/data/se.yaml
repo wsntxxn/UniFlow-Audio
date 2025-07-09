@@ -3,7 +3,18 @@ defaults:
   - _self_
 
 train_data_list:
-  - ${..ljspeech_se.train}
+  - ${..ljspeech+musan.train}
+  - ${..libritts_100+wham.train}
+  - ${..libritts_360+wham.train}
+  - ${..voicebank+demand.train}
+  - ${..vctk+wham.train}
 
 val_data_list:
-  - ${..ljspeech_se.val}
+  - ${..ljspeech+musan.val}
+  - ${..libritts_100+wham.val}
+  - ${..libritts_360+wham.val}
+  - ${..voicebank+demand.val}
+  - ${..vctk+wham.val}
+
+test_data_list:
+  - ${..voicebank_demand.test}

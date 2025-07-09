@@ -20,7 +20,7 @@ from tqdm import tqdm
 import pyworld as pw
 import json
 
-from utils.general import read_jsonl_to_mapping, construct_gen_audio_id2paths_mapping
+from utils.general import read_jsonl_to_mapping, audio_dir_to_mapping
 
 N_FFT = 1024
 N_SHIFT = 256
@@ -266,12 +266,12 @@ def evaluate(args):
         args.ref_audio_jsonl, "audio_id", "audio"
     )
 
-    gen_aid_to_audios = construct_gen_audio_id2paths_mapping(
-        args.gen_audio_dir, 'svs'
-    )
-    # gen_aid_to_audios = read_jsonl_to_mapping(
-    #     args.gen_audio_jsonl, "audio_id", "audio"
-    # )
+    if args.gen_audio_jsonl is not None:
+        gen_aid_to_audios = read_jsonl_to_mapping(
+            args.gen_audio_jsonl, "audio_id", "audio"
+        )
+    elif args.gen_audio_dir is not None:
+        gen_aid_to_audios = audio_dir_to_mapping(args.gen_audio_dir, 'svs')
 
     assert ref_aid_to_audios.keys() == gen_aid_to_audios.keys(
     ), "Reference and generated audio IDs do not match"
@@ -329,10 +329,15 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "--gen_audio_dir",
-        "-g",
+        "-gd",
         type=str,
-        required=True,
-        help="path to generated audio dir"
+        help="path to generated audio directory"
+    )
+    parser.add_argument(
+        "--gen_audio_jsonl",
+        "-gj",
+        type=str,
+        help="path to generated audio jsonl file"
     )
     parser.add_argument(
         "--output_file",

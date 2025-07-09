@@ -1,60 +1,63 @@
 import json
-import random
 from pathlib import Path
-from tqdm import tqdm
+import pandas as pd
+import argparse
 
-# 参数配置
-input_jsonl = "/cpfs_shared/jiahao.mei/data/ttm/MusicCaps/metadata/MusicCaps.jsonl"  # 替换成你的输入路径
-output_dir = Path("/cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/musiccaps")   # 替换成你的输出根目录
-splits = {"train": 0.8, "val": 0.1, "test": 0.1}
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--musicaps_csv", type=str, help="Path to the MusicCaps CSV file"
+)
+parser.add_argument(
+    "--wav_csv", type=str, help="Path to the full AudioSet metadata"
+)
+parser.add_argument(
+    "--waveform_csv",
+    type=str,
+    help="Path to the AudioSet metadata with hdf5 paths"
+)
+parser.add_argument(
+    "--target_musicaps_dir", type=str, default="data/music_caps/"
+)
 
-# 创建输出目录
-for split in splits:
-    (output_dir / split).mkdir(parents=True, exist_ok=True)
+args = parser.parse_args()
 
-# 读取所有数据
-with open(input_jsonl, "r") as f:
-    data = [json.loads(line) for line in f]
+MUSICAPS_CSV = Path(args.musicaps_csv)
+TARGET_MUSICAPS_DIR = Path(args.target_musicaps_dir)
 
-# 打乱数据
-random.shuffle(data)
+if args.waveform_csv:
+    AUDIO_CSV = Path(args.waveform_csv)
+elif args.wav_csv:
+    AUDIO_CSV = Path(args.wav_csv)
+else:
+    raise ValueError("Please provide either --waveform_csv or --wav_csv.")
 
-# 按比例划分数据
-total = len(data)
-train_end = int(total * splits["train"])
-val_end = train_end + int(total * splits["val"])
+audio_df = pd.read_csv(AUDIO_CSV, sep="\t")
+audio_df["audio_id"] = audio_df["audio_id"].apply(lambda x: x[1:12])
+if args.waveform_csv:
+    aid_to_fpath = dict(zip(audio_df["audio_id"], audio_df["hdf5_path"]))
+elif args.wav_csv:
+    aid_to_fpath = dict(zip(audio_df["audio_id"], audio_df["file_name"]))
+available_aids = set(audio_df["audio_id"].values)
 
-split_data = {
-    "train": data[:train_end],
-    "val": data[train_end:val_end],
-    "test": data[val_end:]
-}
+data_df = pd.read_csv(MUSICAPS_CSV)
+TARGET_MUSICAPS_DIR.mkdir(parents=True, exist_ok=True)
+with open(TARGET_MUSICAPS_DIR / "audio.jsonl", "w") as audio_writer, \
+    open(TARGET_MUSICAPS_DIR / "caption.jsonl", "w") as text_writer:
+    for i, row in data_df.iterrows():
+        audio_id = row["ytid"]
+        if audio_id not in available_aids:
+            continue
+        audio_writer.write(
+            json.dumps({
+                "audio_id": audio_id,
+                "audio": aid_to_fpath[audio_id]
+            }) + "\n"
+        )
 
-# 写入新的jsonl
-for split, items in split_data.items():
-    audio_lines = []
-    caption_lines = []
-    for item in tqdm(items, desc=f"Processing {split}"):
-        # 获取路径并提取音频文件名
-        wav_path = item["wavPath"]
-        # audio_id = Path(wav_path).name.replace(".mp3", ".wav")  # 替换扩展名为 .wav
-        audio_id=item["uuid"]
-        # 生成 audio.jsonl 条目
-        audio_lines.append(json.dumps({
-            "audio_id": audio_id,
-            "audio": wav_path
-        }))
-
-        # 生成 caption.jsonl 条目
-        caption_lines.append(json.dumps({
-            "audio_id": audio_id,
-            "caption": item["inputData"]
-        }))
-
-    # 保存到对应子文件夹
-    with open(output_dir / split / "audio.jsonl", "w") as fa:
-        fa.write("\n".join(audio_lines) + "\n")
-    with open(output_dir / split / "caption.jsonl", "w") as fc:
-        fc.write("\n".join(caption_lines) + "\n")
-
-print("✅ 数据划分并保存完成！")
+        caption = row["caption"]
+        text_writer.write(
+            json.dumps({
+                "audio_id": audio_id,
+                "caption": caption
+            }) + "\n"
+        )

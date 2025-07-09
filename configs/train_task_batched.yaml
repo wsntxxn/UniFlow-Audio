@@ -78,8 +78,8 @@ trainer:
   save_last_k: 2
   early_stop: Null
   logger: tensorboard
-  wandb_config:
-    _target_: trainer.WandbConfig
+  logging_config:
+    _target_: trainer.LoggingConfig
     # project: x_to_audio_generation
     project: runs
     save_dir: ${exp_dir}

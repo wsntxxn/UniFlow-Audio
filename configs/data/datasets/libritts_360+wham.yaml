@@ -1,0 +1,34 @@
+train:
+  _target_: data_module.dataset.SpeechEnhancementDataset
+  content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/train/metadata_caption.jsonl
+  audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/train/metadata_audio.jsonl
+  base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+  base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+  downsampling_ratio: ${downsampling_ratio}
+  target_sr: ${sample_rate}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  max_duration: 5.0
+val:
+  _target_: data_module.dataset.SpeechEnhancementDataset
+  content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/val/metadata_caption.jsonl
+  audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/val/metadata_audio.jsonl
+  base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+  base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+  downsampling_ratio: ${downsampling_ratio}
+  target_sr: ${sample_rate}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  max_samples: ${max_val_samples}
+  max_duration: 5.0
+  random_crop: false
+test:
+  _target_: data_module.dataset.SpeechEnhancementDataset
+  content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/test/metadata_caption.jsonl
+  base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+  base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+  downsampling_ratio: ${downsampling_ratio}
+  target_sr: ${sample_rate}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1

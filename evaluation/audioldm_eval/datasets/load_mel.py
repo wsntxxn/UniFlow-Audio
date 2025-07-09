@@ -5,10 +5,16 @@ import torchaudio
 from tqdm import tqdm
 # import librosa
 
+
 def pad_short_audio(audio, min_samples=32000):
-    if(audio.size(-1) < min_samples):
-        audio = torch.nn.functional.pad(audio, (0, min_samples - audio.size(-1)), mode='constant', value=0.0)
+    if (audio.size(-1) < min_samples):
+        audio = torch.nn.functional.pad(
+            audio, (0, min_samples - audio.size(-1)),
+            mode='constant',
+            value=0.0
+        )
     return audio
+
 
 class MelPairedDataset(torch.utils.data.Dataset):
     def __init__(
@@ -22,10 +28,14 @@ class MelPairedDataset(torch.utils.data.Dataset):
         augment=False,
         limit_num=None,
     ):
-        self.datalist1 = [os.path.join(datadir1, x) for x in os.listdir(datadir1)]
+        self.datalist1 = [
+            os.path.join(datadir1, x) for x in os.listdir(datadir1)
+        ]
         self.datalist1 = sorted(self.datalist1)
 
-        self.datalist2 = [os.path.join(datadir2, x) for x in os.listdir(datadir2)]
+        self.datalist2 = [
+            os.path.join(datadir2, x) for x in os.listdir(datadir2)
+        ]
         self.datalist2 = sorted(self.datalist2)
 
         if limit_num is not None:
@@ -87,7 +97,7 @@ class MelPairedDataset(torch.utils.data.Dataset):
     def get_mel_from_file(self, audio_file):
         audio, file_sr = torchaudio.load(audio_file)
         # Only use the first channel
-        audio = audio[0:1,...]
+        audio = audio[0:1, ...]
         audio = audio - audio.mean()
         if file_sr != self.sr:
             audio = torchaudio.functional.resample(
@@ -107,7 +117,9 @@ class MelPairedDataset(torch.utils.data.Dataset):
 
         # =========================================================================
         # Following the processing in https://github.com/v-iashin/SpecVQGAN/blob/5bc54f30eb89f82d129aa36ae3f1e90b60e73952/vocoder/mel2wav/extract_mel_spectrogram.py#L141
-        melspec, energy = self._stft.mel_spectrogram(audio, normalize_fun=torch.log10)
+        melspec, energy = self._stft.mel_spectrogram(
+            audio, normalize_fun=torch.log10
+        )
         melspec = (melspec * 20) - 20
         melspec = (melspec + 100) / 100
         melspec = torch.clip(melspec, min=0, max=1.0)
@@ -147,7 +159,7 @@ class WaveDataset(torch.utils.data.Dataset):
             except Exception as e:
                 print(index, e)
                 index = (index + 1) % len(self.datalist)
-        
+
         return waveform, os.path.basename(filename)
 
     def __len__(self):
@@ -156,7 +168,7 @@ class WaveDataset(torch.utils.data.Dataset):
     def read_from_file(self, audio_file):
         audio, file_sr = torchaudio.load(audio_file)
         # Only use the first channel
-        audio = audio[0:1,...]
+        audio = audio[0:1, ...]
         audio = audio - audio.mean()
 
         # if file_sr != self.sr and file_sr == 32000 and self.sr == 16000:
@@ -167,22 +179,21 @@ class WaveDataset(torch.utils.data.Dataset):
 
         if file_sr != self.sr:
             audio = torchaudio.functional.resample(
-                audio, orig_freq=file_sr, new_freq=self.sr, # rolloff=0.95, lowpass_filter_width=16 
+                audio,
+                orig_freq=file_sr,
+                new_freq=self.sr,  # rolloff=0.95, lowpass_filter_width=16 
             )
             # audio = torch.FloatTensor(librosa.resample(audio.numpy(), file_sr, self.sr))
-            
+
         audio = pad_short_audio(audio, min_samples=32000)
         return audio
+
 
 def load_npy_data(loader):
     new_train = []
     for mel, waveform, filename in tqdm(loader):
         batch = batch.float().numpy()
-        new_train.append(
-            batch.reshape(
-                -1,
-            )
-        )
+        new_train.append(batch.reshape(-1, ))
     new_train = np.array(new_train)
     return new_train
 

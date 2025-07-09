@@ -3,11 +3,16 @@ defaults:
   - _self_
 
 train_data_list:
-  - ${..TTSHQ.train}
+  - ${..ttshq.train}
   - ${..musdb.train}
   - ${..moises.train}
 
 val_data_list:
-  - ${..TTSHQ.val}
+  - ${..ttshq.val}
   - ${..musdb.val}
   - ${..moises.val}
+
+test_data_list:
+  - ${..esc_audiosr.test}
+  - ${..vctk_audiosr.test}
+  - ${..musdb.test}

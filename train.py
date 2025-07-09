@@ -54,8 +54,8 @@ def setup_resume_cfg(config):
         resumed_config = OmegaConf.load(exp_dir / "config.yaml")
         resumed_config["trainer"].update({
             "resume_from_checkpoint": ckpt_dir.__str__(),
-            "wandb_config": config["trainer"]
-                            ["wandb_config"],  # for resume wandb runs
+            "logging_config": config["trainer"]
+                              ["logging_config"],  # for resume wandb runs
         })
     elif config.get("auto_reusme_from_latest_ckpt", False):
         exp_dir = Path(config["exp_dir"])
@@ -66,8 +66,8 @@ def setup_resume_cfg(config):
             resumed_config = OmegaConf.load(exp_dir / "config.yaml")
             resumed_config["trainer"].update({
                 "resume_from_checkpoint": ckpt_dir.__str__(),
-                "wandb_config": config["trainer"]
-                                ["wandb_config"],  # for resume wandb runs
+                "logging_config": config["trainer"]
+                                  ["logging_config"],  # for resume wandb runs
             })
         else:
             resumed_config = config

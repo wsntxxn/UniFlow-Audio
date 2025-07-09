@@ -4,7 +4,7 @@ from typing import Union, Dict
 from pathlib import Path
 import os
 
-MAX_FILE_NAME_LENGTH = 50
+MAX_FILE_NAME_LENGTH = 100
 
 
 def read_jsonl_to_mapping(
@@ -46,13 +46,14 @@ def transform_gen_fn_to_id(audio_file: Path, task: str) -> str:
     elif task == "sr":
         audio_id = audio_file.stem
     elif task == "tta":
+        # audio_id = audio_file.stem[:11]
         audio_id = audio_file.stem[:12] + '.wav'
     else:
         audio_id = audio_file.stem
     return audio_id
 
 
-def construct_gen_audio_id2paths_mapping(audio_dir, task) -> dict:
+def audio_dir_to_mapping(audio_dir: str | Path, task: str) -> dict:
     mapping = {}
     audio_dir = Path(audio_dir)
     audio_files = sorted(audio_dir.iterdir())

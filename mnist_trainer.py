@@ -10,7 +10,7 @@ import torchvision
 from torchvision import transforms
 from torchdata.stateful_dataloader import StatefulDataLoader
 
-from trainer import Trainer, WandbConfig, MetricMonitor
+from trainer import Trainer, LoggingConfig, MetricMonitor
 from utils.logging import LoggingLogger
 
 
@@ -163,7 +163,7 @@ trainer = MnistTrainer(
     project_dir=experiment_dir,
     logging_file=experiment_dir + "/train.log",
     logger="swanlab",
-    wandb_config=WandbConfig(
+    logging_config=LoggingConfig(
         project="test_mnist", save_dir=experiment_dir, name="test1"
     ),
     train_dataloader=dl_train,

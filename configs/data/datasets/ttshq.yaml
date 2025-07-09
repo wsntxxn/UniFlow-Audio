@@ -1,0 +1,34 @@
+train:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/train/content.jsonl  # frequency-cutoff audio
+  audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/train/audio.jsonl  # high-frequency enhanced audio
+  base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+  base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  max_duration: 5.0
+  random_crop: true
+val:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/val/content.jsonl
+  audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/val/audio.jsonl
+  base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+  base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  max_duration: 5.0
+  random_crop: false
+  max_samples: ${max_val_samples}
+test:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/test/content.jsonl
+  base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1

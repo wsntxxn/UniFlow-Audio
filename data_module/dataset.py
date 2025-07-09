@@ -365,34 +365,22 @@ class VideoToAudioDataset(AudioGenerationDataset):
     content_col: str = "video"
     video_fps: int = 10
 
-    def load_content_waveform(self, audio_id: str):
+    def load_content(self, audio_id: str, content_or_path: str):
         video_path = self.id_to_content[audio_id]
 
         if video_path.endswith(".hdf5") or video_path.endswith(".h5"):
             with File(video_path, "r") as hf:
-                id_set = hf["Video_id"][:]
-                idx = np.where(id_set == audio_id.encode())[0].item()
-
-                video_features = hf["Video"][idx]
-                if video_features.ndim == 3:
-                    video_features = video_features[0]
-                label: bytes = hf["Label"][idx]
+                video_feature = hf[f"{audio_id}/video"][()]
+                label: bytes = hf[f"{audio_id}/label"][()]
                 label = label.decode()
 
-                if self.id_to_audio:
-                    waveform = hf["Audio"][idx]
-                    # TODO: handle resampling scenario
-                    waveform = torch.as_tensor(waveform, dtype=torch.float32)
-                else:  # inference, only content is available
-                    waveform = None
         else:
             raise NotImplementedError(
-                "Video feature must be load by h5 file !"
+                "video feature must be load by h5 file !"
             )
 
-        duration = self.load_duration(video_features, waveform)
         yid_stem = Path(audio_id).stem
-        return video_features, waveform, duration, f"{yid_stem}_{label}"
+        return video_feature, f"{yid_stem}_{label}"
 
     def load_duration(self, content: Any,
                       waveform: torch.Tensor) -> Sequence[float]:
@@ -578,6 +566,8 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
 
     def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
         content_or_path = self.id_to_content[audio_id]
+        if self.base_content_path:
+            content_or_path = str(self.base_content_path / content_or_path)
         content = self.load_content(audio_id, content_or_path)
 
         # truncate long audio clip
@@ -597,6 +587,8 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
 
         if self.id_to_audio:  # training, audio is the target
             audio_path = self.id_to_audio[audio_id]
+            if self.base_audio_path:
+                audio_path = str(self.base_audio_path / audio_path)
             waveform = self.load_waveform(audio_id, audio_path)
             if start_index is not None:
                 waveform = waveform[start_index:start_index +
@@ -623,9 +615,9 @@ class SpeechEnhancementDataset(AudioSuperResolutionDataset):
 class AudioGenConcatDataset(Dataset):
     def __init__(self, datasets: list[Dataset]):
         self.datasets = datasets
-        print(f'\n val  datasets\n')
+        print(f'\ndatasets:')
         for d in datasets:
-            print(f'dataset_name:{d},len:{len(d)}')
+            print(f'dataset_name: {d}, len: {len(d)}')
         self.lengths = np.array([len(d) for d in datasets])
         self.cum_sum_lengths = np.cumsum(self.lengths)
 
@@ -675,86 +667,98 @@ class TaskGroupedAudioGenConcatDataset(Dataset):
 if __name__ == '__main__':
 
     from tqdm import tqdm
-    from data_module.sampler import TaskIteratingSampler, TaskGroupedBatchSampler, TaskGroupedSequentialBatchSampler
+    from data_module.sampler import TaskIteratingSampler, TaskGroupedIteratingBatchSampler, TaskGroupedSequentialBatchSampler
     from data_module.collate_function import PaddingCollate, PaddingCollateWithAnyContent
 
-    dataset = TaskGroupedAudioGenConcatDataset(
+    # dataset = TaskGroupedAudioGenConcatDataset(
+    dataset = AudioGenConcatDataset(
         datasets=[
-            TextToSpeechDataset(
-                content="data/libritts/phoneme.jsonl",
-                audio="data/libritts/audio.jsonl",
-                base_content_path="/hpc_stor03/sjtu_home/jiahao.mei/",
-                base_audio_path="/hpc_stor03/public/shared/data/tts/",
+            # TextToSpeechDataset(
+            #     content="data/libritts/train/phoneme.jsonl",
+            #     audio="data/libritts/train/audio.jsonl",
+            #     base_content_path=
+            #     "/cpfs04/user/xuxuenan/workspace/x_to_audio_generation",
+            #     base_audio_path="/cpfs02/shared/speechllm/",
+            #     target_sr=24000,
+            #     task_instruction="./data/instructions/t5_embeddings.h5",
+            # ),
+            # SpeechEnhancementDataset(
+            #     content=
+            #     "/oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_caption.jsonl",
+            #     audio=
+            #     "/oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_audio.jsonl",
+            #     base_content_path=
+            #     "/oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham",
+            #     base_audio_path=
+            #     "/oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham",
+            #     downsampling_ratio=480,
+            #     target_sr=24000,
+            #     task_instruction="./data/instructions/t5_embeddings.h5",
+            #     max_duration=5.0,
+            # ),
+            # TextToAudioDataset(
+            #     content="./data/audiocaps_v2/test/caption.jsonl",
+            #     audio="./data/audiocaps_v2/test/audio.jsonl",
+            #     task_instruction="./data/instructions/t5_embeddings.h5",
+            #     instruction_idx=1,
+            #     target_sr=24000
+            # ),
+            # MidiSingingDataset(
+            #     content="./data/m4singer/val/midi.jsonl",
+            #     audio="./data/m4singer/val/audio.jsonl",
+            #     phoneme_set="./data/m4singer/phone_set.json",
+            #     spk_set="./data/m4singer/spk_set.json",
+            #     target_sr=24000,
+            #     task_instruction="./data/instructions/t5_embeddings.h5",
+            #     instruction_idx=4
+            # ),
+            # VideoToAudioDataset(
+            #     content="./data/vggsound/clip/train/content.jsonl",
+            #     audio="./data/vggsound/clip/train/audio.jsonl",
+            #     video_fps=10,
+            #     target_sr=24000,
+            #     task_instruction="./data/instructions/t5_embeddings.h5",
+            # ),
+            TextToMusicDataset(
+                content="data/msd/train/caption.jsonl",
+                audio="data/msd/train/audio.jsonl",
+                base_audio_path=
+                "/cpfs02/shared/speechllm/million_song_dataset/files/MSD/songs/",
+                max_duration=10.0,
                 target_sr=24000,
-                task_instruction=
-                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data_v2/t5_embeddings.h5",
-            ),
-            SpeechEnhancementDataset(
-                content=
-                "/hpc_stor03/sjtu_home/zihao.zheng/data/xtoaudio_se_ljspeech/val/metadata_caption.jsonl",
-                audio=
-                "/hpc_stor03/sjtu_home/zihao.zheng/data/xtoaudio_se_ljspeech/val/metadata_audio.jsonl",
-                downsampling_ratio=480,
-                target_sr=24000,
-                task_instruction=
-                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
-                max_duration=5.0,
-            ),
-            TextToAudioDataset(
-                content="./data/audiocaps/test/caption.jsonl",
-                audio="./data/audiocaps/test/audio.jsonl",
-                task_instruction=
-                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
-                instruction_idx=1,
-                target_sr=24000
-            ),
-            MidiSingingDataset(
-                content="./data/m4singer/val/midi.jsonl",
-                audio="./data/m4singer/val/audio.jsonl",
-                phoneme_set="./data/m4singer/phone_set.json",
-                spk_set="./data/m4singer/spk_set.json",
-                target_sr=24000,
-                task_instruction=
-                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
-                instruction_idx=1
-            ),
-            VideoToAudioDataset(
-                content=
-                "/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/val/content.jsonl",
-                audio=
-                "/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/val/audio.jsonl",
-                video_fps=10,
-                target_sr=24000,
-                task_instruction=
-                "/hpc_stor03/sjtu_home/zeyu.xie/workspace/x2audio/instruction/data/t5_embeddings.h5",
+                task_instruction="./data/instructions/t5_embeddings.h5",
             )
         ]
     )
     # sampler = TaskIteratingSampler(dataset, shuffle=True)
-    batch_sampler = TaskGroupedSequentialBatchSampler(
-        dataset, batch_size=16, shuffle=False
-    )
+    # batch_sampler = TaskGroupedSequentialBatchSampler(
+    #     dataset, batch_size=16, shuffle=False
+    # )
 
-    collate_fn = PaddingCollateWithAnyContent(
+    # collate_fn = PaddingCollateWithAnyContent(
+    #     pad_keys=["waveform", "duration", "instruction"],
+    #     content_pad_keys=[
+    #         "phoneme", "phoneme_duration", "midi", "midi_duration", "is_slur",
+    #         "frames"
+    #     ],
+    #     content_torchify_keys=["spk"]
+    # )
+    collate_fn = PaddingCollate(
         pad_keys=["waveform", "duration", "instruction"],
-        content_pad_keys=[
-            "phoneme", "phoneme_duration", "midi", "midi_duration", "is_slur",
-            "frames"
-        ],
-        content_torchify_keys=["spk"]
+        torchify_keys="is_time_aligned"
     )
     dataloader = torch.utils.data.DataLoader(
         dataset,
         collate_fn=collate_fn,
         num_workers=8,
         # sampler=sampler,
-        # batch_size=4,
-        batch_sampler=batch_sampler
+        batch_size=32,
+        # batch_sampler=batch_sampler
     )
 
     batch_idx = 0
     for batch in tqdm(dataloader):
         print(batch["task"])
         batch_idx += 1
-        if batch_idx == 10:
-            break
+        # if batch_idx == 100:
+        # break

@@ -1,0 +1,10 @@
+test:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/vctk_test/test/content.jsonl
+  base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/vctk_test/
+  target_sr: ${sample_rate}
+  downsampling_ratio: ${downsampling_ratio}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1
+  random_crop: false

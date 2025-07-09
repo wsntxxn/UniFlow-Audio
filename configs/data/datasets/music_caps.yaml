@@ -1,0 +1,5 @@
+test:
+  _target_: data_module.dataset.TextToMusicDataset
+  content: data/music_caps/caption.jsonl
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1

@@ -1,14 +1,8 @@
-N_LAYERS=24
-D_MODEL=1024
-
-
-CUDA_VISIBLE_DEVICES=0 accelerate launch --config_file configs/accelerate/nvidia/1gpu.yaml train.py \
-    train_dataloader.batch_size=12 \
-    val_dataloader.batch_size=12 \
+accelerate launch --config_file configs/accelerate/nvidia/8gpus.yaml \
+    train.py \
+    exp_name=m4singer_dummy_content_fm \
     data@data_dict=svs_m4singer \
-    model=diffusion \
-    model.backbone.embed_dim=${D_MODEL} \
-    model.backbone.depth=${N_LAYERS} \
-    exp_name=noise_weight \
-    trainer.wandb_config.project=singing_m4singer \
-    # ~trainer.wandb_config \
+    model=flow_matching_base \
+    warmup_params.warmup_steps=1000 \
+    epoch_length=500 \
+    epochs=100

@@ -3,9 +3,18 @@ defaults:
   - datasets@audiocaps: audiocaps
   - datasets@opencpop: opencpop
   - datasets@popcs: popcs
-  - datasets@TTSHQ: TTSHQ
+  - datasets@ttshq: ttshq
   - datasets@musdb: musdb
   - datasets@moises: moises
   - datasets@vggsound_clip: vggsound_clip
-  - datasets@ljspeech_se: ljspeech_se
+  - datasets@libritts_100+wham: libritts_100+wham
+  - datasets@libritts_360+wham: libritts_360+wham
+  - datasets@ljspeech+musan: ljspeech+musan
+  - datasets@voicebank+demand: voicebank+demand
+  - datasets@vctk+wham: vctk+wham
+  - datasets@voicebank_demand: voicebank+demand
   - datasets@m4singer: m4singer
+  - datasets@msd: msd
+  - datasets@music_caps: music_caps
+  - datasets@esc_audiosr: esc_audiosr
+  - datasets@vctk_audiosr: vctk_audiosr

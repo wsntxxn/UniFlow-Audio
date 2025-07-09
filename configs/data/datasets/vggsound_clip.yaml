@@ -1,20 +1,21 @@
 train:
   _target_: data_module.dataset.VideoToAudioDataset
-  content: /hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/train/content.jsonl
-  audio: /hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/train/audio.jsonl
+  content: data/vggsound/clip/train/content.jsonl
+  audio: data/vggsound/clip/train/audio.jsonl
   video_fps: 10
   target_sr: ${sample_rate}
   task_instruction: ${instruction_embedding}
 val:
   _target_: data_module.dataset.VideoToAudioDataset
-  content: /hpc_stor03/sjtu_home/xuenan.xu/workspace/x_to_audio_generation/data/vggsound/clip/video.jsonl
-  audio: /hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/val/audio.jsonl
+  content: data/vggsound/clip/val/content.jsonl
+  audio: data/vggsound/clip/val/audio.jsonl
   video_fps: 10
   target_sr: ${sample_rate}
   task_instruction: ${instruction_embedding}
+  max_samples: ${max_val_samples}
 test:
   _target_: data_module.dataset.VideoToAudioDataset
-  content: /hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/data/vggsound-clip/test/content.jsonl
+  content: data/vggsound/clip/test/content.jsonl
   video_fps: 10
   task_instruction: ${instruction_embedding}
   instruction_idx: 1

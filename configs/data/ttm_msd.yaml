@@ -3,10 +3,10 @@ defaults:
   - _self_
 
 train_data_list:
-  - ${..m4singer.train}
+  - ${..msd.train}
 
 val_data_list:
-  - ${..m4singer.val}
+  - ${..msd.val}
 
 test_data_list:
-  - ${..m4singer.test}
+  - ${..msd.test}

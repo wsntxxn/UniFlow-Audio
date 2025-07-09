@@ -15,8 +15,10 @@ parser.add_argument(
 parser.add_argument(
     "--waveform_csv",
     type=str,
-    default="/mnt/cloudstorfs/public/shared/data/raa/AudioSet/unbalanced_train/"
-    "waveform/waveform.csv"
+    help="Path to the AudioSet metadata with hdf5 paths"
+)
+parser.add_argument(
+    "--wav_csv", type=str, help="Path to the full AudioSet metadata"
 )
 parser.add_argument(
     "--tango_test_ref",
@@ -29,8 +31,14 @@ args = parser.parse_args()
 
 AUDIOCAPS_CSV_DIR = Path(args.audiocaps_csv_dir)
 TARGET_AUDIOCAPS_DIR = Path(args.target_audiocaps_dir)
-WAVEFORM_CSV = Path(args.waveform_csv)
 TANGO_TEST_REF = args.tango_test_ref
+
+if args.waveform_csv:
+    AUDIO_CSV = Path(args.waveform_csv)
+elif args.wav_csv:
+    AUDIO_CSV = Path(args.wav_csv)
+else:
+    raise ValueError("Please provide either --waveform_csv or --wav_csv.")
 
 
 def load_tango_test_ref():
@@ -39,14 +47,23 @@ def load_tango_test_ref():
         for line in f.readlines():
             item = json.loads(line)
             youtube_id = Path(item["location"]).stem[:11]
-            audio_id = f"Y{youtube_id}.wav"
-            aid_to_caption[audio_id] = item["captions"]
+            aid_to_caption[youtube_id] = item["captions"]
     return aid_to_caption
 
 
-waveform_df = pd.read_csv(WAVEFORM_CSV, sep="\t")
-aid_to_h5path = dict(zip(waveform_df["audio_id"], waveform_df["hdf5_path"]))
-available_aids = set(waveform_df["audio_id"].values)
+def process_audio_id(audio_id: str):
+    """Process audio_id to match the Youtube ID format."""
+    audio_id = Path(audio_id).stem
+    return audio_id[1:12]
+
+
+audio_df = pd.read_csv(AUDIO_CSV, sep="\t")
+audio_df["audio_id"] = audio_df["audio_id"].apply(process_audio_id)
+if args.waveform_csv:
+    aid_to_fpath = dict(zip(audio_df["audio_id"], audio_df["hdf5_path"]))
+elif args.wav_csv:
+    aid_to_fpath = dict(zip(audio_df["audio_id"], audio_df["file_name"]))
+available_aids = set(audio_df["audio_id"].values)
 test_tango_ref = load_tango_test_ref()
 
 for split in ["train", "val", "test"]:
@@ -56,8 +73,7 @@ for split in ["train", "val", "test"]:
     with open(TARGET_AUDIOCAPS_DIR / split / "audio.jsonl", "w") as audio_writer, \
         open(TARGET_AUDIOCAPS_DIR / split / "caption.jsonl", "w") as text_writer:
         for i, row in data_df.iterrows():
-            youtube_id = row["youtube_id"]
-            audio_id = f"Y{youtube_id}.wav"
+            audio_id = row["youtube_id"]
             if audio_id not in available_aids:
                 continue
             if split == "test" and audio_id not in test_tango_ref:
@@ -67,7 +83,7 @@ for split in ["train", "val", "test"]:
             audio_writer.write(
                 json.dumps({
                     "audio_id": audio_id,
-                    "audio": aid_to_h5path[audio_id]
+                    "audio": aid_to_fpath[audio_id]
                 }) + "\n"
             )
             if split == "test":

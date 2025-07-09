@@ -5,7 +5,9 @@ defaults:
 
 test_dataloader:
   _target_: torch.utils.data.DataLoader
-  dataset: ${data_dict.test_data_list.0}
+  dataset:
+    _target_: data_module.dataset.AudioGenConcatDataset
+    datasets: ${data_dict.test_data_list}
   batch_size: 1 # per device batch size
   shuffle: False
   num_workers: 4

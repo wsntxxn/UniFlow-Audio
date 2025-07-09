@@ -18,7 +18,7 @@ class TaskIteratingSampler(Sampler):
             for key, weight in task_sampling_weights.items():
                 if key in self.tasks:
                     self.tasks += [key] * (weight - 1)
-        print(f'task sample order:{self.tasks}')
+        print(f'task sample order: {self.tasks}')
         # pointers & indices for each task
 
         # pointer to the data index of each task, iterating like 0, 1, 2, ...

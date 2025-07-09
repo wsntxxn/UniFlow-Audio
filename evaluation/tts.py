@@ -7,6 +7,7 @@
 #     --libritts_txt_dir '/cpfs_shared/jiahao.mei/data/tts/LibriTTS' \
 #     --xp_name voiceflow
 
+from pathlib import Path
 import os
 import json
 import jiwer
@@ -117,7 +118,8 @@ def extract_utt_id(filepath):
 
 
 def evaluate_tts(
-    audio_dir, libritts_txt_dir, output_path, model_name, xp_name
+    audio_dir: str, libritts_txt_dir: str, ref_transcript_path: str,
+    ref_audio_path: str, output_path: str, model_name: str, xp_name: str
 ):
     print("Loading ASR model...")
     asr_model = load_asr_model(model_name)
@@ -128,10 +130,22 @@ def evaluate_tts(
     )
 
     print("Building reference transcript map...")
-    ref_map = get_libritts_text_mapping(libritts_txt_dir)
+    if not Path(ref_transcript_path).exists():
+        ref_map = get_libritts_text_mapping(libritts_txt_dir)
+        with open(ref_transcript_path, 'w') as f:
+            json.dump(ref_map, f, indent=2)
+    else:
+        with open(ref_transcript_path, 'r') as f:
+            ref_map = json.load(f)
 
     print("Building reference audio map...")
-    ref_audio_map = get_reference_audio_mapping(libritts_txt_dir)
+    if not Path(ref_audio_path).exists():
+        ref_audio_map = get_reference_audio_mapping(libritts_txt_dir)
+        with open(ref_audio_path, 'w') as f:
+            json.dump(ref_audio_map, f, indent=2)
+    else:
+        with open(ref_audio_path, 'r') as f:
+            ref_audio_map = json.load(f)
 
     audio_files = get_all_audio_files(audio_dir)
     print(f"Found {len(audio_files)} audio files")
@@ -205,16 +219,20 @@ def evaluate_tts(
     avg_sim = np.mean(similarities) if similarities else 0.0
 
     if output_path == '':
-        output_path = './evaluation/result/' + '_'.join([
-            "tts_results", model_name, xp_name
-        ]) + '.jsonl'
+        output_path = Path(
+            './evaluation/result'
+        ) / f'tts_results_{model_name}_{xp_name}.jsonl'
 
+    output_path.parent.mkdir(exist_ok=True, parents=True)
     with open(output_path, 'w') as f:
         for r in results:
             json.dump(r, f)
             f.write('\n')
-        json.dump({"average_wer": avg_wer}, f)
-        json.dump({"average_cosine_similarity": avg_sim}, f)
+        json.dump({
+            "average_wer": avg_wer,
+            "average_cosine_similarity": avg_sim
+        }, f)
+        f.write('\n')
 
     print(
         f"\n✅ Evaluation done: {len(results)} samples, average WER (weighted): {avg_wer}"
@@ -240,6 +258,18 @@ if __name__ == "__main__":
         help='Directory for LibriTTS test-clean files'
     )
     parser.add_argument(
+        '--ref_transcript_path',
+        type=str,
+        default='./data/libritts/voiceflow_test/ref_transcript.json',
+        help='Path to reference transcript JSON file'
+    )
+    parser.add_argument(
+        '--ref_audio_path',
+        type=str,
+        default='./data/libritts/voiceflow_test/ref_audio.json',
+        help='Path to reference audio JSON file'
+    )
+    parser.add_argument(
         '--output_path',
         type=str,
         default='',
@@ -258,6 +288,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     evaluate_tts(
-        args.audio_dir, args.libritts_txt_dir, args.output_path,
-        args.model_name, args.xp_name
+        args.audio_dir, args.libritts_txt_dir, args.ref_transcript_path,
+        args.ref_audio_path, args.output_path, args.model_name, args.xp_name
     )
