@@ -142,7 +142,7 @@ def evaluate(args):
             args.gen_audio_jsonl, "audio_id", "audio"
         )
     elif args.gen_audio_dir is not None:
-        gen_aid_to_audios = audio_dir_to_mapping(args.gen_audio_dir, 'tta')
+        gen_aid_to_audios = audio_dir_to_mapping(args.gen_audio_dir, args.task)
 
     keys = deepcopy(list(ref_aid_to_audios.keys()))
     for key in keys:
@@ -164,7 +164,7 @@ def evaluate(args):
     eval_result = evaluator.main(
         gen_folder_path_symlink,
         ref_folder_path,
-        recalculate=False,
+        recalculate=args.recalculate,
         num_workers=args.num_workers,
     )
 
@@ -206,7 +206,6 @@ def evaluate(args):
                 if args.clap_per_audio:
                     for audio_id, score in values.items():
                         score_msg = f"{audio_id}: {score[0][0]:.3f}"
-                        #print(score_msg)
                         print(score_msg, file=writer)
 
             else:
@@ -271,6 +270,11 @@ if __name__ == '__main__':
         "-p",
         action="store_true",
         help="calculate and store CLAP score for each audio clip"
+    )
+    parser.add_argument(
+        "--recalculate",
+        action="store_true",
+        help="recalculate embeddings for metric scores"
     )
 
     args = parser.parse_args()

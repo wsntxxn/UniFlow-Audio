@@ -43,3 +43,6 @@ for file in $INFER_DIR/sr_musdb_res.txt $INFER_DIR/sr_vctk_res.txt $INFER_DIR/sr
     cat $file
     echo ""
 done > $INFER_DIR/sr_all_res.txt
+
+rm $INFER_DIR/sr*.jsonl
+rm $INFER_DIR/sr_musdb_res.txt $INFER_DIR/sr_vctk_res.txt $INFER_DIR/sr_esc_res.txt

@@ -3,6 +3,8 @@ from pathlib import Path
 import soundfile as sf
 import torch
 import hydra
+from accelerate import Accelerator
+
 from omegaconf import OmegaConf
 from safetensors.torch import load_file
 import diffusers.schedulers as noise_schedulers
@@ -23,7 +25,7 @@ register_omegaconf_resolvers()
 
 def main():
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    accelerator = Accelerator()
     configs = []
 
     @hydra.main(config_path="configs", config_name="inference")
@@ -48,14 +50,13 @@ def main():
         ckpt_path = ckpt_dir / "model.safetensors"
         exp_dir = ckpt_dir.parent.parent
 
-    print(f'\n ckpt path: {ckpt_path}\n ')
+    accelerator.print(f'\n ckpt path: {ckpt_path}\n ')
 
     exp_config = OmegaConf.load(exp_dir / "config.yaml")
     model: LoadPretrainedBase = hydra.utils.instantiate(exp_config["model"])
     state_dict = load_file(ckpt_path)
     model.load_pretrained(state_dict)
 
-    model = model.to(device)
     if "sampler" in config["test_dataloader"]:
         data_source = hydra.utils.instantiate(
             config["test_dataloader"]["dataset"], _convert_="all"
@@ -75,6 +76,8 @@ def main():
 
     model.eval()
 
+    model, test_dataloader = accelerator.prepare(model, test_dataloader)
+
     scheduler = getattr(
         noise_schedulers,
         config["noise_scheduler"]["type"],
@@ -84,15 +87,16 @@ def main():
     )
 
     audio_output_dir = exp_dir / config["wav_dir"]
-    audio_output_dir.mkdir(parents=True, exist_ok=True)
+    if accelerator.is_main_process:
+        audio_output_dir.mkdir(parents=True, exist_ok=True)
 
     with torch.no_grad():
         for batch in tqdm(test_dataloader):
 
-            for key in list(batch.keys()):
-                data = batch[key]
-                if isinstance(data, torch.Tensor):
-                    batch[key] = data.to(device)
+            # for key in list(batch.keys()):
+            #     data = batch[key]
+            #     if isinstance(data, torch.Tensor):
+            #         batch[key] = data.to(device)
 
             kwargs = config["infer_args"].copy()
             kwargs.update(batch)
