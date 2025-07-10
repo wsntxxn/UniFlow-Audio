@@ -25,7 +25,7 @@ register_omegaconf_resolvers()
 
 def main():
 
-    accelerator = Accelerator()
+    accelerator = Accelerator(mixed_precision="no")
     configs = []
 
     @hydra.main(config_path="configs", config_name="inference")
@@ -89,18 +89,15 @@ def main():
     audio_output_dir = exp_dir / config["wav_dir"]
     if accelerator.is_main_process:
         audio_output_dir.mkdir(parents=True, exist_ok=True)
+    unwrapped_model = accelerator.unwrap_model(model)
+    pbar_disable = not accelerator.is_main_process
 
     with torch.no_grad():
-        for batch in tqdm(test_dataloader):
-
-            # for key in list(batch.keys()):
-            #     data = batch[key]
-            #     if isinstance(data, torch.Tensor):
-            #         batch[key] = data.to(device)
-
+        for batch in tqdm(test_dataloader, disable=pbar_disable):
             kwargs = config["infer_args"].copy()
             kwargs.update(batch)
-            waveform = model.inference(
+
+            waveform = unwrapped_model.inference(
                 scheduler=scheduler,
                 **kwargs,
             )
@@ -115,6 +112,8 @@ def main():
                     wave[0].cpu().numpy(),
                     samplerate=exp_config["sample_rate"],
                 )
+
+    accelerator.wait_for_everyone()
 
 
 if __name__ == "__main__":

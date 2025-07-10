@@ -482,7 +482,7 @@ class DurationAdapterMixin:
         if use_local:
             pred_from_local = torch.round(local_pred * self.latent_token_rate)
             pred_from_local = pred_from_local.sum(1) / self.latent_token_rate
-            result[is_time_aligned] = pred_from_local
+            result[is_time_aligned] = pred_from_local[is_time_aligned]
 
         return result
 
