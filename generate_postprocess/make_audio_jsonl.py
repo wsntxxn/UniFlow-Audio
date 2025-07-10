@@ -14,9 +14,17 @@ def generate_jsonl(args) -> None:
     audio_dir = Path(args.audio_dir)
     task = args.task
     audio_files = sorted(audio_dir.iterdir())
+
+    os.makedirs(Path(args.output_file).parent, exist_ok=True)
+
     with open(args.output_file, 'w') as writer:
         for audio_file in audio_files:
             audio_id = transform_gen_fn_to_id(audio_file, task)
+
+            if audio_file.suffix != '.wav':
+                # "should hold only wav in dir"
+                continue
+
             writer.write(
                 json.dumps(
                     {
