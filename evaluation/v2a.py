@@ -16,27 +16,20 @@ import os
 from pathlib import Path
 import shutil
 from collections import defaultdict
-from tqdm import tqdm
 from copy import deepcopy
 from pathlib import Path
-import json
 import time
 
 import argparse
 import torch
+
+torch.multiprocessing.set_sharing_strategy('file_system')
 import numpy as np
 
-import sys
-sys.path.append("/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation")
-
 from audioldm_eval import EvaluationHelper
-
-from utils.general import read_jsonl_to_mapping
-
-from evaluation.GMELab.metrics.audio_video_metrics.imagebind_score import calculate_imagebind_score
-from evaluation.GMELab.metrics.audio_video_metrics.sync import calculate_sync
-from evaluation.GMELab.configs.evaluation_cfg import InSyncCfg
-
+from GMELab.metrics.audio_video_metrics.imagebind_score import calculate_imagebind_score
+from GMELab.metrics.audio_video_metrics.sync import calculate_sync, InSyncCfg
+from utils.general import read_jsonl_to_mapping, audio_dir_to_mapping
 
 
 def create_symlink_folder(gen_folder_path: str) -> str:
@@ -48,7 +41,6 @@ def create_symlink_folder(gen_folder_path: str) -> str:
 
     if link_folder.exists():
         shutil.rmtree(link_folder)
-        time.sleep(10)
 
     link_folder.mkdir(exist_ok=False)
 
@@ -88,54 +80,51 @@ def get_common_folder_path(audio_dict):
 
 def evaluate(args):
     """ Calculate ImageBind; Sync Scores."""
-    image_bind_score = calculate_imagebind_score(
-        Path(args.gen_video_path),
-        "cuda"
-    )
-    print("image bind score:", image_bind_score)
+    # image_bind_score = calculate_imagebind_score(
+    #     Path(args.gen_video_path), "cuda"
+    # )
+    # print("image bind score:", image_bind_score)
 
-    sync_cfg = InSyncCfg
-    overall_sync_score, score_per_video = calculate_sync(
-        samples=Path(args.gen_video_path),
-        exp_name=sync_cfg.exp_name,
-        afps=sync_cfg.afps,
-        vfps=sync_cfg.vfps,
-        input_size=sync_cfg.input_size,
-        device=sync_cfg.device,
-        ckpt_parent_path="./evaluation/GMELab/checkpoints/sync_models",
-    )
+    # sync_cfg = InSyncCfg
+    # overall_sync_score, score_per_video = calculate_sync(
+    #     samples=Path(args.gen_video_path),
+    #     exp_name=sync_cfg.exp_name,
+    #     afps=sync_cfg.afps,
+    #     vfps=sync_cfg.vfps,
+    #     input_size=sync_cfg.input_size,
+    #     device=sync_cfg.device,
+    #     ckpt_parent_path="./evaluation/GMELab/checkpoints/sync_models",
+    # )
 
-    print("sync score:", overall_sync_score)
+    # print("sync score:", overall_sync_score)
 
-    vision_score = {
-        "image_bind_score": image_bind_score,
-        "overall_sync_score": overall_sync_score,
-    }
+    # vision_score = {
+    #     "image_bind_score": image_bind_score,
+    #     "overall_sync_score": overall_sync_score,
+    # }
 
     results = defaultdict(dict)
-    results.update(vision_score)
-
-    # print(results)
-
+    # results.update(vision_score)
     """Calculate KL; FAD etc."""
     ref_aid_to_audios = read_jsonl_to_mapping(
         args.ref_audio_jsonl,
         "audio_id",
         "audio",
     )
-    gen_aid_to_audios = read_jsonl_to_mapping(
-        args.gen_audio_jsonl, "audio_id", "audio"
-    )
+    if args.gen_audio_jsonl is not None:
+        gen_aid_to_audios = read_jsonl_to_mapping(
+            args.gen_audio_jsonl, "audio_id", "audio"
+        )
+    elif args.gen_audio_dir is not None:
+        gen_aid_to_audios = audio_dir_to_mapping(args.gen_audio_dir, "v2a")
 
     keys = deepcopy(list(ref_aid_to_audios.keys()))
     for key in keys:
         if key not in gen_aid_to_audios:
             ref_aid_to_audios.pop(key)
-
     """Calculate ldm eval score: FAD, FD, KL score"""
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    
     gen_folder_path, gen_is_same_folder = get_common_folder_path(
         gen_aid_to_audios
     )
@@ -143,21 +132,14 @@ def evaluate(args):
     ref_folder_path, ref_is_same_folder = get_common_folder_path(
         ref_aid_to_audios
     )
-    
+
     assert gen_is_same_folder == True, "Generated audio files must be in the same folder."
     assert ref_is_same_folder == True, "Reference audio files must be in the same folder."
-
-    # gen_folder_path_symlink = create_symlink_folder(gen_folder_path)
-
-    print()
 
     evaluator = EvaluationHelper(16000, args.device, backbone="cnn14")
 
     eval_result = evaluator.main(
-        gen_folder_path,
-        # gen_folder_path_symlink, 
-        ref_folder_path, 
-        recalculate=False
+        gen_folder_path, ref_folder_path, recalculate=False
     )
 
     assert ref_aid_to_audios.keys() == gen_aid_to_audios.keys(
@@ -185,17 +167,21 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "--gen_video_path",
-        "-rc",
         type=str,
-        required=True,
+        # required=True,
         help="path to reencoded generated video with vfps and sr"
     )
     parser.add_argument(
         "--gen_audio_jsonl",
-        "-g",
+        "-gj",
         type=str,
-        required=True,
         help="path to generated audio jsonl file"
+    )
+    parser.add_argument(
+        "--gen_audio_dir",
+        "-gd",
+        type=str,
+        help="path to generated audio directory"
     )
     parser.add_argument(
         "--output_file",

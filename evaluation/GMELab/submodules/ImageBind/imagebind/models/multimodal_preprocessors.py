@@ -20,7 +20,7 @@ import torch.nn as nn
 from iopath.common.file_io import g_pathmgr
 from timm.models.layers import trunc_normal_
 
-from imagebind.models.helpers import VerboseNNModule, cast_if_src_dtype
+from .helpers import VerboseNNModule, cast_if_src_dtype
 
 
 def get_sinusoid_encoding_table(n_position, d_hid):
@@ -33,9 +33,9 @@ def get_sinusoid_encoding_table(n_position, d_hid):
             for hid_j in range(d_hid)
         ]
 
-    sinusoid_table = np.array(
-        [get_position_angle_vec(pos_i) for pos_i in range(n_position)]
-    )
+    sinusoid_table = np.array([
+        get_position_angle_vec(pos_i) for pos_i in range(n_position)
+    ])
     sinusoid_table[:, 0::2] = np.sin(sinusoid_table[:, 0::2])  # dim 2i
     sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2])  # dim 2i+1
 
@@ -48,16 +48,19 @@ def interpolate_pos_encoding_2d(target_spatial_size, pos_embed):
         return pos_embed
     dim = pos_embed.shape[-1]
     # nn.functional.interpolate doesn't work with bfloat16 so we cast to float32
-    pos_embed, updated = cast_if_src_dtype(pos_embed, torch.bfloat16, torch.float32)
+    pos_embed, updated = cast_if_src_dtype(
+        pos_embed, torch.bfloat16, torch.float32
+    )
     pos_embed = nn.functional.interpolate(
-        pos_embed.reshape(1, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(
-            0, 3, 1, 2
-        ),
+        pos_embed.reshape(1, int(math.sqrt(N)), int(math.sqrt(N)),
+                          dim).permute(0, 3, 1, 2),
         scale_factor=math.sqrt(target_spatial_size / N),
         mode="bicubic",
     )
     if updated:
-        pos_embed, _ = cast_if_src_dtype(pos_embed, torch.float32, torch.bfloat16)
+        pos_embed, _ = cast_if_src_dtype(
+            pos_embed, torch.float32, torch.bfloat16
+        )
     pos_embed = pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
     return pos_embed
 
@@ -122,7 +125,6 @@ class PatchEmbedGeneric(nn.Module):
     """
     PatchEmbed from Hydra
     """
-
     def __init__(self, proj_stem, norm_layer: Optional[nn.Module] = None):
         super().__init__()
 
@@ -136,12 +138,9 @@ class PatchEmbedGeneric(nn.Module):
 
     def get_patch_layout(self, img_size):
         with torch.no_grad():
-            dummy_img = torch.zeros(
-                [
-                    1,
-                ]
-                + img_size
-            )
+            dummy_img = torch.zeros([
+                1,
+            ] + img_size)
             dummy_out = self.proj(dummy_img)
         embed_dim = dummy_out.shape[1]
         patches_layout = tuple(dummy_out.shape[2:])
@@ -173,11 +172,14 @@ class SpatioTemporalPosEmbeddingHelper(VerboseNNModule):
         self.num_tokens = num_cls_tokens + num_patches
         self.learnable = learnable
         if self.learnable:
-            self.pos_embed = nn.Parameter(torch.zeros(1, self.num_tokens, embed_dim))
+            self.pos_embed = nn.Parameter(
+                torch.zeros(1, self.num_tokens, embed_dim)
+            )
             trunc_normal_(self.pos_embed, std=0.02)
         else:
             self.register_buffer(
-                "pos_embed", get_sinusoid_encoding_table(self.num_tokens, embed_dim)
+                "pos_embed",
+                get_sinusoid_encoding_table(self.num_tokens, embed_dim)
             )
 
     def get_pos_embedding(self, vision_input, all_vision_tokens):
@@ -264,7 +266,9 @@ class RGBDTPreprocessor(VerboseNNModule):
             )  # stole class_tokens impl from Phil Wang, thanks
             tokens = torch.cat((class_tokens, tokens), dim=1)
         if self.use_pos_embed:
-            pos_embed = self.pos_embedding_helper.get_pos_embedding(input, tokens)
+            pos_embed = self.pos_embedding_helper.get_pos_embedding(
+                input, tokens
+            )
             tokens = tokens + pos_embed
         if self.use_type_embed:
             tokens = tokens + self.type_embed.expand(B, -1, -1)
@@ -405,7 +409,6 @@ class TextPreprocessor(VerboseNNModule):
 
 class Im2Video(nn.Module):
     """Convert an image into a trivial video."""
-
     def __init__(self, time_dim=2):
         super().__init__()
         self.time_dim = time_dim
@@ -437,7 +440,8 @@ class PadIm2Video(Im2Video):
                 x = x.repeat(new_shape)
             elif self.pad_type == "zero":
                 padarg = [0, 0] * len(x.shape)
-                padarg[2 * self.time_dim + 1] = self.ntimes - x.shape[self.time_dim]
+                padarg[2 * self.time_dim +
+                       1] = self.ntimes - x.shape[self.time_dim]
                 x = nn.functional.pad(x, padarg)
         return x
 
@@ -455,9 +459,11 @@ def bytes_to_unicode():
     And avoids mapping to whitespace/control characters the bpe code barfs on.
     """
     bs = (
-        list(range(ord("!"), ord("~") + 1))
-        + list(range(ord("¡"), ord("¬") + 1))
-        + list(range(ord("®"), ord("ÿ") + 1))
+        list(range(ord("!"),
+                   ord("~") + 1)) + list(range(ord("¡"),
+                                               ord("¬") + 1)) +
+        list(range(ord("®"),
+                   ord("ÿ") + 1))
     )
     cs = bs[:]
     n = 0
@@ -501,9 +507,11 @@ class SimpleTokenizer(object):
 
         with g_pathmgr.open(bpe_path, "rb") as fh:
             bpe_bytes = io.BytesIO(fh.read())
-            merges: List[str] = gzip.open(bpe_bytes).read().decode("utf-8").split("\n")
-        merges = merges[1 : 49152 - 256 - 2 + 1]
-        merges: List[Tuple[str, ...]] = [tuple(merge.split()) for merge in merges]
+            merges: List[str] = gzip.open(bpe_bytes
+                                         ).read().decode("utf-8").split("\n")
+        merges = merges[1:49152 - 256 - 2 + 1]
+        merges: List[Tuple[str,
+                           ...]] = [tuple(merge.split()) for merge in merges]
         vocab = list(bytes_to_unicode().values())
         vocab = vocab + [v + "</w>" for v in vocab]
         for merge in merges:
@@ -525,14 +533,16 @@ class SimpleTokenizer(object):
     def bpe(self, token):
         if token in self.cache:
             return self.cache[token]
-        word = tuple(token[:-1]) + (token[-1] + "</w>",)
+        word = tuple(token[:-1]) + (token[-1] + "</w>", )
         pairs = get_pairs(word)
 
         if not pairs:
             return token + "</w>"
 
         while True:
-            bigram = min(pairs, key=lambda pair: self.bpe_ranks.get(pair, float("inf")))
+            bigram = min(
+                pairs, key=lambda pair: self.bpe_ranks.get(pair, float("inf"))
+            )
             if bigram not in self.bpe_ranks:
                 break
             first, second = bigram
@@ -547,7 +557,8 @@ class SimpleTokenizer(object):
                     new_word.extend(word[i:])
                     break
 
-                if word[i] == first and i < len(word) - 1 and word[i + 1] == second:
+                if word[i] == first and i < len(word) - 1 and word[
+                    i + 1] == second:
                     new_word.append(first + second)
                     i += 2
                 else:
@@ -567,18 +578,20 @@ class SimpleTokenizer(object):
         bpe_tokens = []
         text = whitespace_clean(basic_clean(text)).lower()
         for token in re.findall(self.pat, text):
-            token = "".join(self.byte_encoder[b] for b in token.encode("utf-8"))
+            token = "".join(
+                self.byte_encoder[b] for b in token.encode("utf-8")
+            )
             bpe_tokens.extend(
-                self.encoder[bpe_token] for bpe_token in self.bpe(token).split(" ")
+                self.encoder[bpe_token]
+                for bpe_token in self.bpe(token).split(" ")
             )
         return bpe_tokens
 
     def decode(self, tokens):
         text = "".join([self.decoder[token] for token in tokens])
         text = (
-            bytearray([self.byte_decoder[c] for c in text])
-            .decode("utf-8", errors="replace")
-            .replace("</w>", " ")
+            bytearray([self.byte_decoder[c] for c in text]
+                     ).decode("utf-8", errors="replace").replace("</w>", " ")
         )
         return text
 
@@ -591,12 +604,13 @@ class SimpleTokenizer(object):
 
         sot_token = self.encoder["<|startoftext|>"]
         eot_token = self.encoder["<|endoftext|>"]
-        all_tokens = [[sot_token] + self.encode(text) + [eot_token] for text in texts]
+        all_tokens = [[sot_token] + self.encode(text) + [eot_token]
+                      for text in texts]
         result = torch.zeros(len(all_tokens), context_length, dtype=torch.long)
 
         for i, tokens in enumerate(all_tokens):
             tokens = tokens[:context_length]
-            result[i, : len(tokens)] = torch.tensor(tokens)
+            result[i, :len(tokens)] = torch.tensor(tokens)
 
         if len(result) == 1:
             return result[0]
@@ -621,7 +635,9 @@ class IMUPreprocessor(VerboseNNModule):
         self.num_cls_tokens = num_cls_tokens
         self.kernel_size = kernel_size
         self.pos_embed = nn.Parameter(
-            torch.empty(1, (img_size[1] // kernel_size) + num_cls_tokens, embed_dim)
+            torch.empty(
+                1, (img_size[1] // kernel_size) + num_cls_tokens, embed_dim
+            )
         )
 
         if self.num_cls_tokens > 0:

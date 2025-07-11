@@ -10,19 +10,14 @@ from dataclasses import dataclass
 import torchaudio
 import torchaudio.functional as F
 
-import sys
-sys.path.append("./evalutaion/metrics/GMELab/")
-
-sys.path.append("/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/GMELab")
-
-from submodules.Synchformer.utils.utils import check_if_file_exists_else_download
-from submodules.Synchformer.dataset.dataset_utils import get_video_and_audio
-from submodules.Synchformer.scripts.train_utils import (
+from GMELab.submodules.Synchformer.utils.utils import check_if_file_exists_else_download
+from GMELab.submodules.Synchformer.dataset.dataset_utils import get_video_and_audio
+from GMELab.submodules.Synchformer.scripts.train_utils import (
     get_model,
     get_transforms,
     prepare_inputs,
 )
-from submodules.Synchformer.dataset.transforms import make_class_grid
+from GMELab.submodules.Synchformer.dataset.transforms import make_class_grid
 
 
 @dataclass
@@ -42,26 +37,31 @@ class InSyncCfg:
 BATCH_SIZE = 3
 
 
-def repeat_rgb(rgb: torch.Tensor, vfps: float, tgt_len_secs: float) -> torch.Tensor:
+def repeat_rgb(
+    rgb: torch.Tensor, vfps: float, tgt_len_secs: float
+) -> torch.Tensor:
     if tgt_len_secs * vfps > rgb.shape[0]:
         n_repeats = int(tgt_len_secs * vfps / rgb.shape[0]) + 1
         rgb = rgb.repeat(n_repeats, 1, 1, 1)
-    rgb = rgb[: ceil(tgt_len_secs * vfps)]
+    rgb = rgb[:ceil(tgt_len_secs * vfps)]
     return rgb
 
 
-def repeat_audio(audio: torch.Tensor, afps: int, tgt_len_secs: float) -> torch.Tensor:
+def repeat_audio(
+    audio: torch.Tensor, afps: int, tgt_len_secs: float
+) -> torch.Tensor:
     if tgt_len_secs * afps > audio.shape[-1]:
         n_repeats = int(tgt_len_secs * afps / audio.shape[-1]) + 1
         # repeat the last dimension
         repeat_pat = [1] * (audio.ndim - 1) + [n_repeats]
         audio = audio.repeat(repeat_pat)
-    audio = audio[..., : ceil(tgt_len_secs * afps)]
+    audio = audio[..., :ceil(tgt_len_secs * afps)]
     return audio
 
 
 def repeat_video(
-    rgb: torch.Tensor, audio: torch.Tensor, vfps: float, afps: int, tgt_len_secs: float
+    rgb: torch.Tensor, audio: torch.Tensor, vfps: float, afps: int,
+    tgt_len_secs: float
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Repeat the video and audio to match the target length.
@@ -76,21 +76,24 @@ def repeat_video(
 def modify_model_cfg(model_cfg: DictConfig):
     model_cfg.model.target = "submodules.Synchformer." + model_cfg.model.target
     model_cfg.model.params.afeat_extractor.target = (
-        "submodules.Synchformer." + model_cfg.model.params.afeat_extractor.target
+        "submodules.Synchformer." +
+        model_cfg.model.params.afeat_extractor.target
     )
     model_cfg.model.params.vfeat_extractor.target = (
-        "submodules.Synchformer." + model_cfg.model.params.vfeat_extractor.target
+        "submodules.Synchformer." +
+        model_cfg.model.params.vfeat_extractor.target
     )
     model_cfg.model.params.transformer.target = (
         "submodules.Synchformer." + model_cfg.model.params.transformer.target
     )
     model_cfg.model.params.transformer.params.pos_emb_cfg.target = (
-        "submodules.Synchformer."
-        + model_cfg.model.params.transformer.params.pos_emb_cfg.target
+        "submodules.Synchformer." +
+        model_cfg.model.params.transformer.params.pos_emb_cfg.target
     )
     assert Path(
         "/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/GMELab/checkpoints/sync_models/23-12-22T16-13-38/epoch_best.pt"
-    ).exists(), "The model checkpoint does not exist. Please download the checkpoints using the scripts in ./checkpoints/ folder."
+    ).exists(
+    ), "The model checkpoint does not exist. Please download the checkpoints using the scripts in ./checkpoints/ folder."
     model_cfg.model.params.afeat_extractor.params.ckpt_path = (
         "/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/GMELab/checkpoints/sync_models/23-12-22T16-13-38/epoch_best.pt"
     )
@@ -159,9 +162,9 @@ def calculate_sync(
 
     insync_offsets = 0
     original_video_dir = Path(samples).parts[-1]
-    assert len(videos), f"No videos found in {samples}... Problems with reencoding?"
-
-
+    assert len(
+        videos
+    ), f"No videos found in {samples}... Problems with reencoding?"
 
     for i, vid_path in tqdm(
         enumerate(videos), desc="Calculating InSync", total=len(videos)
@@ -174,8 +177,6 @@ def calculate_sync(
 
             # due to different model sr setting, need extra resample to a_fps
             # or u should reencode the video
-
-
 
             rgb, audio = repeat_video(
                 rgb, audio, vfps, afps, model_cfg.data.crop_len_sec
@@ -213,12 +214,15 @@ def calculate_sync(
             aud, vid, targets = prepare_inputs(batch, device)
 
             # forward pass
-            with torch.autocast("cuda", enabled=model_cfg.training.use_half_precision):
+            with torch.autocast(
+                "cuda", enabled=model_cfg.training.use_half_precision
+            ):
                 with torch.set_grad_enabled(False):
                     _, off_logits = model(vid, aud, targets["offset_target"])
             off_logits = off_logits.detach().cpu()
             off_cls = (
-                torch.softmax(off_logits.float(), dim=-1).detach().cpu().argmax(dim=1)
+                torch.softmax(off_logits.float(),
+                              dim=-1).detach().cpu().argmax(dim=1)
             )
             insync = off_cls == targets["offset_target"].cpu()
 
@@ -241,13 +245,15 @@ def calculate_sync(
 
 if __name__ == '__main__':
     score, score_per_video = calculate_sync(
-        samples="/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/fad-test/samples/gen-video-5.12s-25fps-16000hz",
+        samples=
+        "/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/fad-test/samples/gen-video-5.12s-25fps-16000hz",
         exp_name="24-01-04T16-39-21",
         afps=16000,
         vfps=25,
         input_size=256,
         device="cuda",
-        ckpt_parent_path="/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/GMELab/checkpoints/sync_models",
+        ckpt_parent_path=
+        "/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/GMELab/checkpoints/sync_models",
     )
 
     print(score)

@@ -15,7 +15,7 @@ def generate_jsonl(args) -> None:
     task = args.task
     audio_files = sorted(audio_dir.iterdir())
 
-    os.makedirs(Path(args.output_file).parent, exist_ok=True)
+    Path(args.output_file).parent.mkdir(exist_ok=True, parents=True)
 
     with open(args.output_file, 'w') as writer:
         for audio_file in audio_files:

@@ -122,8 +122,9 @@ class EvaluationHelper:
             same_name,
             limit_num,
             num_workers=num_workers,
-            recalculate=recalculate
-        )  # recalculate = True
+            recalculate=recalculate,
+            calculate_lsd=False,
+        )
 
         return metrics
 

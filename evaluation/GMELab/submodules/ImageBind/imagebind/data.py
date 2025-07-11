@@ -19,7 +19,7 @@ from pytorchvideo.data.encoded_video import EncodedVideo
 from torchvision import transforms
 from torchvision.transforms._transforms_video import NormalizeVideo
 
-from imagebind.models.multimodal_preprocessors import SimpleTokenizer
+from .models.multimodal_preprocessors import SimpleTokenizer
 
 DEFAULT_AUDIO_FRAME_SHIFT_MS = 10  # in milliseconds
 
@@ -60,7 +60,9 @@ def waveform2melspec(waveform, sample_rate, num_mel_bins, target_length):
         )
     # cut and pad
     if p > 0:
-        fbank = torch.nn.functional.pad(fbank, (0, p), mode="constant", value=0)
+        fbank = torch.nn.functional.pad(
+            fbank, (0, p), mode="constant", value=0
+        )
     elif p < 0:
         fbank = fbank[:, 0:target_length]
     # Convert to [1, mel_bins, num_frames] shape, essentially like a 1
@@ -75,7 +77,9 @@ def get_clip_timepoints(clip_sampler, duration):
     is_last_clip = False
     end = 0.0
     while not is_last_clip:
-        start, end, _, _, is_last_clip = clip_sampler(end, duration, annotation=None)
+        start, end, _, _, is_last_clip = clip_sampler(
+            end, duration, annotation=None
+        )
         all_clips_timepoints.append((start, end))
     return all_clips_timepoints
 
@@ -86,17 +90,17 @@ def load_and_transform_vision_data(image_paths, device):
 
     image_outputs = []
 
-    data_transform = transforms.Compose(
-        [
-            transforms.Resize(224, interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=(0.48145466, 0.4578275, 0.40821073),
-                std=(0.26862954, 0.26130258, 0.27577711),
-            ),
-        ]
-    )
+    data_transform = transforms.Compose([
+        transforms.Resize(
+            224, interpolation=transforms.InterpolationMode.BICUBIC
+        ),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=(0.48145466, 0.4578275, 0.40821073),
+            std=(0.26862954, 0.26130258, 0.27577711),
+        ),
+    ])
 
     for image_path in image_paths:
         with open(image_path, "rb") as fopen:
@@ -142,15 +146,15 @@ def load_and_transform_audio_data(
                 waveform, orig_freq=sr, new_freq=sample_rate
             )
         all_clips_timepoints = get_clip_timepoints(
-            clip_sampler, waveform.size(1) / sample_rate
+            clip_sampler,
+            waveform.size(1) / sample_rate
         )
         all_clips = []
         for clip_timepoints in all_clips_timepoints:
             waveform_clip = waveform[
                 :,
-                int(clip_timepoints[0] * sample_rate) : int(
-                    clip_timepoints[1] * sample_rate
-                ),
+                int(clip_timepoints[0] *
+                    sample_rate):int(clip_timepoints[1] * sample_rate),
             ]
             waveform_melspec = waveform2melspec(
                 waveform_clip, sample_rate, num_mel_bins, target_length
@@ -237,8 +241,10 @@ def uniform_crop(images, size, spatial_idx, boxes=None, scale_size=None):
             x_offset = 0
         elif spatial_idx == 2:
             x_offset = width - size
-    cropped = images[:, :, y_offset : y_offset + size, x_offset : x_offset + size]
-    cropped_boxes = crop_boxes(boxes, x_offset, y_offset) if boxes is not None else None
+    cropped = images[:, :, y_offset:y_offset + size, x_offset:x_offset + size]
+    cropped_boxes = crop_boxes(
+        boxes, x_offset, y_offset
+    ) if boxes is not None else None
     if ndim == 3:
         cropped = cropped.squeeze(0)
     return cropped, cropped_boxes
@@ -252,7 +258,6 @@ class SpatialCrop(nn.Module):
         frames are passed in here). Will return a larger list with the
         3x spatial crops as well.
     """
-
     def __init__(self, crop_size: int = 224, num_crops: int = 3):
         super().__init__()
         self.crop_size = crop_size
@@ -273,7 +278,9 @@ class SpatialCrop(nn.Module):
             videos: A list with 3x the number of elements. Each video converted
                 to C, T, H', W' by spatial cropping.
         """
-        assert isinstance(videos, list), "Must be a list of videos after temporal crops"
+        assert isinstance(
+            videos, list
+        ), "Must be a list of videos after temporal crops"
         assert all([video.ndim == 4 for video in videos]), "Must be (C,T,H,W)"
         res = []
         for video in videos:
@@ -283,7 +290,9 @@ class SpatialCrop(nn.Module):
                 continue
             flipped_video = transforms.functional.hflip(video)
             for spatial_idx in self.flipped_crops_to_ext:
-                res.append(uniform_crop(flipped_video, self.crop_size, spatial_idx)[0])
+                res.append(
+                    uniform_crop(flipped_video, self.crop_size, spatial_idx)[0]
+                )
         return res
 
 
@@ -298,20 +307,20 @@ def load_and_transform_video_data(
         return None
 
     video_outputs = []
-    video_transform = transforms.Compose(
-        [
-            pv_transforms.ShortSideScale(224),
-            NormalizeVideo(
-                mean=(0.48145466, 0.4578275, 0.40821073),
-                std=(0.26862954, 0.26130258, 0.27577711),
-            ),
-        ]
-    )
+    video_transform = transforms.Compose([
+        pv_transforms.ShortSideScale(224),
+        NormalizeVideo(
+            mean=(0.48145466, 0.4578275, 0.40821073),
+            std=(0.26862954, 0.26130258, 0.27577711),
+        ),
+    ])
 
     clip_sampler = ConstantClipsPerVideoSampler(
         clip_duration=clip_duration, clips_per_video=clips_per_video
     )
-    frame_sampler = pv_transforms.UniformTemporalSubsample(num_samples=clip_duration)
+    frame_sampler = pv_transforms.UniformTemporalSubsample(
+        num_samples=clip_duration
+    )
 
     for video_path in video_paths:
         video = EncodedVideo.from_path(
@@ -321,7 +330,9 @@ def load_and_transform_video_data(
             **{"sample_rate": sample_rate},
         )
 
-        all_clips_timepoints = get_clip_timepoints(clip_sampler, video.duration)
+        all_clips_timepoints = get_clip_timepoints(
+            clip_sampler, video.duration
+        )
 
         all_video = []
         for clip_timepoints in all_clips_timepoints:

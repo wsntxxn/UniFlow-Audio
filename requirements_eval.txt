@@ -2,6 +2,12 @@
 # First, pip install torch torchaudio torchvision
 # Second, pip install nemo_toolkit['all'].
 # Finally, install the remaining dependencies from the requirements file: pip install -r requirements_eval.txt.
+
+# The new "pytorchvideo" is incompatible with the current version of "torchvision", a simple way to fix:
+# In pytorchvideo/transforms/augmentations.py, line 9, change:
+# import torchvision.transforms.functional_tensor as F_t
+# to:
+# import torchvision.transforms.functional as F_t
 absl-py==2.3.0
 accelerate==1.7.0
 accelerated-scan==0.2.0
@@ -117,6 +123,7 @@ indic_numtowords==1.0.2
 inflect==7.5.0
 iniconfig==2.1.0
 intervaltree==3.1.0
+iopath==0.1.10
 ipykernel==6.29.5
 ipython==8.36.0
 isort==5.13.2
@@ -277,6 +284,7 @@ python-iso639==2025.2.18
 python-magic==0.4.27
 python-rapidjson==1.20
 pytorch-lightning==2.5.1.post0
+pytorchvideo==0.1.5
 pytz==2025.2
 pyworld==0.3.5
 PyYAML==6.0.2

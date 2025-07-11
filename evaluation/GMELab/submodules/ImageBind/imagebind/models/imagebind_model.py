@@ -5,7 +5,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-
 import os
 from functools import partial
 from types import SimpleNamespace
@@ -13,16 +12,16 @@ from types import SimpleNamespace
 import torch
 import torch.nn as nn
 
-from imagebind.models.helpers import (EinOpsRearrange, LearnableLogitScaling, Normalize,
-                            SelectElement, SelectEOSAndProject)
-from imagebind.models.multimodal_preprocessors import (AudioPreprocessor,
-                                             IMUPreprocessor, PadIm2Video,
-                                             PatchEmbedGeneric,
-                                             RGBDTPreprocessor,
-                                             SpatioTemporalPosEmbeddingHelper,
-                                             TextPreprocessor,
-                                             ThermalPreprocessor)
-from imagebind.models.transformer import MultiheadAttention, SimpleTransformer
+from .helpers import (
+    EinOpsRearrange, LearnableLogitScaling, Normalize, SelectElement,
+    SelectEOSAndProject
+)
+from .multimodal_preprocessors import (
+    AudioPreprocessor, IMUPreprocessor, PadIm2Video, PatchEmbedGeneric,
+    RGBDTPreprocessor, SpatioTemporalPosEmbeddingHelper, TextPreprocessor,
+    ThermalPreprocessor
+)
+from .transformer import MultiheadAttention, SimpleTransformer
 
 ModalityType = SimpleNamespace(
     VISION="vision",
@@ -160,7 +159,9 @@ class ImageBindModel(nn.Module):
         rgbt_preprocessor = RGBDTPreprocessor(
             img_size=[3, video_frames, 224, 224],
             num_cls_tokens=1,
-            pos_embed_fn=partial(SpatioTemporalPosEmbeddingHelper, learnable=True),
+            pos_embed_fn=partial(
+                SpatioTemporalPosEmbeddingHelper, learnable=True
+            ),
             rgbt_stem=rgbt_stem,
             depth_stem=None,
         )
@@ -187,7 +188,9 @@ class ImageBindModel(nn.Module):
         audio_preprocessor = AudioPreprocessor(
             img_size=[1, audio_num_mel_bins, audio_target_len],
             num_cls_tokens=1,
-            pos_embed_fn=partial(SpatioTemporalPosEmbeddingHelper, learnable=True),
+            pos_embed_fn=partial(
+                SpatioTemporalPosEmbeddingHelper, learnable=True
+            ),
             audio_stem=audio_stem,
         )
 
@@ -207,7 +210,9 @@ class ImageBindModel(nn.Module):
         depth_preprocessor = RGBDTPreprocessor(
             img_size=[1, 224, 224],
             num_cls_tokens=1,
-            pos_embed_fn=partial(SpatioTemporalPosEmbeddingHelper, learnable=True),
+            pos_embed_fn=partial(
+                SpatioTemporalPosEmbeddingHelper, learnable=True
+            ),
             rgbt_stem=None,
             depth_stem=depth_stem,
         )
@@ -227,7 +232,9 @@ class ImageBindModel(nn.Module):
         thermal_preprocessor = ThermalPreprocessor(
             img_size=[1, 224, 224],
             num_cls_tokens=1,
-            pos_embed_fn=partial(SpatioTemporalPosEmbeddingHelper, learnable=True),
+            pos_embed_fn=partial(
+                SpatioTemporalPosEmbeddingHelper, learnable=True
+            ),
             thermal_stem=thermal_stem,
         )
 
@@ -247,7 +254,9 @@ class ImageBindModel(nn.Module):
             num_cls_tokens=1,
             kernel_size=8,
             embed_dim=imu_embed_dim,
-            pos_embed_fn=partial(SpatioTemporalPosEmbeddingHelper, learnable=True),
+            pos_embed_fn=partial(
+                SpatioTemporalPosEmbeddingHelper, learnable=True
+            ),
             imu_stem=imu_stem,
         )
 
@@ -288,7 +297,8 @@ class ImageBindModel(nn.Module):
         imu_drop_path=0.7,
     ):
         def instantiate_trunk(
-            embed_dim, num_blocks, num_heads, pre_transformer_ln, add_bias_kv, drop_path
+            embed_dim, num_blocks, num_heads, pre_transformer_ln, add_bias_kv,
+            drop_path
         ):
             return SimpleTransformer(
                 embed_dim=embed_dim,
@@ -304,8 +314,7 @@ class ImageBindModel(nn.Module):
                 ),
                 pre_transformer_layer=nn.Sequential(
                     nn.LayerNorm(embed_dim, eps=1e-6)
-                    if pre_transformer_ln
-                    else nn.Identity(),
+                    if pre_transformer_ln else nn.Identity(),
                     EinOpsRearrange("b l d -> l b d"),
                 ),
                 post_transformer_layer=EinOpsRearrange("l b d -> b l d"),
@@ -455,11 +464,15 @@ class ImageBindModel(nn.Module):
 
             if modality_value is not None:
                 modality_value = self.modality_preprocessors[modality_key](
-                    **{modality_key: modality_value}
+                    **{
+                        modality_key: modality_value
+                    }
                 )
                 trunk_inputs = modality_value["trunk"]
                 head_inputs = modality_value["head"]
-                modality_value = self.modality_trunks[modality_key](**trunk_inputs)
+                modality_value = self.modality_trunks[modality_key](
+                    **trunk_inputs
+                )
                 modality_value = self.modality_heads[modality_key](
                     modality_value, **head_inputs
                 )
@@ -490,7 +503,9 @@ def imagebind_huge(pretrained=False):
     )
 
     if pretrained:
-        if not os.path.exists("/hpc_stor03/sjtu_home/yaoyun.zhang/model_ckpts/imagebind/imagebind_huge.pth"):
+        if not os.path.exists(
+            "/hpc_stor03/sjtu_home/yaoyun.zhang/model_ckpts/imagebind/imagebind_huge.pth"
+        ):
             print(
                 "Downloading imagebind weights to .checkpoints/imagebind_huge.pth ..."
             )
@@ -501,6 +516,10 @@ def imagebind_huge(pretrained=False):
                 progress=True,
             )
 
-        model.load_state_dict(torch.load("/hpc_stor03/sjtu_home/yaoyun.zhang/model_ckpts/imagebind/imagebind_huge.pth"))
+        model.load_state_dict(
+            torch.load(
+                "/hpc_stor03/sjtu_home/yaoyun.zhang/model_ckpts/imagebind/imagebind_huge.pth"
+            )
+        )
 
     return model

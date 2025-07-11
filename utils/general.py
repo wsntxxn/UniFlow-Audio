@@ -46,8 +46,13 @@ def transform_gen_fn_to_id(audio_file: Path, task: str) -> str:
     elif task == "sr":
         audio_id = audio_file.stem
     elif task == "tta":
-        # audio_id = audio_file.stem[:11]
-        audio_id = audio_file.stem[:12] + '.wav'
+        audio_id = audio_file.stem[:11]
+        # audio_id = audio_file.stem[:12] + '.wav'
+    elif task == "ttm":
+        audio_id = audio_file.stem[:11]
+        # audio_id = audio_file.stem[:12] + '.wav'
+    elif task == "v2a":
+        audio_id = audio_file.stem.rsplit("_", 1)[0] + ".mp4"
     else:
         audio_id = audio_file.stem
     return audio_id
