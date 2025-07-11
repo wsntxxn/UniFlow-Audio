@@ -35,6 +35,23 @@ def calculate_fid(
     sigma1 = np.atleast_2d(sigma1)
     sigma2 = np.atleast_2d(sigma2)
 
+
+    # 检查协方差矩阵的特征值（是否半正定）
+    eigvals1 = np.linalg.eigvals(sigma1)
+    eigvals2 = np.linalg.eigvals(sigma2)
+    if np.min(eigvals1) < 0:
+        print("Min eigval of sigma1:", np.min(eigvals1))
+        # 强制协方差矩阵严格正定
+        sigma1 = sigma1 + eps * np.eye(sigma1.shape[0])
+        eigvals1 = np.linalg.eigvals(sigma1)
+        # 验证修正后的特征值
+        print("修正后的最小特征值 (sigma1):", np.min(eigvals1))
+    if np.min(eigvals2) < 0:
+        print("Min eigval of sigma2:", np.min(eigvals2))
+        sigma2 = sigma2 + eps * np.eye(sigma2.shape[0])
+        eigvals2 = np.linalg.eigvals(sigma2)      
+        print("修正后的最小特征值 (sigma2):", np.min(eigvals2))
+
     assert (
         mu1.shape == mu2.shape
     ), "Training and test mean vectors have different lengths"
