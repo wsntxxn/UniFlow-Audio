@@ -14,11 +14,11 @@ train_data_list:
   - ${..musdb.train}
   - ${..moises.train}
   # se
-  - ${..ljspeech+musan.train}
-  - ${..libritts_100+wham.train}
-  - ${..libritts_360+wham.train}
-  - ${..voicebank+demand.train}
-  - ${..vctk+wham.train}
+  - ${..ljspeech_musan.train}
+  - ${..libritts_100_wham.train}
+  - ${..libritts_360_wham.train}
+  - ${..voicebank_demand.train}
+  - ${..vctk_wham.train}
   # v2a
   - ${..vggsound_clip.train}
   # ttm
@@ -36,11 +36,11 @@ val_data_list:
   - ${..musdb.val}
   - ${..moises.val}
   # se
-  - ${..ljspeech+musan.val}
-  - ${..libritts_100+wham.val}
-  - ${..libritts_360+wham.val}
-  - ${..voicebank+demand.val}
-  - ${..vctk+wham.val}
+  - ${..ljspeech_musan.val}
+  - ${..libritts_100_wham.val}
+  - ${..libritts_360_wham.val}
+  - ${..voicebank_demand.val}
+  - ${..vctk_wham.val}
   # v2a
   - ${..vggsound_clip.val}
   # ttm
