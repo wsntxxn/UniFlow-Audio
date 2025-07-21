@@ -19,7 +19,9 @@ val:
   max_samples: ${max_val_samples}
 test:
   _target_: data_module.dataset.TextToSpeechDataset
-  content: data/libritts/voiceflow_test/phoneme.jsonl
+  # content: data/libritts/voiceflow_test/phoneme.jsonl
+  content: data/libritts/test/phoneme.jsonl
   base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
   task_instruction: ${instruction_embedding}
   instruction_idx: 1
+  max_samples: ${max_test_samples}

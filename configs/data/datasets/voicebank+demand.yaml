@@ -31,3 +31,4 @@ test:
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
   instruction_idx: 1
+  max_samples: ${max_test_samples}

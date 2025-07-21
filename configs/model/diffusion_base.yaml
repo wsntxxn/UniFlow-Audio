@@ -1,7 +1,7 @@
 defaults:
   - autoencoder: stable_vae
-  - backbone: audio_udit
-  - content_adapter: prefix_adapter
+  - backbone: layer_fusion_dit
+  - content_adapter: cross_attn_adapter
   - _self_
 
 
@@ -15,8 +15,11 @@ cfg_drop_ratio: 0.2
 backbone:
   context_dim: ${..content_dim}
   ta_context_dim: ${..content_dim}
+  embed_dim: 1024
+  depth: 24
+  num_heads: 16
 
-_target_: models.diffusion.DoubleContentAudioDiffusion
+_target_: models.diffusion.DummyContentAudioDiffusion
 content_encoder:
   _target_: models.content_encoder.content_encoder.ContentEncoder
   embed_dim: ${..content_dim}
@@ -44,7 +47,7 @@ content_encoder:
     embed_dim: ${...content_dim}
   video_encoder:
     _target_: models.content_encoder.vision_encoder.MlpVideoEncoder
-    video_feat_dim: 512
+    video_feat_dim: 1024
     embed_dim: ${...content_dim}
   phoneme_encoder:
     _target_: models.content_encoder.midi_encoder.FastSpeech2PhonemeEncoder
@@ -58,4 +61,3 @@ content_encoder:
       _target_: models.content_encoder.midi_encoder.SpkConfig
       encoding_format: embedding
       spk_embed_dim: 256
-

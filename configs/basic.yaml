@@ -4,6 +4,7 @@ downsampling_ratio: 480
 seed: 42
 
 max_val_samples: 500
+max_test_samples: Null
 
 hydra:
   output_subdir: null

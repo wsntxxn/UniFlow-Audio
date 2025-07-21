@@ -301,7 +301,6 @@ def load_and_transform_video_data(
     device,
     clip_duration=2,
     clips_per_video=5,
-    sample_rate=16000,
 ):
     if video_paths is None:
         return None
@@ -327,7 +326,6 @@ def load_and_transform_video_data(
             video_path,
             decoder="decord",
             decode_audio=False,
-            **{"sample_rate": sample_rate},
         )
 
         all_clips_timepoints = get_clip_timepoints(

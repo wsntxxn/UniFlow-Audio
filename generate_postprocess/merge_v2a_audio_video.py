@@ -14,6 +14,9 @@ def main(args):
     aid_to_video = dict(zip(df['audio_id'], df['video_path']))
     files = list(Path(args.audio_path).glob('*.wav'))
 
+    if args.num_samples is not None:
+        files = files[:args.num_samples]
+
     for audio_file in tqdm(files):
         audio_id = audio_file.stem
         if audio_id not in aid_to_video:
@@ -45,6 +48,13 @@ if __name__ == '__main__':
         choices=["moviepy", "ffmpeg"],
         default="ffmpeg",
         help="backend for merging audio and video"
+    )
+    parser.add_argument(
+        "--num_samples",
+        "-n",
+        type=int,
+        default=None,
+        help="number of samples to process, default is all"
     )
     args = parser.parse_args()
     main(args)

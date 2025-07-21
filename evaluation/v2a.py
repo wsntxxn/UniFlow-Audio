@@ -1,15 +1,5 @@
 """
-a). Use generative model and generate:
-    1. videos with generated audio
-    2. generated .wav files
-    3. move .wav files to a single folder
-    
-b). get gen_audio.jsonl and gt_audio.jsonl
-    1. run "./generate_postprocess/find_gt_audio.sh" to transfer gt_audio
-    2. run "./generate_postprocess/make_video_jsonl.sh" twice for gt_audio and gen_audio
 
-c). Reencode the videos with generated audio on v-fps(25) and a-fps(16000) required by Syncformer.
-    1. run "./generate_postprocess/reencode.sh" to resample the gen_video into 16k-Hz
 """
 
 import os
@@ -18,18 +8,31 @@ import shutil
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
-import time
 
 import argparse
 import torch
 
 torch.multiprocessing.set_sharing_strategy('file_system')
-import numpy as np
 
 from audioldm_eval import EvaluationHelper
 from GMELab.metrics.audio_video_metrics.imagebind_score import calculate_imagebind_score
 from GMELab.metrics.audio_video_metrics.sync import calculate_sync, InSyncCfg
 from utils.general import read_jsonl_to_mapping, audio_dir_to_mapping
+
+GMELAB_CACHE = os.environ.get(
+    "GMELAB_CACHE", os.path.expanduser("~/.cache/gmelab")
+)
+
+# def check_and_download_synchformer():
+#     if Path(
+#         f"{GMELAB_CACHE}/sync_models/23-12-22T16-13-38/"
+#     ).exists():
+#         Path(f"{GMELAB_CACHE}/sync_models/24-01-04T16-39-21/").mkdir(
+#             exist_ok=True, parents=True
+#         )
+#         os.system(
+#             f"wget -c https://a3s.fi/swift/v1/AUTH_a235c0f452d648828f745589cde1219a/sync/sync_models/24-01-04T16-39-21/cfg-24-01-04T16-39-21.yaml -O {GMELAB_CACHE}/sync_models/24-01-04T16-39-21/cfg-24-01-04T16-39-21.yaml"
+#         )
 
 
 def create_symlink_folder(gen_folder_path: str) -> str:
@@ -79,33 +82,9 @@ def get_common_folder_path(audio_dict):
 
 
 def evaluate(args):
-    """ Calculate ImageBind; Sync Scores."""
-    # image_bind_score = calculate_imagebind_score(
-    #     Path(args.gen_video_path), "cuda"
-    # )
-    # print("image bind score:", image_bind_score)
-
-    # sync_cfg = InSyncCfg
-    # overall_sync_score, score_per_video = calculate_sync(
-    #     samples=Path(args.gen_video_path),
-    #     exp_name=sync_cfg.exp_name,
-    #     afps=sync_cfg.afps,
-    #     vfps=sync_cfg.vfps,
-    #     input_size=sync_cfg.input_size,
-    #     device=sync_cfg.device,
-    #     ckpt_parent_path="./evaluation/GMELab/checkpoints/sync_models",
-    # )
-
-    # print("sync score:", overall_sync_score)
-
-    # vision_score = {
-    #     "image_bind_score": image_bind_score,
-    #     "overall_sync_score": overall_sync_score,
-    # }
 
     results = defaultdict(dict)
-    # results.update(vision_score)
-    """Calculate KL; FAD etc."""
+
     ref_aid_to_audios = read_jsonl_to_mapping(
         args.ref_audio_jsonl,
         "audio_id",
@@ -122,8 +101,35 @@ def evaluate(args):
     for key in keys:
         if key not in gen_aid_to_audios:
             ref_aid_to_audios.pop(key)
-    """Calculate ldm eval score: FAD, FD, KL score"""
-    args.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    ref_ib_aid_to_videos = read_jsonl_to_mapping(
+        args.ib_ref_video_jsonl, "audio_id", "video"
+    )
+    ref_sync_aid_to_videos = read_jsonl_to_mapping(
+        args.sync_ref_video_jsonl, "audio_id", "video"
+    )
+    """Calculate ImageBind """
+    image_bind_score = calculate_imagebind_score(
+        aid_to_video=ref_ib_aid_to_videos,
+        device=device,
+        aid_to_audio=gen_aid_to_audios,
+    )
+    results["image_bind_score"] = image_bind_score
+    """Calculate Sync """
+
+    overall_sync_score, score_per_video = calculate_sync(
+        aid_to_video=ref_sync_aid_to_videos,
+        aid_to_audio=gen_aid_to_audios,
+        exp_name=InSyncCfg.exp_name,
+        afps=InSyncCfg.afps,
+        vfps=InSyncCfg.vfps,
+        input_size=InSyncCfg.input_size,
+        device=device,
+        ckpt_parent_path=f"{GMELAB_CACHE}/sync_models",
+    )
+    results["synchformer_score"] = overall_sync_score
+    """Calculate FAD, FD, KL """
 
     gen_folder_path, gen_is_same_folder = get_common_folder_path(
         gen_aid_to_audios
@@ -136,7 +142,7 @@ def evaluate(args):
     assert gen_is_same_folder == True, "Generated audio files must be in the same folder."
     assert ref_is_same_folder == True, "Reference audio files must be in the same folder."
 
-    evaluator = EvaluationHelper(16000, args.device, backbone="cnn14")
+    evaluator = EvaluationHelper(16000, device, backbone="cnn14")
 
     eval_result = evaluator.main(
         gen_folder_path, ref_folder_path, recalculate=False
@@ -160,16 +166,24 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--ref_audio_jsonl",
-        "-r",
+        "-ra",
         type=str,
         required=True,
         help="path to reference audio jsonl file"
     )
     parser.add_argument(
-        "--gen_video_path",
+        "--ib_ref_video_jsonl",
+        "-ibv",
         type=str,
-        # required=True,
-        help="path to reencoded generated video with vfps and sr"
+        required=True,
+        help="path to reference video jsonl file"
+    )
+    parser.add_argument(
+        "--sync_ref_video_jsonl",
+        "-syncv",
+        type=str,
+        required=True,
+        help="path to reference video jsonl file"
     )
     parser.add_argument(
         "--gen_audio_jsonl",

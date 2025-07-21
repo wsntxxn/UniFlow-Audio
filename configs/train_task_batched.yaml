@@ -77,9 +77,9 @@ trainer:
   epoch_length: ${epoch_length}
   save_last_k: 2
   early_stop: Null
-  logger: tensorboard
   logging_config:
     _target_: trainer.LoggingConfig
+    report_to: swanlab
     # project: x_to_audio_generation
     project: runs
     save_dir: ${exp_dir}

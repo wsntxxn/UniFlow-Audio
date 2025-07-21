@@ -79,23 +79,40 @@ def maybe_cache_file(path: os.PathLike):
         return path
 
 
-def get_video_and_audio(path, get_meta=False, start_sec=0, end_sec=None):
+def get_video_and_audio(
+    path,
+    audio_path=None,
+    get_meta=False,
+    start_sec=0,
+    end_sec=None,
+    afps=16000,
+):
     orig_path = path
     path = maybe_cache_file(path)
     # (Tv, 3, H, W) [0, 255, uint8]; (Ca, Ta)
+
     rgb, audio, meta = torchvision.io.read_video(
         str(path), start_sec, end_sec, 'sec', output_format='TCHW'
     )
     assert meta['video_fps'], f'No video fps for {orig_path}'
+    video_fps = meta['video_fps']
+
+    if audio_path is not None:
+        audio, audio_fps = torchaudio.load(audio_path)
+    else:
+        audio_fps = meta['audio_fps']
+
+    audio = torchaudio.functional.resample(audio, audio_fps, afps)
     # (Ta) <- (Ca, Ta)
     audio = audio.mean(dim=0)
+
     # FIXME: this is legacy format of `meta` as it used to be loaded by VideoReader.
     meta = {
         'video': {
-            'fps': [meta['video_fps']]
+            'fps': [video_fps]
         },
         'audio': {
-            'framerate': [meta['audio_fps']]
+            'framerate': [afps]
         },
     }
     return rgb, audio, meta

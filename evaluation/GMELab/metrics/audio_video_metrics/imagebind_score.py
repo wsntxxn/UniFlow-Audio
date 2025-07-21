@@ -6,12 +6,12 @@ import numpy as np
 from tqdm import tqdm
 from dataclasses import dataclass
 
-from evaluation.GMELab.submodules.ImageBind.imagebind.data import (
+from ...submodules.ImageBind.imagebind.data import (
     load_and_transform_video_data,
     load_and_transform_audio_data,
 )
-from evaluation.GMELab.submodules.ImageBind.imagebind.models import imagebind_model
-from evaluation.GMELab.submodules.ImageBind.imagebind.models.imagebind_model import ModalityType
+from ...submodules.ImageBind.imagebind.models import imagebind_model
+from ...submodules.ImageBind.imagebind.models.imagebind_model import ModalityType
 
 
 @dataclass
@@ -25,14 +25,25 @@ BATCH_SIZE = 1
 
 
 def calculate_imagebind_score(
-    video_dir: Path,
+    aid_to_video: dict[str, str | Path],
     device: str,
+    aid_to_audio: dict[str, str | Path] | None = None,
     get_diagonal_scores: bool = True,
     afps: int = 16000,
     verbose: bool = False,
 ):
     # get videos
-    all_videos = list(video_dir.glob("*.mp4"))
+    if aid_to_audio is None:
+        all_videos = aid_to_video.values()
+        all_audios = all_videos
+    else:
+        all_videos, all_audios = [], []
+        for aid, video in aid_to_video.items():
+            if aid in aid_to_audio:
+                all_videos.append(video)
+                all_audios.append(aid_to_audio[aid])
+            else:
+                print(f"Audio for {aid} not found, skipping.")
 
     # load model
     model = imagebind_model.imagebind_huge(pretrained=True)
@@ -51,10 +62,9 @@ def calculate_imagebind_score(
             video_data = load_and_transform_video_data(
                 all_videos[i:i + BATCH_SIZE],
                 device,
-                sample_rate=afps,
             )
             audio_data = load_and_transform_audio_data(
-                all_videos[i:i + BATCH_SIZE],
+                all_audios[i:i + BATCH_SIZE],
                 device,
                 sample_rate=afps,
             )

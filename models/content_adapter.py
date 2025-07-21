@@ -1,8 +1,10 @@
 import math
+from typing import Any
 import torch
 import torch.nn as nn
 
-from utils.torch_utilities import concat_non_padding, restore_from_concat
+from utils.torch_utilities import concat_non_padding, restore_from_concat, create_mask_from_length
+from models.content_encoder.content_encoder import ContentEncoder
 
 
 ######################
@@ -379,3 +381,50 @@ class ExperimentalCrossAttentionAdapter(ContentAdapterBase):
         content = self.content_proj(x)
         content = self.norm2(content)
         return content, content_mask, global_duration, local_duration
+
+
+class ContentEncoderAdapterMixin:
+    def __init__(
+        self,
+        content_encoder: ContentEncoder,
+        content_adapter: ContentAdapterBase | None = None
+    ):
+        self.content_encoder = content_encoder
+        self.content_adapter = content_adapter
+
+    def encode_content(
+        self,
+        content: list[Any],
+        task: list[str],
+        device: str | torch.device,
+        instruction: torch.Tensor | None = None,
+        instruction_lengths: torch.Tensor | None = None
+    ):
+        content_output: dict[
+            str, torch.Tensor] = self.content_encoder.encode_content(
+                content, task, device=device
+            )
+        content, content_mask = content_output["content"], content_output[
+            "content_mask"]
+
+        if instruction is not None:
+            instruction_mask = create_mask_from_length(instruction_lengths)
+            (
+                content,
+                content_mask,
+                global_duration_pred,
+                local_duration_pred,
+            ) = self.content_adapter(
+                content, content_mask, instruction, instruction_mask
+            )
+
+        return_dict = {
+            "content": content,
+            "content_mask": content_mask,
+            "length_aligned_content": content_output["length_aligned_content"],
+        }
+        if instruction is not None:
+            return_dict["global_duration_pred"] = global_duration_pred
+            return_dict["local_duration_pred"] = local_duration_pred
+
+        return return_dict

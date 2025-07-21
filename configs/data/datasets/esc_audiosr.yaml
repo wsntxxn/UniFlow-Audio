@@ -8,3 +8,4 @@ test:
   task_instruction: ${instruction_embedding}
   instruction_idx: 1
   random_crop: false
+  max_samples: ${max_test_samples}

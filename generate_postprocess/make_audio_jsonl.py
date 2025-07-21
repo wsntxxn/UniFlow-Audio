@@ -7,6 +7,8 @@ import argparse
 import json
 from pathlib import Path
 
+from tqdm import tqdm
+
 from utils.general import transform_gen_fn_to_id
 
 
@@ -18,7 +20,7 @@ def generate_jsonl(args) -> None:
     Path(args.output_file).parent.mkdir(exist_ok=True, parents=True)
 
     with open(args.output_file, 'w') as writer:
-        for audio_file in audio_files:
+        for audio_file in tqdm(audio_files):
             audio_id = transform_gen_fn_to_id(audio_file, task)
 
             if audio_file.suffix != '.wav':
@@ -49,7 +51,7 @@ if __name__ == '__main__':
         "--task",
         "-t",
         type=str,
-        choices=["tts", "tta", "ttm", "se", "sr", "svs", "vta"],
+        choices=["tts", "tta", "ttm", "se", "sr", "svs", "v2a"],
         required=True,
         help="task name"
     )

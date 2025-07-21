@@ -12,12 +12,12 @@ import einops
 def sec2frames(sec, fps):
     return int(sec * fps)
 
+
 def frames2sec(frames, fps):
     return frames / fps
 
 
 class EqualifyFromRight(torch.nn.Module):
-
     def __init__(self, clip_max_len_sec=10):
         '''
         Takes the dataset item and makes sure more streams are of an equal size in terms of fps.
@@ -57,7 +57,6 @@ class EqualifyFromRight(torch.nn.Module):
 
 
 class RGBSpatialCrop(torch.nn.Module):
-
     def __init__(self, input_size, is_random):
         super().__init__()
         assert input_size is not None, f'smaller_input_size is `{input_size}`'
@@ -97,8 +96,8 @@ class RGBSpatialCrop(torch.nn.Module):
         item['video'] = vid[..., i:(i + h), j:(j + w)]
         return item
 
-class Resize(torchvision.transforms.Resize):
 
+class Resize(torchvision.transforms.Resize):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -110,8 +109,13 @@ class Resize(torchvision.transforms.Resize):
 class RGBSpatialCropSometimesUpscale(torch.nn.Module):
     '''This (randomly) crops the input video and with prob `sometimes_p` this crop is smaller but upscaled
     to `target_input_size`'''
-
-    def __init__(self, sometimes_p, target_input_size, is_random, smaller_input_size=None):
+    def __init__(
+        self,
+        sometimes_p,
+        target_input_size,
+        is_random,
+        smaller_input_size=None
+    ):
         super().__init__()
         self.sometimes_p = sometimes_p
         self.do_sometimes_upscale = sometimes_p is not None and sometimes_p > 0
@@ -136,18 +140,24 @@ class RGBSpatialCropSometimesUpscale(torch.nn.Module):
 
 
 class RandomApplyColorDistortion(torch.nn.Module):
-
     def __init__(self, p_gray_scale=0., p_color_jitter=0., s=1.) -> None:
         super().__init__()
         self.p_gray_scale = p_gray_scale
         self.p_color_jitter = p_color_jitter
         self.s = s
-        assert 0 <= self.p_color_jitter <= 1 and 0 <= self.p_gray_scale <= 1, (p_color_jitter, p_gray_scale)
+        assert 0 <= self.p_color_jitter <= 1 and 0 <= self.p_gray_scale <= 1, (
+            p_color_jitter, p_gray_scale
+        )
         # SimCLR params
-        color_jitter = torchvision.transforms.ColorJitter(0.8*s, 0.8*s, 0.8*s, 0.2*s)
-        rand_color_jitter = torchvision.transforms.RandomApply([color_jitter], p_color_jitter)
+        color_jitter = torchvision.transforms.ColorJitter(
+            0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s
+        )
+        rand_color_jitter = torchvision.transforms.RandomApply([color_jitter],
+                                                               p_color_jitter)
         rand_gray = torchvision.transforms.RandomGrayscale(p_gray_scale)
-        self.transforms = torchvision.transforms.Compose([rand_color_jitter, rand_gray])
+        self.transforms = torchvision.transforms.Compose([
+            rand_color_jitter, rand_gray
+        ])
 
     def apply_to_single_clip(self, clip):
         return self.transforms(clip)
@@ -168,12 +178,13 @@ class RandomApplyColorDistortion(torch.nn.Module):
 
 
 class ApplyColorJitterFrameWise(torch.nn.Module):
-
     def __init__(self, s=1.) -> None:
         super().__init__()
         self.s = s
         # SimCLR params
-        self.transform = torchvision.transforms.ColorJitter(0.8*s, 0.8*s, 0.8*s, 0.2*s)
+        self.transform = torchvision.transforms.ColorJitter(
+            0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s
+        )
 
     def apply_to_single_clip(self, clip):
         for i, frame in enumerate(clip):
@@ -196,7 +207,6 @@ class ApplyColorJitterFrameWise(torch.nn.Module):
 
 
 class RandomHorizontalFlip(torchvision.transforms.RandomHorizontalFlip):
-
     def __init__(self, p=0.5):
         super().__init__(p)
 
@@ -218,17 +228,28 @@ class RandomHorizontalFlip(torchvision.transforms.RandomHorizontalFlip):
         return item
 
 
-def make_class_grid(leftmost_val, rightmost_val, grid_size, add_extreme_offset: bool = False,
-                    seg_size_vframes: int = None, nseg: int = None, step_size_seg: float = None,
-                    vfps: float = None):
+def make_class_grid(
+    leftmost_val,
+    rightmost_val,
+    grid_size,
+    add_extreme_offset: bool = False,
+    seg_size_vframes: int = None,
+    nseg: int = None,
+    step_size_seg: float = None,
+    vfps: float = None
+):
     assert grid_size >= 3, f'grid_size: {grid_size} doesnot make sense. If =2 -> (-1,1); =1 -> (-1); =0 -> ()'
-    grid = torch.from_numpy(np.linspace(leftmost_val, rightmost_val, grid_size)).float()
+    grid = torch.from_numpy(
+        np.linspace(leftmost_val, rightmost_val, grid_size)
+    ).float()
     if add_extreme_offset:
-        assert all([seg_size_vframes, nseg, step_size_seg]), f'{seg_size_vframes} {nseg} {step_size_seg}'
+        assert all([seg_size_vframes, nseg, step_size_seg]
+                  ), f'{seg_size_vframes} {nseg} {step_size_seg}'
         seg_size_sec = seg_size_vframes / vfps
         trim_size_in_seg = nseg - (1 - step_size_seg) * (nseg - 1)
         extreme_value = trim_size_in_seg * seg_size_sec
-        grid = torch.cat([grid, torch.tensor([extreme_value])])  # adding extreme offset to the class grid
+        grid = torch.cat([grid, torch.tensor([extreme_value])]
+                        )  # adding extreme offset to the class grid
     return grid
 
 
@@ -238,7 +259,10 @@ def quantize_offset(grid: torch.Tensor, off_sec: float) -> Tuple[float, int]:
     closest_grid_el = (grid - off_sec).abs().argmin()
     return grid[closest_grid_el], closest_grid_el
 
-def apply_a_jitter(a_start_i, a_len_frames, a_crop_len_frames, a_fps, max_a_jitter_sec):
+
+def apply_a_jitter(
+    a_start_i, a_len_frames, a_crop_len_frames, a_fps, max_a_jitter_sec
+):
     max_a_start_i = a_len_frames - a_crop_len_frames
     max_a_jitter_i = sec2frames(max_a_jitter_sec, a_fps)
     max_a_jitter_i_left = min(a_start_i, max_a_jitter_i)
@@ -253,11 +277,21 @@ def apply_a_jitter(a_start_i, a_len_frames, a_crop_len_frames, a_fps, max_a_jitt
 
 
 class TemporalCropAndOffset(torch.nn.Module):
-
-    def __init__(self, crop_len_sec: float, max_off_sec: float, offset_type='grid', do_offset: bool = True,
-                 grid_size: int = None, max_wiggle_sec: float = None, add_doubt_cls: bool = False,
-                 segment_size_vframes: int = None, n_segments: int = None, step_size_seg: float = None,
-                 vfps: float = None, prob_oos: float = None):
+    def __init__(
+        self,
+        crop_len_sec: float,
+        max_off_sec: float,
+        offset_type='grid',
+        do_offset: bool = True,
+        grid_size: int = None,
+        max_wiggle_sec: float = None,
+        add_doubt_cls: bool = False,
+        segment_size_vframes: int = None,
+        n_segments: int = None,
+        step_size_seg: float = None,
+        vfps: float = None,
+        prob_oos: float = None
+    ):
         super().__init__()
         self.crop_len_sec = crop_len_sec
         self.do_offset = do_offset
@@ -267,21 +301,33 @@ class TemporalCropAndOffset(torch.nn.Module):
         self.max_a_jitter_sec = max_wiggle_sec
         if do_offset:
             if offset_type == 'grid':
-                self.class_grid = make_class_grid(-max_off_sec, max_off_sec, grid_size, add_doubt_cls,
-                                                  segment_size_vframes, n_segments, step_size_seg, vfps)
+                self.class_grid = make_class_grid(
+                    -max_off_sec, max_off_sec, grid_size, add_doubt_cls,
+                    segment_size_vframes, n_segments, step_size_seg, vfps
+                )
                 logging.info(f'Offsets class grid: {self.class_grid}')
                 if self.max_a_jitter_sec is not None:
-                    assert (max_wiggle_sec-1e-6) <= ((self.class_grid[1] - self.class_grid[0]) / 2), f'{self.class_grid}'
+                    assert (max_wiggle_sec - 1e-6
+                           ) <= ((self.class_grid[1] - self.class_grid[0]) /
+                                 2), f'{self.class_grid}'
             elif offset_type == 'uniform':
-                self.off_dist = torch.distributions.uniform.Uniform(-max_off_sec, max_off_sec)
+                self.off_dist = torch.distributions.uniform.Uniform(
+                    -max_off_sec, max_off_sec
+                )
                 logging.info(f'Offset uniform distribution: {self.off_dist}')
             elif offset_type == 'uniform_binary':
                 self.itu_t_range = (-0.125, 0.045)
                 self.prob_oos = prob_oos
-                self.ins_dist = torch.distributions.uniform.Uniform(self.itu_t_range[0], self.itu_t_range[1])
-                self.off_dist = torch.distributions.uniform.Uniform(-max_off_sec, max_off_sec)
+                self.ins_dist = torch.distributions.uniform.Uniform(
+                    self.itu_t_range[0], self.itu_t_range[1]
+                )
+                self.off_dist = torch.distributions.uniform.Uniform(
+                    -max_off_sec, max_off_sec
+                )
             else:
-                raise NotImplementedError(f'Unknown offset type: {offset_type}')
+                raise NotImplementedError(
+                    f'Unknown offset type: {offset_type}'
+                )
 
     def forward(self, item):
         vid = item['video']
@@ -316,15 +362,21 @@ class TemporalCropAndOffset(torch.nn.Module):
                     if is_oos:
                         # second, we sample the offset itself (if in in-sync range, trying again)
                         offset_sec = self.off_dist.sample().item()
-                        while self.itu_t_range[0] <= offset_sec <= self.itu_t_range[1]:
+                        while self.itu_t_range[
+                            0] <= offset_sec <= self.itu_t_range[1]:
                             offset_sec = self.off_dist.sample().item()
                     else:
                         offset_sec = self.ins_dist.sample().item()
                 offset_sec = round(offset_sec, 2)
-                v_start_max_sec = frames2sec(v_len_frames - v_crop_len_frames, v_fps)
+                v_start_max_sec = frames2sec(
+                    v_len_frames - v_crop_len_frames, v_fps
+                )
                 assert v_start_max_sec > 0, f'{v_len_frames} {v_crop_len_frames} {v_fps} @ {item["path"]}'
                 # `v_start_sec` IS NOT rounded to the fps grid
-                v_start_sec = random.uniform(max(0, -offset_sec), min(v_start_max_sec, v_start_max_sec-offset_sec))
+                v_start_sec = random.uniform(
+                    max(0, -offset_sec),
+                    min(v_start_max_sec, v_start_max_sec - offset_sec)
+                )
                 assert 0 <= v_start_sec <= v_start_max_sec, f'{v_start_sec} {v_start_max_sec} {item["path"]}'
                 v_start_i = sec2frames(v_start_sec, v_fps)
                 # `v_start_i_sec` IS rounded to the fps grid
@@ -339,7 +391,9 @@ class TemporalCropAndOffset(torch.nn.Module):
         else:
             offset_sec = 0.0
             is_random_crop = item['split'] == 'train'
-            v_start_i, v_end_i = self.get_crop_idx(v_len_frames, v_crop_len_frames, is_random=is_random_crop)
+            v_start_i, v_end_i = self.get_crop_idx(
+                v_len_frames, v_crop_len_frames, is_random=is_random_crop
+            )
             v_start_i_sec = frames2sec(v_start_i, v_fps)
             a_start_i = sec2frames(v_start_i_sec, a_fps)
 
@@ -347,7 +401,9 @@ class TemporalCropAndOffset(torch.nn.Module):
         # given offset is -1.5, the a_start_i will be a small negative value. (likely a_fps * 1/v_fps * 0.5)
         if a_start_i < 0:
             how_much_out = a_start_i
-            logging.info(f'a_start_i is negative ({how_much_out}) at {item["path"]}')
+            logging.info(
+                f'a_start_i is negative ({how_much_out}) at {item["path"]}'
+            )
             if abs(how_much_out) <= a_fps / v_fps:
                 logging.info('fixing it')
                 a_start_i += abs(how_much_out)
@@ -355,8 +411,10 @@ class TemporalCropAndOffset(torch.nn.Module):
                 raise Exception(f'{how_much_out} {item["path"]}')
 
         if self.max_a_jitter_sec is not None and self.max_a_jitter_sec > 0:
-            a_start_i, a_jitter_i = apply_a_jitter(a_start_i, a_len_frames, a_crop_len_frames, a_fps,
-                                                   self.max_a_jitter_sec)
+            a_start_i, a_jitter_i = apply_a_jitter(
+                a_start_i, a_len_frames, a_crop_len_frames, a_fps,
+                self.max_a_jitter_sec
+            )
             item['meta']['a_jitter_i'] = a_jitter_i
 
         a_end_i = a_start_i + a_crop_len_frames
@@ -365,24 +423,31 @@ class TemporalCropAndOffset(torch.nn.Module):
         assert aud.shape[0] >= a_end_i, f'{aud.shape} {a_end_i} {item["path"]}'
         assert vid.shape[0] >= v_end_i, f'{vid.shape} {v_end_i} {item["path"]}'
 
-        # import pdb; pdb.set_trace()
-
         vid, aud = vid[v_start_i:v_end_i, :, :, :], aud[a_start_i:a_end_i]
 
         item['video'] = vid
         item['audio'] = aud
 
-        assert item['video'].shape[0] == v_fps * self.crop_len_sec, f'{item["video"].shape} {item["path"]}'
-        assert item['audio'].shape[0] == a_fps * self.crop_len_sec, f'{item["audio"].shape} {item["path"]}'
+        assert item['video'].shape[
+            0
+        ] == v_fps * self.crop_len_sec, f'{item["video"].shape} {item["path"]}'
+        assert item['audio'].shape[
+            0
+        ] == a_fps * self.crop_len_sec, f'{item["audio"].shape} {item["path"]}'
 
         # caching parameters
         if self.do_offset:
             if self.offset_type == 'grid':
-                offset_label, offset_target = quantize_offset(self.class_grid, offset_sec)
+                offset_label, offset_target = quantize_offset(
+                    self.class_grid, offset_sec
+                )
             elif self.offset_type == 'uniform':
                 offset_label, offset_target = offset_sec, offset_sec
             elif self.offset_type == 'uniform_binary':
-                offset_label, offset_target = offset_sec, {'oos': is_oos, 'offset': offset_sec}
+                offset_label, offset_target = offset_sec, {
+                    'oos': is_oos,
+                    'offset': offset_sec
+                }
             item['targets']['offset_sec'] = offset_sec
             item['targets']['v_start_i_sec'] = v_start_i_sec
             item['targets']['offset_label'] = offset_label
@@ -391,14 +456,16 @@ class TemporalCropAndOffset(torch.nn.Module):
 
         return item
 
-    def get_crop_idx(self, len_frames: int, crop_len_frames: int, is_random=True):
+    def get_crop_idx(
+        self, len_frames: int, crop_len_frames: int, is_random=True
+    ):
         if len_frames == crop_len_frames:
             return 0, len_frames
         if is_random:
             left_i = random.randint(0, len_frames - crop_len_frames)
         else:
             left_i = int(round((len_frames - crop_len_frames) / 2.))
-        return left_i, left_i+crop_len_frames
+        return left_i, left_i + crop_len_frames
 
 
 class GenerateMultipleSegments(torch.nn.Module):
@@ -409,9 +476,14 @@ class GenerateMultipleSegments(torch.nn.Module):
     n_segments.
     `audio_jitter_sec` is the amount of audio offset in seconds.
     '''
-
-    def __init__(self, segment_size_vframes: int, n_segments: int = None, is_start_random: bool = False,
-                 audio_jitter_sec: float = 0., step_size_seg: float = 1):
+    def __init__(
+        self,
+        segment_size_vframes: int,
+        n_segments: int = None,
+        is_start_random: bool = False,
+        audio_jitter_sec: float = 0.,
+        step_size_seg: float = 1
+    ):
         super().__init__()
         self.segment_size_vframes = segment_size_vframes
         self.n_segments = n_segments
@@ -430,13 +502,19 @@ class GenerateMultipleSegments(torch.nn.Module):
         ## Determining the number of segments
         # segment size
         segment_size_vframes = self.segment_size_vframes
-        segment_size_aframes = sec2frames(frames2sec(self.segment_size_vframes, v_fps), a_fps)
+        segment_size_aframes = sec2frames(
+            frames2sec(self.segment_size_vframes, v_fps), a_fps
+        )
         # step size (stride)
         stride_vframes = int(self.step_size_seg * segment_size_vframes)
         stride_aframes = int(self.step_size_seg * segment_size_aframes)
         # calculating the number of segments. (W - F + 2P) / S + 1
-        n_segments_max_v = math.floor((v_len_frames - segment_size_vframes) / stride_vframes) + 1
-        n_segments_max_a = math.floor((a_len_frames - segment_size_aframes) / stride_aframes) + 1
+        n_segments_max_v = math.floor(
+            (v_len_frames - segment_size_vframes) / stride_vframes
+        ) + 1
+        n_segments_max_a = math.floor(
+            (a_len_frames - segment_size_aframes) / stride_aframes
+        ) + 1
         # making sure audio and video can accommodate the same number of segments
         n_segments_max = min(n_segments_max_v, n_segments_max_a)
         n_segments = n_segments_max if self.n_segments is None else self.n_segments
@@ -446,15 +524,21 @@ class GenerateMultipleSegments(torch.nn.Module):
             f'of len {v_len_frames} for {item["path"]}'
 
         # (n_segments, 2) each
-        v_ranges, a_ranges = self.get_sequential_seg_ranges(v_len_frames, a_len_frames, v_fps, a_fps,
-                                                            n_segments, segment_size_aframes)
+        v_ranges, a_ranges = self.get_sequential_seg_ranges(
+            v_len_frames, a_len_frames, v_fps, a_fps, n_segments,
+            segment_size_aframes
+        )
 
         # segmenting original streams (n_segments, segment_size_frames, C, H, W)
-        item['video'] = torch.stack([item['video'][s:e] for s, e in v_ranges], dim=0)
-        item['audio'] = torch.stack([item['audio'][s:e] for s, e in a_ranges], dim=0)
+        item['video'] = torch.stack([item['video'][s:e] for s, e in v_ranges],
+                                    dim=0)
+        item['audio'] = torch.stack([item['audio'][s:e] for s, e in a_ranges],
+                                    dim=0)
         return item
 
-    def get_sequential_seg_ranges(self, v_len_frames, a_len_frames, v_fps, a_fps, n_seg, seg_size_aframes):
+    def get_sequential_seg_ranges(
+        self, v_len_frames, a_len_frames, v_fps, a_fps, n_seg, seg_size_aframes
+    ):
         # if is_start_random is True, the starting position of the 1st segment will
         # be random but respecting n_segments like so: "-CCCCCCCC---" (maybe with fixed overlap),
         # else the segments are taken from the middle of the video respecting n_segments: "--CCCCCCCC--"
@@ -476,18 +560,29 @@ class GenerateMultipleSegments(torch.nn.Module):
             v_start_i = random.randint(0, max_v_start_i)
         else:
             v_start_i = max_v_start_i // 2
-        a_start_i = sec2frames(frames2sec(v_start_i, v_fps), a_fps)  # vid frames -> seconds -> aud frames
+        a_start_i = sec2frames(
+            frames2sec(v_start_i, v_fps), a_fps
+        )  # vid frames -> seconds -> aud frames
 
         # make segments starts
-        v_start_seg_i = torch.tensor([v_start_i + i * step_size_vframes for i in range(n_seg)]).int()
-        a_start_seg_i = torch.tensor([a_start_i + i * step_size_aframes for i in range(n_seg)]).int()
+        v_start_seg_i = torch.tensor([
+            v_start_i + i * step_size_vframes for i in range(n_seg)
+        ]).int()
+        a_start_seg_i = torch.tensor([
+            a_start_i + i * step_size_aframes for i in range(n_seg)
+        ]).int()
 
         # apply jitter to audio
         if self.audio_jitter_sec > 0:
             jitter_aframes = sec2frames(self.audio_jitter_sec, a_fps)
             # making sure after applying jitter, the audio is still within the audio boundaries
-            jitter_aframes = min(jitter_aframes, a_start_i, a_len_frames-a_start_i-aframes_seg_seq_len)
-            a_start_seg_i += random.randint(-jitter_aframes, jitter_aframes)  # applying jitter to segments
+            jitter_aframes = min(
+                jitter_aframes, a_start_i,
+                a_len_frames - a_start_i - aframes_seg_seq_len
+            )
+            a_start_seg_i += random.randint(
+                -jitter_aframes, jitter_aframes
+            )  # applying jitter to segments
 
         # make segment ends
         v_ends_seg_i = v_start_seg_i + seg_size_vframes
@@ -496,17 +591,26 @@ class GenerateMultipleSegments(torch.nn.Module):
         # make ranges
         v_ranges = torch.stack([v_start_seg_i, v_ends_seg_i], dim=1)
         a_ranges = torch.stack([a_start_seg_i, a_ends_seg_i], dim=1)
-        assert (a_ranges >= 0).all() and (a_ranges <= a_len_frames).all(), f'{a_ranges} out of {a_len_frames}'
-        assert (v_ranges <= v_len_frames).all(), f'{v_ranges} out of {v_len_frames}'
+        assert (a_ranges
+                >= 0).all() and (a_ranges <= a_len_frames
+                                ).all(), f'{a_ranges} out of {a_len_frames}'
+        assert (v_ranges
+                <= v_len_frames).all(), f'{v_ranges} out of {v_len_frames}'
         return v_ranges, a_ranges
 
 
 class TemporalCropAndOffsetForSyncabilityTraining(torch.nn.Module):
-
-    def __init__(self, max_off_sec: float, do_offset: bool = True,
-                 grid_size: int = None, max_wiggle_sec: float = None,
-                 segment_size_vframes: int = None, n_segments: int = None, step_size_seg: float = None,
-                 vfps: float = None):
+    def __init__(
+        self,
+        max_off_sec: float,
+        do_offset: bool = True,
+        grid_size: int = None,
+        max_wiggle_sec: float = None,
+        segment_size_vframes: int = None,
+        n_segments: int = None,
+        step_size_seg: float = None,
+        vfps: float = None
+    ):
         super().__init__()
         seg_size_sec = segment_size_vframes / vfps
         trim_size_in_seg = n_segments - (1 - step_size_seg) * (n_segments - 1)
@@ -521,10 +625,14 @@ class TemporalCropAndOffsetForSyncabilityTraining(torch.nn.Module):
         self.step_size_seg = step_size_seg
         self.prob_syncable = 0.5
         if do_offset:
-            self.class_grid = make_class_grid(-max_off_sec, max_off_sec, grid_size)
+            self.class_grid = make_class_grid(
+                -max_off_sec, max_off_sec, grid_size
+            )
             logging.info(f'Offset class grid: {self.class_grid}')
             if self.max_a_jitter_sec is not None:
-                assert (max_wiggle_sec-1e-6) <= ((self.class_grid[1] - self.class_grid[0]) / 2), f'{self.class_grid}'
+                assert (max_wiggle_sec -
+                        1e-6) <= ((self.class_grid[1] - self.class_grid[0]) /
+                                  2), f'{self.class_grid}'
 
     def forward(self, item):
         vid = item['video']
@@ -546,18 +654,26 @@ class TemporalCropAndOffsetForSyncabilityTraining(torch.nn.Module):
             if offset_sec is None and v_start_i_sec is None:
 
                 # for the syncability training, we want to have a syncable or non-syncable offset with 50% prob
-                offset_is_syncable = random.random() < self.prob_syncable  # 1=syncable, 0=non-syncable
+                offset_is_syncable = random.random(
+                ) < self.prob_syncable  # 1=syncable, 0=non-syncable
                 if offset_is_syncable:
                     offset_sec = random.choice(self.class_grid.tolist())
                 else:
-                    offset_sec = random.choice([-self.crop_len_sec, self.crop_len_sec])  # either - or + offset
+                    offset_sec = random.choice([
+                        -self.crop_len_sec, self.crop_len_sec
+                    ])  # either - or + offset
                 # aud starts `offset_sec` earlier than it should; aud has what will be shown after offset_sec
 
                 offset_sec = round(offset_sec, 2)
-                v_start_max_sec = frames2sec(v_len_frames - v_crop_len_frames, v_fps)
+                v_start_max_sec = frames2sec(
+                    v_len_frames - v_crop_len_frames, v_fps
+                )
                 assert v_start_max_sec > 0, f'{v_len_frames} {v_crop_len_frames} {v_fps} @ {item["path"]}'
                 # `v_start_sec` IS NOT rounded to the fps grid
-                v_start_sec = random.uniform(max(0, -offset_sec), min(v_start_max_sec, v_start_max_sec-offset_sec))
+                v_start_sec = random.uniform(
+                    max(0, -offset_sec),
+                    min(v_start_max_sec, v_start_max_sec - offset_sec)
+                )
                 assert 0 <= v_start_sec <= v_start_max_sec, f'{v_start_sec} {v_start_max_sec} {item["path"]}'
                 v_start_i = sec2frames(v_start_sec, v_fps)
                 v_end_i = v_start_i + v_crop_len_frames
@@ -567,8 +683,10 @@ class TemporalCropAndOffsetForSyncabilityTraining(torch.nn.Module):
                 # (v_start_sec) we have ±0.1 jittering
                 a_start_i = sec2frames(v_start_i_sec + offset_sec, a_fps)
                 if self.max_a_jitter_sec is not None and self.max_a_jitter_sec > 0:
-                    a_start_i, a_jitter_i = apply_a_jitter(a_start_i, a_len_frames, a_crop_len_frames, a_fps,
-                                                           self.max_a_jitter_sec)
+                    a_start_i, a_jitter_i = apply_a_jitter(
+                        a_start_i, a_len_frames, a_crop_len_frames, a_fps,
+                        self.max_a_jitter_sec
+                    )
                     item['meta']['a_jitter_i'] = a_jitter_i
                 a_end_i = a_start_i + a_crop_len_frames
             else:
@@ -580,12 +698,16 @@ class TemporalCropAndOffsetForSyncabilityTraining(torch.nn.Module):
         else:
             offset_sec = 0.0
             is_random_crop = item['split'] == 'train'
-            v_start_i, v_end_i = self.get_crop_idx(v_len_frames, v_crop_len_frames, is_random=is_random_crop)
+            v_start_i, v_end_i = self.get_crop_idx(
+                v_len_frames, v_crop_len_frames, is_random=is_random_crop
+            )
             v_start_i_sec = frames2sec(v_start_i, v_fps)
             a_start_i = sec2frames(v_start_i_sec, a_fps)
             if self.max_a_jitter_sec is not None and self.max_a_jitter_sec > 0:
-                a_start_i, a_jitter_i = apply_a_jitter(a_start_i, a_len_frames, a_crop_len_frames, a_fps,
-                                                       self.max_a_jitter_sec)
+                a_start_i, a_jitter_i = apply_a_jitter(
+                    a_start_i, a_len_frames, a_crop_len_frames, a_fps,
+                    self.max_a_jitter_sec
+                )
                 item['meta']['a_jitter_i'] = a_jitter_i
             a_end_i = a_start_i + a_crop_len_frames
 
@@ -593,7 +715,9 @@ class TemporalCropAndOffsetForSyncabilityTraining(torch.nn.Module):
         # given offset is -1.5, the a_start_i will be a small negative value. (likely a_fps * 1/v_fps * 0.5)
         if a_start_i < 0:
             how_much_out = a_start_i
-            logging.info(f'a_start_i is negative ({how_much_out}) at {item["path"]}')
+            logging.info(
+                f'a_start_i is negative ({how_much_out}) at {item["path"]}'
+            )
             if abs(how_much_out) <= a_fps / v_fps:
                 logging.info('fixing it')
                 a_start_i += abs(how_much_out)
@@ -610,13 +734,19 @@ class TemporalCropAndOffsetForSyncabilityTraining(torch.nn.Module):
         item['video'] = vid
         item['audio'] = aud
 
-        assert item['video'].shape[0] == int(v_fps*self.crop_len_sec), f'{item["video"].shape} {item["path"]}'
-        assert item['audio'].shape[0] == int(a_fps*self.crop_len_sec), f'{item["audio"].shape} {item["path"]}'
+        assert item['video'].shape[0] == int(
+            v_fps * self.crop_len_sec
+        ), f'{item["video"].shape} {item["path"]}'
+        assert item['audio'].shape[0] == int(
+            a_fps * self.crop_len_sec
+        ), f'{item["audio"].shape} {item["path"]}'
 
         # caching parameters
         if self.do_offset:
             # NOTE: this is useless for the extreme offsetting
-            offset_label, offset_target = quantize_offset(self.class_grid, offset_sec)
+            offset_label, offset_target = quantize_offset(
+                self.class_grid, offset_sec
+            )
             item['targets']['offset_sec'] = offset_sec
             item['targets']['offset_label'] = offset_label
             # assert 'offset_target' not in item['targets'], f'{item["targets"]}. What passed it there?'
@@ -626,18 +756,19 @@ class TemporalCropAndOffsetForSyncabilityTraining(torch.nn.Module):
 
         return item
 
-    def get_crop_idx(self, len_frames: int, crop_len_frames: int, is_random=True):
+    def get_crop_idx(
+        self, len_frames: int, crop_len_frames: int, is_random=True
+    ):
         if len_frames == crop_len_frames:
             return 0, len_frames
         if is_random:
             left_i = random.randint(0, len_frames - crop_len_frames)
         else:
             left_i = int(round((len_frames - crop_len_frames) / 2.))
-        return left_i, left_i+crop_len_frames
+        return left_i, left_i + crop_len_frames
 
 
 class RGBToFloatToZeroOne(torch.nn.Module):
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -647,7 +778,6 @@ class RGBToFloatToZeroOne(torch.nn.Module):
 
 
 class RGBToHalfToZeroOne(torch.nn.Module):
-
     def __init__(self) -> None:
         super().__init__()
 
@@ -659,20 +789,20 @@ class RGBToHalfToZeroOne(torch.nn.Module):
 class RGBNormalize(torchvision.transforms.Normalize):
     '''The same as the torchvision`s but with different interface for the dict.
     This should work for any shape (..., C, H, W)'''
-
     def __init__(self, mean, std, inplace=False):
         super().__init__(mean, std, inplace)
         logging.info(f'RGBNormalize: mean={mean}, std={std}')
 
     def forward(self, item):
         item['video'] = super().forward(item['video'])
-        item['meta']['video']['norm_stats'] = {'mean': torch.as_tensor(self.mean),
-                                               'std': torch.as_tensor(self.std)}
+        item['meta']['video']['norm_stats'] = {
+            'mean': torch.as_tensor(self.mean),
+            'std': torch.as_tensor(self.std)
+        }
         return item
 
 
 class AudioRandomVolume(torch.nn.Module):
-
     def __init__(self, p: float, **kwargs):
         super().__init__()
         transform = torchaudio.transforms.Vol(**kwargs)
@@ -697,7 +827,6 @@ class AudioRandomVolume(torch.nn.Module):
 
 
 class AudioRandomLowpassFilter(torch.nn.Module):
-
     def __init__(self, p: float, cutoff_freq: float, Q: float = 0.707):
         super().__init__()
         self.p = p
@@ -706,7 +835,9 @@ class AudioRandomLowpassFilter(torch.nn.Module):
 
     def apply_to_single_clip(self, clip, sr):
         if self.p > torch.rand(1):
-            return torchaudio.functional.lowpass_biquad(clip, sr, self.cutoff_freq, self.Q)
+            return torchaudio.functional.lowpass_biquad(
+                clip, sr, self.cutoff_freq, self.Q
+            )
         else:
             return clip
 
@@ -727,7 +858,6 @@ class AudioRandomLowpassFilter(torch.nn.Module):
 
 
 class AudioRandomPitchShift(torch.nn.Module):
-
     def __init__(self, p: float, shift: int) -> None:
         super().__init__()
         self.p = p
@@ -737,7 +867,9 @@ class AudioRandomPitchShift(torch.nn.Module):
         if self.p > torch.rand(1):
             effects = [['pitch', f'{self.shift}'], ['rate', f'{sr}']]
             wave = wave.unsqueeze(0)
-            wave, _ = torchaudio.sox_effects.apply_effects_tensor(wave, sr, effects)
+            wave, _ = torchaudio.sox_effects.apply_effects_tensor(
+                wave, sr, effects
+            )
             wave = wave.squeeze(0)
         return wave
 
@@ -758,7 +890,6 @@ class AudioRandomPitchShift(torch.nn.Module):
 
 
 class AudioRandomReverb(torch.nn.Module):
-
     def __init__(self, p: float) -> None:
         super().__init__()
         self.p = p
@@ -767,7 +898,9 @@ class AudioRandomReverb(torch.nn.Module):
     def apply_to_single_clip(self, wave, fps):
         if self.p > torch.rand(1):
             wave = wave.unsqueeze(0)
-            wave, _ = torchaudio.sox_effects.apply_effects_tensor(wave, fps, self.effects)
+            wave, _ = torchaudio.sox_effects.apply_effects_tensor(
+                wave, fps, self.effects
+            )
             wave = wave.mean(dim=0)
         return wave
 
@@ -786,8 +919,8 @@ class AudioRandomReverb(torch.nn.Module):
         item['audio'] = fn(item['audio'], sr)
         return item
 
-class AudioRandomGaussNoise(torch.nn.Module):
 
+class AudioRandomGaussNoise(torch.nn.Module):
     def __init__(self, p: float, amplitude=0.01) -> None:
         super().__init__()
         self.p = p
@@ -815,7 +948,6 @@ class AudioRandomGaussNoise(torch.nn.Module):
 
 
 class AudioMelSpectrogram(torch.nn.Module):
-
     def __init__(self, **kwargs):
         super().__init__()
         self.spec = torchaudio.transforms.MelSpectrogram(**kwargs)
@@ -826,7 +958,6 @@ class AudioMelSpectrogram(torch.nn.Module):
 
 
 class AudioLog(torch.nn.Module):
-
     def __init__(self, eps=1e-6) -> None:
         super().__init__()
         self.eps = eps
@@ -835,9 +966,14 @@ class AudioLog(torch.nn.Module):
         item['audio'] = torch.log(item['audio'] + self.eps)
         return item
 
-class PadOrTruncate(torch.nn.Module):
 
-    def __init__(self, max_spec_t: int, pad_mode: str = 'constant', pad_value: float = 0.0):
+class PadOrTruncate(torch.nn.Module):
+    def __init__(
+        self,
+        max_spec_t: int,
+        pad_mode: str = 'constant',
+        pad_value: float = 0.0
+    ):
         super().__init__()
         self.max_spec_t = max_spec_t
         self.pad_mode = pad_mode
@@ -848,14 +984,19 @@ class PadOrTruncate(torch.nn.Module):
         return item
 
     def pad_or_truncate(self, audio):
-        difference = self.max_spec_t - audio.shape[-1]  # safe for batched input
+        difference = self.max_spec_t - audio.shape[-1
+                                                  ]  # safe for batched input
         # pad or truncate, depending on difference
         if difference > 0:
             # pad the last dim (time) -> (..., n_mels, 0+time+difference)  # safe for batched input
             pad_dims = (0, difference)
-            audio = torch.nn.functional.pad(audio, pad_dims, self.pad_mode, self.pad_value)
+            audio = torch.nn.functional.pad(
+                audio, pad_dims, self.pad_mode, self.pad_value
+            )
         elif difference < 0:
-            logging.warning(f'Truncating spec ({audio.shape}) to max_spec_t ({self.max_spec_t}).')
+            logging.warning(
+                f'Truncating spec ({audio.shape}) to max_spec_t ({self.max_spec_t}).'
+            )
             audio = audio[..., :self.max_spec_t]  # safe for batched input
         return audio
 
@@ -869,12 +1010,14 @@ class AudioNormalizeAST(torch.nn.Module):
 
     def forward(self, item):
         item['audio'] = (item['audio'] - self.mean) / (2 * self.std)
-        item['meta']['audio']['norm_stats'] = {'mean': self.mean, 'std': self.std}
+        item['meta']['audio']['norm_stats'] = {
+            'mean': self.mean,
+            'std': self.std
+        }
         return item
 
 
 class PermuteStreams(torch.nn.Module):
-
     def __init__(self, einops_order_audio: str, einops_order_rgb: str) -> None:
         ''' For example:
                 einops_order_audio: "S F T -> S T F"
@@ -885,14 +1028,17 @@ class PermuteStreams(torch.nn.Module):
 
     def forward(self, item):
         if self.einops_order_audio is not None:
-            item['audio'] = einops.rearrange(item['audio'], self.einops_order_audio).contiguous()
+            item['audio'] = einops.rearrange(
+                item['audio'], self.einops_order_audio
+            ).contiguous()
         if self.einops_order_rgb is not None:
-            item['video'] = einops.rearrange(item['video'], self.einops_order_rgb).contiguous()
+            item['video'] = einops.rearrange(
+                item['video'], self.einops_order_rgb
+            ).contiguous()
         return item
 
 
 class ResampleAudio(torch.nn.Module):
-
     def __init__(self, new_fps: int):
         super().__init__()
         self.new_fps = new_fps
@@ -901,12 +1047,14 @@ class ResampleAudio(torch.nn.Module):
         orig_fps = int(item['meta']['audio']['framerate'][0])
         item['meta']['audio']['orig_shape'] = item['audio'].shape
         if orig_fps != self.new_fps:
-            item['audio'] = torchaudio.functional.resample(item['audio'], orig_fps, self.new_fps)
+            item['audio'] = torchaudio.functional.resample(
+                item['audio'], orig_fps, self.new_fps
+            )
             item['meta']['audio']['framerate'][0] = self.new_fps
         return item
 
-class ResampleRGB(torch.nn.Module):
 
+class ResampleRGB(torch.nn.Module):
     def __init__(self, new_fps: int) -> None:
         super().__init__()
         self.new_fps = new_fps
@@ -916,16 +1064,18 @@ class ResampleRGB(torch.nn.Module):
         item['meta']['video']['orig_shape'] = item['video'].shape
         if orig_fps != self.new_fps:
             duration_sec = item['video'].shape[0] / orig_fps
-            indices = torch.arange(0, orig_fps * duration_sec - 1e-9, orig_fps / self.new_fps)
+            indices = torch.arange(
+                0, orig_fps * duration_sec - 1e-9, orig_fps / self.new_fps
+            )
             # basically, rounding
             indices = indices.to(dtype=torch.long)
             item['video'] = item['video'][indices]
             item['meta']['video']['fps'][0] = self.new_fps
         return item
 
+
 class ResizeAndLetterboxPad(torch.nn.Module):
     '''Adapted from WACV24 Amazon`s challenge'''
-
     def __init__(self, new_h, new_w):
         super().__init__()
         self.new_h = new_h
@@ -941,13 +1091,17 @@ class ResizeAndLetterboxPad(torch.nn.Module):
         current_aspect_ratio = width / height
         if current_aspect_ratio > self.aspect_ratio:
             scaled_height = round(self.new_w / current_aspect_ratio)
-            rgb = torchvision.transforms.functional.resize(rgb, (scaled_height, self.new_w), antialias=None)
+            rgb = torchvision.transforms.functional.resize(
+                rgb, (scaled_height, self.new_w), antialias=None
+            )
             top = (self.new_h - scaled_height) // 2
             bottom = self.new_h - (scaled_height + top)
             rgb = torch.nn.ConstantPad2d((0, 0, top, bottom), 0)(rgb)
         elif current_aspect_ratio < self.aspect_ratio:
-            scaled_width = round(self.new_h*current_aspect_ratio)
-            rgb = torchvision.transforms.functional.resize(rgb, (self.new_h, scaled_width), antialias=None)
+            scaled_width = round(self.new_h * current_aspect_ratio)
+            rgb = torchvision.transforms.functional.resize(
+                rgb, (self.new_h, scaled_width), antialias=None
+            )
             left = (self.new_w - scaled_width) // 2
             right = self.new_w - (scaled_width + left)
             rgb = torch.nn.ConstantPad2d((left, right, 0, 0), 0)(rgb)
@@ -955,7 +1109,6 @@ class ResizeAndLetterboxPad(torch.nn.Module):
 
 
 class ResampleResizeLetterboxPad(torch.nn.Module):
-
     def __init__(self, afps, vfps, new_h, new_w) -> None:
         super().__init__()
         self.transforms = torchvision.transforms.Compose([
@@ -966,6 +1119,7 @@ class ResampleResizeLetterboxPad(torch.nn.Module):
 
     def forward(self, x: dict) -> dict:
         return self.transforms(x)
+
 
 class DoNothing(torch.nn.Module):
     def __init__(self, *args, **kwargs) -> None:
@@ -984,17 +1138,35 @@ if __name__ == '__main__':
     duration = 10.0
 
     input = {
-        'video': torch.randint(0, 256, (int(duration * v_fps), 3, 720//2, 1280//2), dtype=torch.uint8),
-        'audio': torch.arange(221184-1).float(),
+        'video':
+            torch.randint(
+                0,
+                256, (int(duration * v_fps), 3, 720 // 2, 1280 // 2),
+                dtype=torch.uint8
+            ),
+        'audio':
+            torch.arange(221184 - 1).float(),
         'targets': {},
         'meta': {
-            'video': {'duration': [duration], 'fps': [v_fps]},
-            'audio': {'duration': [duration], 'framerate': [22050.0]},
-            'subtitles': {'duration': []},
-            'cc': {'duration': []},
+            'video': {
+                'duration': [duration],
+                'fps': [v_fps]
+            },
+            'audio': {
+                'duration': [duration],
+                'framerate': [22050.0]
+            },
+            'subtitles': {
+                'duration': []
+            },
+            'cc': {
+                'duration': []
+            },
         },
-        'path': '/home/nvme/data/vggsound/video/-5cWCaoEDlE_261000_271000.mp4',
-        'split': 'train',
+        'path':
+            '/home/nvme/data/vggsound/video/-5cWCaoEDlE_261000_271000.mp4',
+        'split':
+            'train',
     }
 
     print(input['audio'].shape, input['video'].shape)
@@ -1012,12 +1184,19 @@ if __name__ == '__main__':
     input = fn(input)
     print(input['audio'].shape, input['video'].shape, input['meta']['audio'])
 
-    fn = GenerateMultipleSegments(segment_size_vframes=16, n_segments=14,
-                                  is_start_random=False, audio_jitter_sec=0.05, step_size_seg=0.5)
+    fn = GenerateMultipleSegments(
+        segment_size_vframes=16,
+        n_segments=14,
+        is_start_random=False,
+        audio_jitter_sec=0.05,
+        step_size_seg=0.5
+    )
     input = fn(input)
     print(input['audio'].shape, input['video'].shape, input['meta']['audio'])
 
-    fn = RandomApplyColorDistortion(p_gray_scale=0.5, p_color_jitter=0.5, s=1.0)
+    fn = RandomApplyColorDistortion(
+        p_gray_scale=0.5, p_color_jitter=0.5, s=1.0
+    )
     input = fn(input)
     print(input['audio'].shape, input['video'].shape, input['meta']['audio'])
 
@@ -1059,10 +1238,20 @@ if __name__ == '__main__':
     input = {
         'audio': torch.arange(221184).float(),
         'meta': {
-            'video': {'duration': [10.0], 'fps': [10.0]},
-            'audio': {'duration': [11.0], 'framerate': [22050.0]},
-            'subtitles': {'duration': []},
-            'cc': {'duration': []}
+            'video': {
+                'duration': [10.0],
+                'fps': [10.0]
+            },
+            'audio': {
+                'duration': [11.0],
+                'framerate': [22050.0]
+            },
+            'subtitles': {
+                'duration': []
+            },
+            'cc': {
+                'duration': []
+            }
         },
         'path': '/home/nvme/data/vggsound/video/-5cWCaoEDlE_261000_271000.mp4'
     }

@@ -1,5 +1,6 @@
 from typing import Dict, Tuple, Union
 from pathlib import Path
+import os
 from math import ceil
 
 from omegaconf import OmegaConf, DictConfig
@@ -7,17 +8,18 @@ import torch
 from tqdm import tqdm
 from dataclasses import dataclass
 
-import torchaudio
-import torchaudio.functional as F
-
-from GMELab.submodules.Synchformer.utils.utils import check_if_file_exists_else_download
-from GMELab.submodules.Synchformer.dataset.dataset_utils import get_video_and_audio
-from GMELab.submodules.Synchformer.scripts.train_utils import (
+from submodules.Synchformer.utils.utils import check_if_file_exists_else_download
+from submodules.Synchformer.dataset.dataset_utils import get_video_and_audio
+from submodules.Synchformer.scripts.train_utils import (
     get_model,
     get_transforms,
     prepare_inputs,
 )
-from GMELab.submodules.Synchformer.dataset.transforms import make_class_grid
+from submodules.Synchformer.dataset.transforms import make_class_grid
+
+GMELAB_CACHE = os.environ.get(
+    "GMELAB_CACHE", os.path.expanduser("~/.cache/gmelab")
+)
 
 
 @dataclass
@@ -73,6 +75,7 @@ def repeat_video(
     return rgb, audio
 
 
+# TODO: reorganize the Syncformer and ImageBind import
 def modify_model_cfg(model_cfg: DictConfig):
     model_cfg.model.target = "submodules.Synchformer." + model_cfg.model.target
     model_cfg.model.params.afeat_extractor.target = (
@@ -91,14 +94,14 @@ def modify_model_cfg(model_cfg: DictConfig):
         model_cfg.model.params.transformer.params.pos_emb_cfg.target
     )
     assert Path(
-        "/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/GMELab/checkpoints/sync_models/23-12-22T16-13-38/epoch_best.pt"
+        f"{GMELAB_CACHE}/sync_models/23-12-22T16-13-38/23-12-22T16-13-38.pt"
     ).exists(
-    ), "The model checkpoint does not exist. Please download the checkpoints using the scripts in ./checkpoints/ folder."
+    ), f"The model checkpoint does not exist. Please download the checkpoints using the scripts in {GMELAB_CACHE} folder."
     model_cfg.model.params.afeat_extractor.params.ckpt_path = (
-        "/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/GMELab/checkpoints/sync_models/23-12-22T16-13-38/epoch_best.pt"
+        f"{GMELAB_CACHE}/sync_models/23-12-22T16-13-38/23-12-22T16-13-38.pt"
     )
     model_cfg.model.params.vfeat_extractor.params.ckpt_path = (
-        "/hpc_stor03/sjtu_home/yaoyun.zhang/project/x_to_audio_generation/evaluation/GMELab/checkpoints/sync_models/23-12-22T16-13-38/epoch_best.pt"
+        f"{GMELAB_CACHE}/sync_models/23-12-22T16-13-38/23-12-22T16-13-38.pt"
     )
     for t in model_cfg.transform_sequence_train:
         t.target = "submodules.Synchformer." + t.target
@@ -107,7 +110,8 @@ def modify_model_cfg(model_cfg: DictConfig):
 
 
 def calculate_sync(
-    samples: str,
+    aid_to_video: dict[str, str | Path],
+    aid_to_audio: dict[str, str | Path],
     exp_name: str,
     afps: int,
     vfps: int,
@@ -122,11 +126,13 @@ def calculate_sync(
     # if the model does not exist try to download it from the server
     check_if_file_exists_else_download(cfg_path)
     check_if_file_exists_else_download(ckpt_path)
+    check_if_file_exists_else_download(
+        f"{ckpt_parent_path}/23-12-22T16-13-38/23-12-22T16-13-38.pt"
+    )
 
     # load config
     model_cfg = OmegaConf.load(cfg_path)
     modify_model_cfg(model_cfg)
-    generated_videos_path = Path(samples)
 
     if model_cfg.data.vfps != vfps:
         print(
@@ -145,8 +151,9 @@ def calculate_sync(
 
     # load the model
     _, model = get_model(model_cfg, device)
-    ckpt = torch.load(ckpt_path, map_location=torch.device("cpu"))
-    # import pdb; pdb.set_trace()
+    ckpt = torch.load(
+        ckpt_path, map_location=torch.device("cpu"), weights_only=False
+    )
     model.load_state_dict(ckpt["model"])
 
     model.eval()
@@ -158,22 +165,39 @@ def calculate_sync(
 
     results: Dict[str, Dict[str, Union[int, float, None]]] = {}
     batch = []
-    videos = list(generated_videos_path.glob("*.mp4"))
+
+    # get videos
+    if aid_to_audio is None:
+        all_videos = aid_to_video.values()
+        all_audios = all_videos
+    else:
+        all_videos, all_audios = [], []
+        for aid, video in aid_to_video.items():
+            if aid in aid_to_audio:
+                all_videos.append(video)
+                all_audios.append(aid_to_audio[aid])
+            else:
+                print(f"Audio for {aid} not found, skipping.")
 
     insync_offsets = 0
-    original_video_dir = Path(samples).parts[-1]
+    original_video_dir = Path(all_videos[0]).parts[-2]
     assert len(
-        videos
-    ), f"No videos found in {samples}... Problems with reencoding?"
+        all_videos
+    ), f"No videos found in {original_video_dir}... Problems with reencoding?"
 
-    for i, vid_path in tqdm(
-        enumerate(videos), desc="Calculating InSync", total=len(videos)
+    for i, video_path in tqdm(
+        enumerate(all_videos),
+        desc="Calculating InSync",
+        total=len(all_videos)
     ):
-        vid_path_str = vid_path.as_posix()
+        fname = Path(video_path).name
+        audio_path = all_audios[i]
         # load visual and audio streams
         # (Tv, 3, H, W) in [0, 255], (Ta, C) in [-1, 1]
         try:
-            rgb, audio, meta = get_video_and_audio(vid_path_str, get_meta=True)
+            rgb, audio, meta = get_video_and_audio(
+                video_path, audio_path, get_meta=True, afps=afps
+            )
 
             # due to different model sr setting, need extra resample to a_fps
             # or u should reencode the video
@@ -185,7 +209,7 @@ def calculate_sync(
                 "video": rgb,
                 "audio": audio,
                 "meta": meta,
-                "path": f"{original_video_dir}/{vid_path.name}",
+                "path": f"{original_video_dir}/{fname}",
                 "split": "test",
                 "targets": {
                     # setting the start of the visual crop and the offset size.
@@ -203,12 +227,15 @@ def calculate_sync(
             }
             # applying the transform
             item = transforms(item)
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt, exiting...")
+            exit(1)
+        # except Exception as e:
+        #     print(f"Error while transforming {video_path}: {e}")
+        #     continue
 
-        except Exception as e:
-            print(f"Error while transforming {vid_path_str}: {e}")
-            continue
         batch.append(item)
-        if len(batch) == BATCH_SIZE or i == len(videos) - 1:
+        if len(batch) == BATCH_SIZE or i == len(all_videos) - 1:
             # prepare inputs for inference
             batch = torch.utils.data.default_collate(batch)
             aud, vid, targets = prepare_inputs(batch, device)

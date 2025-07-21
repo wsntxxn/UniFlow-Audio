@@ -7,22 +7,26 @@ from torch import nn
 from timm.models.layers import trunc_normal_
 import einops
 
-import sys
-sys.path.append("/hpc_stor03/sjtu_home/yaoyun.zhang/work/x_to_audio_generation/evalutaion/metrics/GMELab/submodules/Synchformer/model/modules/feat_extractors/visual/")
-
-from motionformer_src.video_model_builder import VisionTransformer
-from utils.utils import check_if_file_exists_else_download
+from .motionformer_src.video_model_builder import VisionTransformer
+from submodules.Synchformer.utils.utils import check_if_file_exists_else_download
 
 FILE2URL = {
     # cfg
-    'motionformer_224_16x4.yaml': 'https://raw.githubusercontent.com/facebookresearch/Motionformer/bf43d50/configs/SSV2/motionformer_224_16x4.yaml',
-    'joint_224_16x4.yaml': 'https://raw.githubusercontent.com/facebookresearch/Motionformer/bf43d50/configs/SSV2/joint_224_16x4.yaml',
-    'divided_224_16x4.yaml': 'https://raw.githubusercontent.com/facebookresearch/Motionformer/bf43d50/configs/SSV2/divided_224_16x4.yaml',
+    'motionformer_224_16x4.yaml':
+        'https://raw.githubusercontent.com/facebookresearch/Motionformer/bf43d50/configs/SSV2/motionformer_224_16x4.yaml',
+    'joint_224_16x4.yaml':
+        'https://raw.githubusercontent.com/facebookresearch/Motionformer/bf43d50/configs/SSV2/joint_224_16x4.yaml',
+    'divided_224_16x4.yaml':
+        'https://raw.githubusercontent.com/facebookresearch/Motionformer/bf43d50/configs/SSV2/divided_224_16x4.yaml',
     # ckpt
-    'ssv2_motionformer_224_16x4.pyth': 'https://dl.fbaipublicfiles.com/motionformer/ssv2_motionformer_224_16x4.pyth',
-    'ssv2_joint_224_16x4.pyth': 'https://dl.fbaipublicfiles.com/motionformer/ssv2_joint_224_16x4.pyth',
-    'ssv2_divided_224_16x4.pyth': 'https://dl.fbaipublicfiles.com/motionformer/ssv2_divided_224_16x4.pyth',
+    'ssv2_motionformer_224_16x4.pyth':
+        'https://dl.fbaipublicfiles.com/motionformer/ssv2_motionformer_224_16x4.pyth',
+    'ssv2_joint_224_16x4.pyth':
+        'https://dl.fbaipublicfiles.com/motionformer/ssv2_joint_224_16x4.pyth',
+    'ssv2_divided_224_16x4.pyth':
+        'https://dl.fbaipublicfiles.com/motionformer/ssv2_divided_224_16x4.pyth',
 }
+
 
 class MotionFormer(VisionTransformer):
     ''' This class serves three puposes:
@@ -38,32 +42,40 @@ class MotionFormer(VisionTransformer):
                     are used as well as the global representation is extracted from segments (extra pos emb
                     is added).
     '''
-
-    def __init__(self,
-                 extract_features: bool = False,
-                 ckpt_path: str = None,
-                 factorize_space_time: bool = None,
-                 agg_space_module: str = None,
-                 agg_time_module: str = None,
-                 add_global_repr: bool = True,
-                 agg_segments_module: str = None,
-                 max_segments: int = None,):
+    def __init__(
+        self,
+        extract_features: bool = False,
+        ckpt_path: str = None,
+        factorize_space_time: bool = None,
+        agg_space_module: str = None,
+        agg_time_module: str = None,
+        add_global_repr: bool = True,
+        agg_segments_module: str = None,
+        max_segments: int = None,
+    ):
         self.extract_features = extract_features
         self.ckpt_path = ckpt_path
         self.factorize_space_time = factorize_space_time
 
         if self.ckpt_path is not None:
             check_if_file_exists_else_download(self.ckpt_path, FILE2URL)
-            ckpt = torch.load(self.ckpt_path, map_location='cpu')
+            ckpt = torch.load(
+                self.ckpt_path, map_location='cpu', weights_only=False
+            )
             mformer_ckpt2cfg = {
-                'ssv2_motionformer_224_16x4.pyth': 'motionformer_224_16x4.yaml',
-                'ssv2_joint_224_16x4.pyth': 'joint_224_16x4.yaml',
-                'ssv2_divided_224_16x4.pyth': 'divided_224_16x4.yaml',
+                'ssv2_motionformer_224_16x4.pyth':
+                    'motionformer_224_16x4.yaml',
+                'ssv2_joint_224_16x4.pyth':
+                    'joint_224_16x4.yaml',
+                'ssv2_divided_224_16x4.pyth':
+                    'divided_224_16x4.yaml',
             }
             # init from motionformer ckpt or from our Stage I ckpt
             # depending on whether the feat extractor was pre-trained on AVCLIPMoCo or not, we need to
             # load the state dict differently
-            was_pt_on_avclip = self.ckpt_path.endswith('.pt')  # checks if it is a stage I ckpt (FIXME: a bit generic)
+            was_pt_on_avclip = self.ckpt_path.endswith(
+                '.pt'
+            )  # checks if it is a stage I ckpt (FIXME: a bit generic)
             if self.ckpt_path.endswith(tuple(mformer_ckpt2cfg.keys())):
                 cfg_fname = mformer_ckpt2cfg[Path(self.ckpt_path).name]
             elif was_pt_on_avclip:
@@ -73,28 +85,36 @@ class MotionFormer(VisionTransformer):
                     s1_vfeat_extractor_ckpt_path = s1_cfg.model.params.vfeat_extractor.params.ckpt_path
                     # if the stage I ckpt was initialized from a motionformer ckpt or train from scratch
                     if s1_vfeat_extractor_ckpt_path is not None:
-                        cfg_fname = mformer_ckpt2cfg[Path(s1_vfeat_extractor_ckpt_path).name]
+                        cfg_fname = mformer_ckpt2cfg[
+                            Path(s1_vfeat_extractor_ckpt_path).name]
                     else:
                         cfg_fname = 'divided_224_16x4.yaml'
                 else:
                     cfg_fname = 'divided_224_16x4.yaml'
             else:
-                raise ValueError(f'ckpt_path {self.ckpt_path} is not supported.')
+                raise ValueError(
+                    f'ckpt_path {self.ckpt_path} is not supported.'
+                )
         else:
             was_pt_on_avclip = False
             cfg_fname = 'divided_224_16x4.yaml'
             logging.info(f'No ckpt_path provided, using {cfg_fname} config.')
 
-        if cfg_fname in ['motionformer_224_16x4.yaml', 'divided_224_16x4.yaml']:
+        if cfg_fname in [
+            'motionformer_224_16x4.yaml', 'divided_224_16x4.yaml'
+        ]:
             pos_emb_type = 'separate'
         elif cfg_fname == 'joint_224_16x4.yaml':
             pos_emb_type = 'joint'
 
-        self.mformer_cfg_path = Path(__file__).absolute().parent / 'motionformer_src' / cfg_fname
+        self.mformer_cfg_path = Path(__file__).absolute(
+        ).parent / 'motionformer_src' / cfg_fname
 
         check_if_file_exists_else_download(self.mformer_cfg_path, FILE2URL)
         mformer_cfg = OmegaConf.load(self.mformer_cfg_path)
-        logging.info(f'Loading MotionFormer config from {self.mformer_cfg_path.absolute()}')
+        logging.info(
+            f'Loading MotionFormer config from {self.mformer_cfg_path.absolute()}'
+        )
 
         # patch the cfg (from the default cfg defined in the repo `Motionformer/slowfast/config/defaults.py`)
         mformer_cfg.VIT.ATTN_DROPOUT = 0.0
@@ -108,16 +128,23 @@ class MotionFormer(VisionTransformer):
 
         # load the ckpt now if ckpt is provided and not from AVCLIPMoCo-pretrained ckpt
         if (self.ckpt_path is not None) and (not was_pt_on_avclip):
-            _ckpt_load_status = self.load_state_dict(ckpt['model_state'], strict=False)
-            if len(_ckpt_load_status.missing_keys) > 0 or len(_ckpt_load_status.unexpected_keys) > 0:
+            _ckpt_load_status = self.load_state_dict(
+                ckpt['model_state'], strict=False
+            )
+            if len(_ckpt_load_status.missing_keys
+                  ) > 0 or len(_ckpt_load_status.unexpected_keys) > 0:
                 logging.warning(f'Loading exact vfeat_extractor ckpt from {self.ckpt_path} failed.' \
                                 f'Missing keys: {_ckpt_load_status.missing_keys}, ' \
                                 f'Unexpected keys: {_ckpt_load_status.unexpected_keys}')
             else:
-                logging.info(f'Loading vfeat_extractor ckpt from {self.ckpt_path} succeeded.')
+                logging.info(
+                    f'Loading vfeat_extractor ckpt from {self.ckpt_path} succeeded.'
+                )
 
         if self.extract_features:
-            assert isinstance(self.norm, nn.LayerNorm), 'early x[:, 1:, :] may not be safe for per-tr weights'
+            assert isinstance(
+                self.norm, nn.LayerNorm
+            ), 'early x[:, 1:, :] may not be safe for per-tr weights'
             # pre-logits are Sequential(nn.Linear(emb, emd), act) and `act` is tanh but see the logger
             self.pre_logits = nn.Identity()
             # we don't need the classification head (saving memory)
@@ -125,21 +152,34 @@ class MotionFormer(VisionTransformer):
             self.head_drop = nn.Identity()
             # avoiding code duplication (used only if agg_*_module is TransformerEncoderLayer)
             transf_enc_layer_kwargs = dict(
-                d_model=self.embed_dim, nhead=self.num_heads, activation=nn.GELU(), batch_first=True,
-                dim_feedforward=self.mlp_ratio*self.embed_dim, dropout=self.drop_rate, layer_norm_eps=1e-6,
+                d_model=self.embed_dim,
+                nhead=self.num_heads,
+                activation=nn.GELU(),
+                batch_first=True,
+                dim_feedforward=self.mlp_ratio * self.embed_dim,
+                dropout=self.drop_rate,
+                layer_norm_eps=1e-6,
                 norm_first=True,
             )
             # define adapters if needed
             if self.factorize_space_time:
                 if agg_space_module == 'TransformerEncoderLayer':
-                    self.spatial_attn_agg = SpatialTransformerEncoderLayer(**transf_enc_layer_kwargs)
+                    self.spatial_attn_agg = SpatialTransformerEncoderLayer(
+                        **transf_enc_layer_kwargs
+                    )
                 elif agg_space_module == 'AveragePooling':
-                    self.spatial_attn_agg = AveragePooling(avg_pattern='BS D t h w -> BS D t',
-                                                           then_permute_pattern='BS D t -> BS t D')
+                    self.spatial_attn_agg = AveragePooling(
+                        avg_pattern='BS D t h w -> BS D t',
+                        then_permute_pattern='BS D t -> BS t D'
+                    )
                 if agg_time_module == 'TransformerEncoderLayer':
-                    self.temp_attn_agg = TemporalTransformerEncoderLayer(**transf_enc_layer_kwargs)
+                    self.temp_attn_agg = TemporalTransformerEncoderLayer(
+                        **transf_enc_layer_kwargs
+                    )
                 elif agg_time_module == 'AveragePooling':
-                    self.temp_attn_agg = AveragePooling(avg_pattern='BS t D -> BS D')
+                    self.temp_attn_agg = AveragePooling(
+                        avg_pattern='BS t D -> BS D'
+                    )
                 elif 'Identity' in agg_time_module:
                     self.temp_attn_agg = nn.Identity()
             # define a global aggregation layer (aggregarate over segments)
@@ -150,11 +190,15 @@ class MotionFormer(VisionTransformer):
                     # we need to add pos emb (PE) because previously we added the same PE for each segment
                     pos_max_len = max_segments if max_segments is not None else 16  # 16 = 10sec//0.64sec + 1
                     self.global_attn_agg = TemporalTransformerEncoderLayer(
-                        add_pos_emb=True, pos_emb_drop=mformer_cfg.VIT.POS_DROPOUT, pos_max_len=pos_max_len,
+                        add_pos_emb=True,
+                        pos_emb_drop=mformer_cfg.VIT.POS_DROPOUT,
+                        pos_max_len=pos_max_len,
                         **transf_enc_layer_kwargs
                     )
                 elif agg_segments_module == 'AveragePooling':
-                    self.global_attn_agg = AveragePooling(avg_pattern='B S D -> B D')
+                    self.global_attn_agg = AveragePooling(
+                        avg_pattern='B S D -> B D'
+                    )
 
         if was_pt_on_avclip:
             # we need to filter out the state_dict of the AVCLIP model (has both A and V extractors)
@@ -165,7 +209,8 @@ class MotionFormer(VisionTransformer):
                     k = k.replace('module.', '').replace('v_encoder.', '')
                     ckpt_weights[k] = v
             _load_status = self.load_state_dict(ckpt_weights, strict=False)
-            if len(_load_status.missing_keys) > 0 or len(_load_status.unexpected_keys) > 0:
+            if len(_load_status.missing_keys
+                  ) > 0 or len(_load_status.unexpected_keys) > 0:
                 logging.warning(f'Loading exact vfeat_extractor ckpt from {self.ckpt_path} failed. \n' \
                                 f'Missing keys ({len(_load_status.missing_keys)}): ' \
                                 f'{_load_status.missing_keys}, \n' \
@@ -173,16 +218,22 @@ class MotionFormer(VisionTransformer):
                                 f'{_load_status.unexpected_keys} \n' \
                                 f'temp_attn_agg are expected to be missing if ckpt was pt contrastively.')
             else:
-                logging.info(f'Loading vfeat_extractor ckpt from {self.ckpt_path} succeeded.')
+                logging.info(
+                    f'Loading vfeat_extractor ckpt from {self.ckpt_path} succeeded.'
+                )
 
         # patch_embed is not used in MotionFormer, only patch_embed_3d, because cfg.VIT.PATCH_SIZE_TEMP > 1
         # but it used to calculate the number of patches, so we need to set keep it
         self.patch_embed.requires_grad_(False)
 
         # print the number of parameters
-        logging.info(f'vfeat_extractor: {sum(p.numel() for p in self.parameters() if p.requires_grad):,}')
+        logging.info(
+            f'vfeat_extractor: {sum(p.numel() for p in self.parameters() if p.requires_grad):,}'
+        )
 
-    def forward(self, x, for_loop: bool = False, cont_mask: torch.Tensor = None):
+    def forward(
+        self, x, for_loop: bool = False, cont_mask: torch.Tensor = None
+    ):
         '''
         x is of shape (B, S, C, T, H, W) where S is the number of segments.
         cont_mask: (input size) 0=masked, 1=kept
@@ -206,47 +257,70 @@ class MotionFormer(VisionTransformer):
             # NOTE: since x is (1, B, S, C, T, H, W), and forward_segments expects (1, BS, C, T, H, W),
             # (1, BS, C, T, H, W)[:, s] is (1, B, C, T, H, W) or (1, BS, C, T, H, W) if S=1
             x = torch.cat(
-                [self.forward_segments(x[:, :, s], orig_shape_s, cont_mask).unsqueeze(1) for s in range(S)],
-                dim=1)  # dim=1 because we want to concatenate along the segments dimension in the output
+                [
+                    self.forward_segments(x[:, :, s], orig_shape_s,
+                                          cont_mask).unsqueeze(1)
+                    for s in range(S)
+                ],
+                dim=1
+            )  # dim=1 because we want to concatenate along the segments dimension in the output
         else:
             orig_shape = (B, S, C, T, H, W)
             x = x.view(1, B * S, C, T, H, W)  # flatten batch and segments
             if cont_mask is not None:
                 cont_mask = cont_mask.view(1, B * S, C, T, H, W)  # same as x
-            x = self.forward_segments(x, orig_shape=orig_shape, cont_mask=cont_mask)
+            x = self.forward_segments(
+                x, orig_shape=orig_shape, cont_mask=cont_mask
+            )
             # unpack the segments (using rest dimensions to support different shapes e.g. (BS, D) or (BS, t, D))
             x = x.view(B, S, *x.shape[1:])
         # x is now of shape (B*S, D) or (B*S, t, D) if `self.temp_attn_agg` is `Identity`
 
         global_x = None
         if self.extract_features and self.add_global_repr:  # lazy execution, throws AttributeError
-            assert len(x.shape) == 3, f'Local representation should be (B, S, D) {x.shape}'
+            assert len(
+                x.shape
+            ) == 3, f'Local representation should be (B, S, D) {x.shape}'
             global_x = self.global_attn_agg(x)  # (B, D)
 
         return x, global_x  # x is (B, S, ...), global_x is (B, D) or None
 
-    def forward_segments(self, x, orig_shape: tuple, cont_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward_segments(
+        self,
+        x,
+        orig_shape: tuple,
+        cont_mask: torch.Tensor = None
+    ) -> torch.Tensor:
         '''x is of shape (1, BS, C, T, H, W) where S is the number of segments.'''
         x, x_mask = self.forward_features(x, cont_mask=cont_mask)
 
         if self.extract_features:
             # (BS, T, D) where T = 1 + (224 // 16) * (224 // 16) * 8
-            x = x[:, 1:, :]  # without the CLS token for efficiency (should be safe for LayerNorm and FC)
+            x = x[:, 1:, :
+                 ]  # without the CLS token for efficiency (should be safe for LayerNorm and FC)
             x = self.norm(x)
             x = self.pre_logits(x)
             if self.factorize_space_time:
-                x = self.restore_spatio_temp_dims(x, orig_shape)  # (B*S, D, t, h, w) <- (B*S, t*h*w, D)
+                x = self.restore_spatio_temp_dims(
+                    x, orig_shape
+                )  # (B*S, D, t, h, w) <- (B*S, t*h*w, D)
 
                 if cont_mask is not None:
-                    x_mask = x_mask[:, 1:]   # rm CLS token
+                    x_mask = x_mask[:, 1:]  # rm CLS token
                     # duplicating the mask for the latent dimension (D) to be compatible with the next func
-                    x_mask = x_mask.unsqueeze(-1).expand(-1, -1, self.embed_dim)
-                    x_mask = self.restore_spatio_temp_dims(x_mask, orig_shape)  # (B*S, D, t, h, w) <- (B*S, t*h*w, D)
+                    x_mask = x_mask.unsqueeze(-1).expand(
+                        -1, -1, self.embed_dim
+                    )
+                    x_mask = self.restore_spatio_temp_dims(
+                        x_mask, orig_shape
+                    )  # (B*S, D, t, h, w) <- (B*S, t*h*w, D)
                     # again removing the latent
                     x_mask = x_mask[:, 0, :, :, :]
 
                 x = self.spatial_attn_agg(x, x_mask)  # (B*S, t, D)
-                x = self.temp_attn_agg(x)  # (B*S, D) or (BS, t, D) if `self.temp_attn_agg` is `Identity`
+                x = self.temp_attn_agg(
+                    x
+                )  # (B*S, D) or (BS, t, D) if `self.temp_attn_agg` is `Identity`
         else:
             x = self.norm(x)[:, 0]  # CLS token
             x = self.pre_logits(x)
@@ -254,7 +328,9 @@ class MotionFormer(VisionTransformer):
             x = self.head(x)  # (B, num_classes)
         return x
 
-    def restore_spatio_temp_dims(self, feats: torch.Tensor, orig_shape: tuple) -> torch.Tensor:
+    def restore_spatio_temp_dims(
+        self, feats: torch.Tensor, orig_shape: tuple
+    ) -> torch.Tensor:
         '''
             feats are of shape (B*S, T, D) where T = 1 + (224 // 16) * (224 // 16) * 8
             Our goal is to make them of shape (B*S, t, h, w, D) where h, w are the spatial dimensions.
@@ -284,18 +360,27 @@ class BaseEncoderLayer(nn.TransformerEncoderLayer):
         We also, optionally, add a positional embedding to the input sequence which
         allows to reuse it for global aggregation (of segments) for both streams.
     '''
-
-    def __init__(self, add_pos_emb: bool = False, pos_emb_drop: float = None, pos_max_len: int = None,
-                 *args_transformer_enc, **kwargs_transformer_enc):
+    def __init__(
+        self,
+        add_pos_emb: bool = False,
+        pos_emb_drop: float = None,
+        pos_max_len: int = None,
+        *args_transformer_enc,
+        **kwargs_transformer_enc
+    ):
         super().__init__(*args_transformer_enc, **kwargs_transformer_enc)
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, self.self_attn.embed_dim))
+        self.cls_token = nn.Parameter(
+            torch.zeros(1, 1, self.self_attn.embed_dim)
+        )
         trunc_normal_(self.cls_token, std=.02)
 
         # add positional embedding
         self.add_pos_emb = add_pos_emb
         if add_pos_emb:
             self.pos_max_len = 1 + pos_max_len  # +1 (for CLS)
-            self.pos_emb = nn.Parameter(torch.zeros(1, self.pos_max_len, self.self_attn.embed_dim))
+            self.pos_emb = nn.Parameter(
+                torch.zeros(1, self.pos_max_len, self.self_attn.embed_dim)
+            )
             self.pos_drop = nn.Dropout(pos_emb_drop)
             trunc_normal_(self.pos_emb, std=.02)
 
@@ -306,30 +391,40 @@ class BaseEncoderLayer(nn.TransformerEncoderLayer):
         batch_dim = x.shape[0]
 
         # add CLS token
-        cls_tokens = self.cls_token.expand(batch_dim, -1, -1)  # expanding to match batch dimension
+        cls_tokens = self.cls_token.expand(
+            batch_dim, -1, -1
+        )  # expanding to match batch dimension
         x = torch.cat((cls_tokens, x), dim=-2)  # (batch_dim, 1+seq_len, D)
         if x_mask is not None:
-            cls_mask = torch.ones((batch_dim, 1), dtype=torch.bool, device=x_mask.device)  # 1=keep; 0=mask
-            x_mask_w_cls = torch.cat((cls_mask, x_mask), dim=-1)  # (batch_dim, 1+seq_len)
+            cls_mask = torch.ones((batch_dim, 1),
+                                  dtype=torch.bool,
+                                  device=x_mask.device)  # 1=keep; 0=mask
+            x_mask_w_cls = torch.cat((cls_mask, x_mask),
+                                     dim=-1)  # (batch_dim, 1+seq_len)
             B, N = x_mask_w_cls.shape
             # torch expects (N, N) or (B*num_heads, N, N) mask (sadness ahead); torch masks
             x_mask_w_cls = x_mask_w_cls.reshape(B, 1, 1, N)\
                                        .expand(-1, self.self_attn.num_heads, N, -1)\
                                        .reshape(B * self.self_attn.num_heads, N, N)
-            assert x_mask_w_cls.dtype == x_mask_w_cls.bool().dtype, 'x_mask_w_cls.dtype != bool'
+            assert x_mask_w_cls.dtype == x_mask_w_cls.bool(
+            ).dtype, 'x_mask_w_cls.dtype != bool'
             x_mask_w_cls = ~x_mask_w_cls  # invert mask (1=mask)
         else:
             x_mask_w_cls = None
 
         # add positional embedding
         if self.add_pos_emb:
-            seq_len = x.shape[1]  # (don't even think about moving it before the CLS token concatenation)
+            seq_len = x.shape[
+                1
+            ]  # (don't even think about moving it before the CLS token concatenation)
             assert seq_len <= self.pos_max_len, f'Seq len ({seq_len}) > pos_max_len ({self.pos_max_len})'
             x = x + self.pos_emb[:, :seq_len, :]
             x = self.pos_drop(x)
 
         # apply encoder layer (calls nn.TransformerEncoderLayer.forward);
-        x = super().forward(src=x, src_mask=x_mask_w_cls)  # (batch_dim, 1+seq_len, D)
+        x = super().forward(
+            src=x, src_mask=x_mask_w_cls
+        )  # (batch_dim, 1+seq_len, D)
 
         # CLS token is expected to hold spatial information for each frame
         x = x[:, 0, :]  # (batch_dim, D)
@@ -352,11 +447,12 @@ class BaseEncoderLayer(nn.TransformerEncoderLayer):
 
 class SpatialTransformerEncoderLayer(BaseEncoderLayer):
     ''' Aggregates spatial dimensions by applying attention individually to each frame. '''
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def forward(self, x: torch.Tensor, x_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, x_mask: torch.Tensor = None
+    ) -> torch.Tensor:
         ''' x is of shape (B*S, D, t, h, w) where S is the number of segments.
             if specified x_mask (B*S, t, h, w), 0=masked, 1=kept
             Returns a tensor of shape (B*S, t, D) pooling spatial information for each frame. '''
@@ -381,7 +477,6 @@ class SpatialTransformerEncoderLayer(BaseEncoderLayer):
 class TemporalTransformerEncoderLayer(BaseEncoderLayer):
     ''' Aggregates temporal dimension with attention. Also used with pos emb as global aggregation
     in both streams. '''
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -395,9 +490,11 @@ class TemporalTransformerEncoderLayer(BaseEncoderLayer):
 
         return x  # (B*S, D)
 
-class AveragePooling(nn.Module):
 
-    def __init__(self, avg_pattern: str, then_permute_pattern: str = None) -> None:
+class AveragePooling(nn.Module):
+    def __init__(
+        self, avg_pattern: str, then_permute_pattern: str = None
+    ) -> None:
         ''' patterns are e.g. "bs t d -> bs d" '''
         super().__init__()
         # TODO: need to register them as buffers (but fails because these are strings)
@@ -405,7 +502,9 @@ class AveragePooling(nn.Module):
         self.avg_pattern = avg_pattern
         self.then_permute_pattern = then_permute_pattern
 
-    def forward(self, x: torch.Tensor, x_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, x_mask: torch.Tensor = None
+    ) -> torch.Tensor:
         x = einops.reduce(x, self.avg_pattern, self.reduce_fn)
         if self.then_permute_pattern is not None:
             x = einops.rearrange(x, self.then_permute_pattern)

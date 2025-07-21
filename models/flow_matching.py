@@ -552,10 +552,11 @@ class CrossAttentionAudioFlowMatching(
             content, task, device, instruction, instruction_lengths
         )
         return (
-            content_dict["content"], content_dict["content_mask"],
+            content_dict["content"],
+            content_dict["content_mask"],
             content_dict["global_duration_pred"],
             content_dict["local_duration_pred"],
-            content_dict["length_aligned_content"]
+            content_dict["length_aligned_content"],
         )
 
     def forward(

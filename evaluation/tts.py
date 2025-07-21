@@ -21,8 +21,7 @@ import torch.nn.functional as F
 import torchaudio
 import nemo.collections.asr as nemo_asr
 
-# Set CUDA visible devices
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+from utils.general import read_jsonl_to_mapping
 
 english_normalizer = EnglishTextNormalizer()
 
@@ -118,7 +117,7 @@ def extract_utt_id(filepath):
 
 
 def evaluate_tts(
-    audio_dir: str, libritts_txt_dir: str, ref_transcript_path: str,
+    audio_dir_or_jsonl: str, libritts_txt_dir: str, ref_transcript_path: str,
     ref_audio_path: str, output_path: str, model_name: str, xp_name: str
 ):
     print("Loading ASR model...")
@@ -147,7 +146,14 @@ def evaluate_tts(
         with open(ref_audio_path, 'r') as f:
             ref_audio_map = json.load(f)
 
-    audio_files = get_all_audio_files(audio_dir)
+    if Path(audio_dir_or_jsonl).is_dir():
+        audio_files = get_all_audio_files(audio_dir_or_jsonl)
+    elif audio_dir_or_jsonl.endswith(".jsonl"):
+        aid_to_audio = read_jsonl_to_mapping(
+            audio_dir_or_jsonl, "audio_id", "audio"
+        )
+        audio_files = aid_to_audio.values()
+
     print(f"Found {len(audio_files)} audio files")
 
     total_word_errors = 0.0
@@ -246,10 +252,11 @@ def evaluate_tts(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--audio_dir',
+        '--audio_dir_or_jsonl',
         type=str,
         required=True,
-        help='Directory containing TTS-generated audio files (recursive search)'
+        help=
+        'Directory or JSONL filecontaining TTS-generated audio files (recursive search)'
     )
     parser.add_argument(
         '--libritts_txt_dir',
@@ -288,6 +295,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     evaluate_tts(
-        args.audio_dir, args.libritts_txt_dir, args.ref_transcript_path,
-        args.ref_audio_path, args.output_path, args.model_name, args.xp_name
+        args.audio_dir_or_jsonl, args.libritts_txt_dir,
+        args.ref_transcript_path, args.ref_audio_path, args.output_path,
+        args.model_name, args.xp_name
     )

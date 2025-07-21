@@ -23,6 +23,10 @@ from .multimodal_preprocessors import (
 )
 from .transformer import MultiheadAttention, SimpleTransformer
 
+GMELAB_CACHE_DIR = os.environ.get(
+    "GMELAB_CACHE", os.path.expanduser("~/.cache/gmelab")
+)
+
 ModalityType = SimpleNamespace(
     VISION="vision",
     TEXT="text",
@@ -503,23 +507,19 @@ def imagebind_huge(pretrained=False):
     )
 
     if pretrained:
-        if not os.path.exists(
-            "/hpc_stor03/sjtu_home/yaoyun.zhang/model_ckpts/imagebind/imagebind_huge.pth"
-        ):
+        if not os.path.exists(f"{GMELAB_CACHE_DIR}/imagebind_huge.pth"):
             print(
-                "Downloading imagebind weights to .checkpoints/imagebind_huge.pth ..."
+                f"Downloading imagebind weights to {GMELAB_CACHE_DIR}/imagebind_huge.pth ..."
             )
-            os.makedirs(".checkpoints", exist_ok=True)
+            os.makedirs(GMELAB_CACHE_DIR, exist_ok=True)
             torch.hub.download_url_to_file(
                 "https://dl.fbaipublicfiles.com/imagebind/imagebind_huge.pth",
-                ".checkpoints/imagebind_huge.pth",
+                f"{GMELAB_CACHE_DIR}/imagebind_huge.pth",
                 progress=True,
             )
 
         model.load_state_dict(
-            torch.load(
-                "/hpc_stor03/sjtu_home/yaoyun.zhang/model_ckpts/imagebind/imagebind_huge.pth"
-            )
+            torch.load(f"{GMELAB_CACHE_DIR}/imagebind_huge.pth")
         )
 
     return model

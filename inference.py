@@ -36,18 +36,21 @@ def main():
     parse_config_from_command_line()
     config = configs[0]
 
-    if "exp_dir" in config:
-        use_best = config.get("use_best", True)
+    exp_dir, ckpt_dir = None, None
+    if Path(config["exp_dir"]).is_dir():
         exp_dir = Path(config["exp_dir"])
+    if Path(config["ckpt_dir"]).is_dir():
+        ckpt_dir = Path(config["ckpt_dir"])
+        ckpt_path = ckpt_dir / "model.safetensors"
+
+    if ckpt_dir is None:
+        use_best = config.get("use_best", True)
         if use_best:  # use best ckpt
-            ckpt_path: Path = sorted((exp_dir / "checkpoints").iterdir()
-                                    )[0] / "model.safetensors"
+            ckpt_path: Path = exp_dir / "checkpoints/best/model.safetensors"
         else:  # use last ckpt
             ckpt_path: Path = sorted((exp_dir / "checkpoints").iterdir()
                                     )[-1] / "model.safetensors"
-    elif "ckpt_dir" in config:
-        ckpt_dir = Path(config["ckpt_dir"])
-        ckpt_path = ckpt_dir / "model.safetensors"
+    if exp_dir is None:
         exp_dir = ckpt_dir.parent.parent
 
     accelerator.print(f'\n ckpt path: {ckpt_path}\n ')

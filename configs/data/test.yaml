@@ -3,11 +3,19 @@ defaults:
   - _self_
 
 test_data_list:
-  # - ${..libritts.test}
+  # tts
+  - ${..libritts.test}
+  # tta
   - ${..audiocaps.test}
-  # - ${..m4singer.test}
-  # - ${..TTSHQ.test}
-  # - ${..musdb.test}
-  # - ${..moises.test}
-  # - ${..ljspeech_se.test}
-  # - ${..vggsound_cavp.test}
+  # svs
+  - ${..m4singer.test}
+  # sr
+  - ${..esc_audiosr.test}
+  - ${..vctk_audiosr.test}
+  - ${..musdb.test}
+  # se
+  - ${..voicebank_demand.test}
+  # ttm
+  - ${..music_caps.test}
+  # v2a
+  - ${..vggsound_clip.test}

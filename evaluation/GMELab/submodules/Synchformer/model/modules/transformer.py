@@ -18,8 +18,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-sys.path.insert(0, '.')  # nopep8
-from utils.utils import instantiate_from_config
+from ...utils import instantiate_from_config
 
 
 class Config:
@@ -34,7 +33,6 @@ class SelfAttention(nn.Module):
     It is possible to use torch.nn.MultiheadAttention here but I am including an
     explicit implementation here to show that there is nothing too scary here.
     """
-
     def __init__(self, config):
         super().__init__()
         assert config.n_embd % config.n_head == 0
@@ -59,16 +57,26 @@ class SelfAttention(nn.Module):
         B, T, C = x.size()
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
-        q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
-        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+        k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(
+            1, 2
+        )  # (B, nh, T, hs)
+        q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(
+            1, 2
+        )  # (B, nh, T, hs)
+        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(
+            1, 2
+        )  # (B, nh, T, hs)
 
         # self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
         # att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float('-inf'))
         att = F.softmax(att, dim=-1)
-        y = self.attn_drop(att) @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        y = y.transpose(1, 2).contiguous().view(B, T, C)  # re-assemble all head outputs side by side
+        y = self.attn_drop(
+            att
+        ) @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        y = y.transpose(1, 2).contiguous().view(
+            B, T, C
+        )  # re-assemble all head outputs side by side
 
         # output projection
         y = self.resid_drop(self.proj(y))
@@ -78,7 +86,6 @@ class SelfAttention(nn.Module):
 
 class Block(nn.Module):
     """ an unassuming Transformer block """
-
     def __init__(self, config):
         super().__init__()
         self.ln1 = nn.LayerNorm(config.n_embd)
@@ -105,9 +112,9 @@ class NoPosEncoding(nn.Module):
     def forward(self, x):
         return x
 
+
 class ZeroInitPositionalEncoding(nn.Module):
     ''' Zero inited trainable pos embedding. It is just applied on the sequence, thus respects no priors. '''
-
     def __init__(self, block_shape, n_embd):
         super().__init__()
         self.block_shape = block_shape
@@ -117,9 +124,9 @@ class ZeroInitPositionalEncoding(nn.Module):
     def forward(self, token_embeddings):
         return token_embeddings + self.pos_emb
 
+
 class RandInitPositionalEncoding(nn.Module):
     ''' Random inited trainable pos embedding. It is just applied on the sequence, thus respects no priors.'''
-
     def __init__(self, block_shape: list, n_embd: int):
         super().__init__()
         self.block_shape = block_shape
@@ -131,7 +138,6 @@ class RandInitPositionalEncoding(nn.Module):
 
 
 class PositionEmbeddingLearnedVisual(nn.Module):
-
     def __init__(self, block_shape, n_embd) -> None:
         super().__init__()
         self.block_shape = block_shape
@@ -182,7 +188,6 @@ class PositionEmbeddingLearnedVisual(nn.Module):
 
 
 class PositionEmbeddingLearnedAudio(nn.Module):
-
     def __init__(self, block_shape, n_embd) -> None:
         super().__init__()
         self.block_shape = block_shape
@@ -227,29 +232,50 @@ class PositionEmbeddingLearnedAudio(nn.Module):
 
 
 class L2Normalize(nn.Module):
-
     def __init__(self, *args, **kwargs) -> None:
         super().__init__()
 
     def forward(self, x):
-        eps = 1e-6 if isinstance(x, (torch.HalfTensor, torch.cuda.HalfTensor)) else 1e-12
+        eps = 1e-6 if isinstance(
+            x, (torch.HalfTensor, torch.cuda.HalfTensor)
+        ) else 1e-12
         x = torch.nn.functional.normalize(x, p=2.0, dim=-1, eps=eps)
         return x
 
 
 class Transformer(nn.Module):
     ''' the full transformer, with a context size of block_size '''
-
-    def __init__(self, vis_pos_emb_module, aud_pos_emb_module, num_offset_cls,
-                 visual_block_shape, audio_block_shape, pre_norm_cfg,
-                 n_layer=12, n_head=8, n_embd=256, tok_pdrop=0., embd_pdrop=0., resid_pdrop=0., attn_pdrop=0.,
-                 n_unmasked=0):
+    def __init__(
+        self,
+        vis_pos_emb_module,
+        aud_pos_emb_module,
+        num_offset_cls,
+        visual_block_shape,
+        audio_block_shape,
+        pre_norm_cfg,
+        n_layer=12,
+        n_head=8,
+        n_embd=256,
+        tok_pdrop=0.,
+        embd_pdrop=0.,
+        resid_pdrop=0.,
+        attn_pdrop=0.,
+        n_unmasked=0
+    ):
         super().__init__()
-        config = Config(num_offset_cls=num_offset_cls,
-                        audio_block_shape=audio_block_shape, visual_block_shape=visual_block_shape,
-                        embd_pdrop=embd_pdrop, resid_pdrop=resid_pdrop, attn_pdrop=attn_pdrop,
-                        tok_pdrop=tok_pdrop, n_layer=n_layer, n_head=n_head, n_embd=n_embd,
-                        n_unmasked=n_unmasked)
+        config = Config(
+            num_offset_cls=num_offset_cls,
+            audio_block_shape=audio_block_shape,
+            visual_block_shape=visual_block_shape,
+            embd_pdrop=embd_pdrop,
+            resid_pdrop=resid_pdrop,
+            attn_pdrop=attn_pdrop,
+            tok_pdrop=tok_pdrop,
+            n_layer=n_layer,
+            n_head=n_head,
+            n_embd=n_embd,
+            n_unmasked=n_unmasked
+        )
         self.config = config
         # input embedding stem
         self.OFF_tok = nn.Parameter(torch.randn(1, 1, n_embd))
@@ -262,10 +288,14 @@ class Transformer(nn.Module):
         self.tok_drop_aud = nn.Dropout2d(tok_pdrop)
         self.drop = nn.Dropout(config.embd_pdrop)
         # transformer
-        self.blocks = nn.Sequential(*[Block(config) for _ in range(config.n_layer)])
+        self.blocks = nn.Sequential(
+            *[Block(config) for _ in range(config.n_layer)]
+        )
         # heads
         self.ln_f = nn.LayerNorm(config.n_embd)
-        self.off_head = nn.Linear(config.n_embd, config.num_offset_cls, bias=False)
+        self.off_head = nn.Linear(
+            config.n_embd, config.num_offset_cls, bias=False
+        )
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
@@ -277,7 +307,9 @@ class Transformer(nn.Module):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-    def forward(self, vis_embd: torch.Tensor, aud_embd: torch.Tensor, targets=None):
+    def forward(
+        self, vis_embd: torch.Tensor, aud_embd: torch.Tensor, targets=None
+    ):
         B, Tv, Dv, H, W = vis_embd.shape
         B, Da, F, Ta = aud_embd.shape
         assert Da == Dv, f'Please define a bridge or fix {Da} vs {Dv}'
@@ -296,18 +328,21 @@ class Transformer(nn.Module):
 
         # apply token dropout
         vis_embd = self.tok_drop_vis(vis_embd)
-        aud_embd = self.tok_drop_aud(aud_embd.transpose(2, 1)).transpose(2, 1)  # applying dropout on time-dim
+        aud_embd = self.tok_drop_aud(aud_embd.transpose(2, 1)).transpose(
+            2, 1
+        )  # applying dropout on time-dim
 
         # (B, Nv, Dv), (B, Na, Da)
-        vis_embd = vis_embd.view(B, Tv*H*W, Dv)
-        aud_embd = aud_embd.view(B, F*Ta, Da)
+        vis_embd = vis_embd.view(B, Tv * H * W, Dv)
+        aud_embd = aud_embd.view(B, F * Ta, Da)
 
         # broadcasting special tokens to the batch size
         off_tok = self.OFF_tok.expand(B, -1, -1)
         mod_tok = self.MOD_tok.expand(B, -1, -1)
 
         # (B, 2+Nv+1+Na, D)
-        token_embeddings = torch.cat((off_tok, vis_embd, mod_tok, aud_embd), dim=1)
+        token_embeddings = torch.cat((off_tok, vis_embd, mod_tok, aud_embd),
+                                     dim=1)
 
         x = self.drop(token_embeddings)
 
