@@ -224,7 +224,9 @@ class SingleTaskCrossAttentionAudioFlowMatching(
         for param in self.autoencoder.parameters():
             param.requires_grad = False
 
-        if hasattr(self.content_encoder, "audio_encoder"):
+        if hasattr(
+            self.content_encoder, "audio_encoder"
+        ) and self.content_encoder.audio_encoder is not None:
             self.content_encoder.audio_encoder.model = self.autoencoder
 
         self.backbone = backbone
@@ -387,9 +389,11 @@ class SingleTaskCrossAttentionAudioFlowMatching(
         device,
         num_samples_per_content: int = 1
     ):
-        content, content_mask = self.content_encoder.encode_content(
+        content_dict = self.content_encoder.encode_content(
             content, task, device=device
         )
+        content, content_mask = content_dict["content"], content_dict[
+            "content_mask"]
 
         content = content.repeat_interleave(num_samples_per_content, 0)
         content_mask = content_mask.repeat_interleave(

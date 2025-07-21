@@ -4,14 +4,21 @@ import pandas as pd
 from tqdm import tqdm
 
 from utils.video import merge_audio_video
+from utils.general import read_jsonl_to_mapping
 
 
 def main(args):
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    df = pd.read_csv(args.aid_video_mapping, sep='\t')
-    aid_to_video = dict(zip(df['audio_id'], df['video_path']))
+    if args.aid_video_mapping.endswith('.csv'):
+        df = pd.read_csv(args.aid_video_mapping, sep='\t')
+        aid_to_video = dict(zip(df['audio_id'], df['video_path']))
+    elif args.aid_video_mapping.endswith('.jsonl'):
+        aid_to_video = read_jsonl_to_mapping(
+            args.aid_video_mapping, "audio_id", "audio"
+        )
+        aid_to_video = {Path(k).stem: v for k, v in aid_to_video.items()}
     files = list(Path(args.audio_path).glob('*.wav'))
 
     if args.num_samples is not None:
@@ -19,6 +26,8 @@ def main(args):
 
     for audio_file in tqdm(files):
         audio_id = audio_file.stem
+        if audio_id.endswith('_dummy'):
+            audio_id = audio_id[:-6]
         if audio_id not in aid_to_video:
             continue
         video_file = aid_to_video[audio_id]

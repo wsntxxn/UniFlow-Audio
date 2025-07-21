@@ -89,7 +89,11 @@ def main():
         subfolder="scheduler",
     )
 
-    audio_output_dir = exp_dir / config["wav_dir"]
+    if config["wav_dir_root"] is not None:
+        wav_dir_root = Path(config["wav_dir_root"])
+    else:
+        wav_dir_root = exp_dir
+    audio_output_dir = wav_dir_root / config["wav_dir"]
     if accelerator.is_main_process:
         audio_output_dir.mkdir(parents=True, exist_ok=True)
     unwrapped_model = accelerator.unwrap_model(model)
