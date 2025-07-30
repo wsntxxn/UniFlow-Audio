@@ -17,6 +17,7 @@ test_dataloader:
 
 exp_dir: ""
 ckpt_dir: ""
+wav_dir_root: Null
 wav_dir: inference
 
 noise_scheduler:

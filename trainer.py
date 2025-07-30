@@ -322,20 +322,14 @@ class Trainer(CheckpointMixin):
             self.step += 1
 
             if self.save_every_n_steps:
-                # TODO don't broadcast every step
-                should_save_checkpoint = self.wrap_and_broadcast_value(
-                    self.step % self.save_every_n_steps == 0,
-                )
+                should_save_checkpoint = self.step % self.save_every_n_steps == 0
                 if should_save_checkpoint:
                     self.save_checkpoint(
                         self.checkpoint_dir / f"step_{self.step}"
                     )
 
             if self.permanent_save_every_n_steps:
-                # TODO don't broadcast every step
-                should_save_checkpoint = self.wrap_and_broadcast_value(
-                    self.step % self.permanent_save_every_n_steps == 0
-                )
+                should_save_checkpoint = self.step % self.permanent_save_every_n_steps == 0
                 if should_save_checkpoint:
                     self.save_checkpoint(
                         self.project_dir / f"ckpt_step_{self.step}",

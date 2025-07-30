@@ -18,4 +18,4 @@ test_data_list:
   # ttm
   - ${..music_caps.test}
   # v2a
-  - ${..vggsound_clip.test}
+  - ${..visual_sound_clip.test}

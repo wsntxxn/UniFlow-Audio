@@ -1,7 +1,7 @@
 train:
   _target_: data_module.dataset.TextToMusicDataset
-  content: data/msd/train/caption.jsonl
-  audio: data/msd/train/audio.jsonl
+  content: data/msd/all/caption.jsonl
+  audio: data/msd/all/audio.jsonl
   base_audio_path: /cpfs02/shared/speechllm/million_song_dataset/files/MSD/songs/
   target_sr: ${sample_rate}
   use_h5_cache: false
@@ -17,8 +17,3 @@ val:
   task_instruction: ${instruction_embedding}
   max_samples: ${max_val_samples}
   max_duration: 10.0
-test:
-  _target_: data_module.dataset.TextToMusicDataset
-  content: data/msd/test/caption.jsonl
-  task_instruction: ${instruction_embedding}
-  instruction_idx: 1

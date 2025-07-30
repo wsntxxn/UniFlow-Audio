@@ -3,7 +3,7 @@ defaults:
   - model: flow_matching_base
   - data@data_dict: train_val
   - loss@loss_fn: weighted_sum
-  - data/task_sampling@task_sampling_weights: upsampling
+  - data/task_sampling@task_sampling_weights: original
   - _self_
 
 exp_name: wave_dit_ada_sola_bias_diff
@@ -68,6 +68,7 @@ trainer:
   epochs: ${epochs}
   epoch_length: ${epoch_length}
   save_last_k: 2
+  permanent_save_every_n_steps: 100000
   early_stop: Null
   logging_config:
     _target_: trainer.LoggingConfig
