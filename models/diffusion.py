@@ -124,12 +124,16 @@ class DiffusionMixin:
         return target
 
     def loss_with_snr(
-        self, pred: torch.Tensor, target: torch.Tensor,
-        timesteps: torch.Tensor, mask: torch.Tensor
+        self,
+        pred: torch.Tensor,
+        target: torch.Tensor,
+        timesteps: torch.Tensor,
+        mask: torch.Tensor,
+        reduce: bool = True
     ) -> torch.Tensor:
         if self.snr_gamma is None:
             loss = F.mse_loss(pred.float(), target.float(), reduction="none")
-            loss = loss_with_mask(loss, mask)
+            loss = loss_with_mask(loss, mask, reduce=reduce)
         else:
             # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
             # Adapted from https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py#L1006
@@ -145,7 +149,8 @@ class DiffusionMixin:
             mse_loss_weights = mse_loss_weights / snr
             loss = F.mse_loss(pred.float(), target.float(), reduction="none")
             loss = loss_with_mask(loss, mask, reduce=False) * mse_loss_weights
-            loss = loss.mean()
+            if reduce:
+                loss = loss.mean()
         return loss
 
     def rescale_cfg(
@@ -753,7 +758,9 @@ class DummyContentAudioDiffusion(CrossAttentionAudioDiffusion):
         )
         pred = pred.transpose(1, self.autoencoder.time_dim)
         target = target.transpose(1, self.autoencoder.time_dim)
-        diff_loss = self.loss_with_snr(pred, target, timesteps, latent_mask)
+        diff_loss = self.loss_with_snr(
+            pred, target, timesteps, latent_mask, reduce=loss_reduce
+        )
         return {
             "diff_loss": diff_loss,
             "local_duration_loss": local_duration_loss,
@@ -892,6 +899,9 @@ class DoubleContentAudioDiffusion(DummyContentAudioDiffusion):
         time_aligned_content = trim_or_pad_length(
             time_aligned_content, target_length, 1
         )
+        context_length = min(content.size(1), time_aligned_content.size(1))
+        time_aligned_content[~is_time_aligned, :context_length] = content[
+            ~is_time_aligned, :context_length]
         length_aligned_content = trim_or_pad_length(
             length_aligned_content, target_length, 1
         )

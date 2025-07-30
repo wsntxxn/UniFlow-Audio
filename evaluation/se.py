@@ -766,7 +766,6 @@ def compare_jsonl(ref_jsonl, deg_jsonl, output_file, use_tqdm=True):
                 pool.imap(compareone_load_wav, args),
                 total=len(args),
                 desc="Calculating",
-                ncols=60
             )
         )
     else:
@@ -814,7 +813,6 @@ def compare(refdir, degdir, uuid_jsonl, use_tqdm=True):
             tqdm.tqdm(
                 pool.imap(compareone_load_wav, args),
                 "Calculating",
-                ncols=60,
                 total=len(args)
             )
         )

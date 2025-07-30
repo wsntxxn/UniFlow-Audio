@@ -19,8 +19,8 @@ def pad_short_audio(audio, min_samples=32000):
 class MelPairedDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        datadir1,
-        datadir2,
+        data1: str | dict,
+        data2: str | dict,
         _stft,
         sr=16000,
         fbin_mean=None,
@@ -28,15 +28,21 @@ class MelPairedDataset(torch.utils.data.Dataset):
         augment=False,
         limit_num=None,
     ):
-        self.datalist1 = [
-            os.path.join(datadir1, x) for x in os.listdir(datadir1)
-        ]
-        self.datalist1 = sorted(self.datalist1)
+        if isinstance(data1, str):
+            self.datalist1 = [
+                os.path.join(data1, x) for x in os.listdir(data1)
+            ]
+            self.datalist1 = sorted(self.datalist1)
+        else:
+            self.datalist1 = sorted(list(data1.values()))
 
-        self.datalist2 = [
-            os.path.join(datadir2, x) for x in os.listdir(datadir2)
-        ]
-        self.datalist2 = sorted(self.datalist2)
+        if isinstance(data2, str):
+            self.datalist2 = [
+                os.path.join(data2, x) for x in os.listdir(data2)
+            ]
+            self.datalist2 = sorted(self.datalist2)
+        else:
+            self.datalist2 = sorted(list(data2.values()))
 
         if limit_num is not None:
             self.datalist1 = self.datalist1[:limit_num]
@@ -138,11 +144,14 @@ class MelPairedDataset(torch.utils.data.Dataset):
 class WaveDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        datadir,
-        sr=16000,
-        limit_num=None,
+        data: str | dict,
+        sr: int = 16000,
+        limit_num: int | None = None,
     ):
-        self.datalist = [os.path.join(datadir, x) for x in os.listdir(datadir)]
+        if isinstance(data, str):
+            self.datalist = [os.path.join(data, x) for x in os.listdir(data)]
+        elif isinstance(data, dict):
+            self.datalist = list(data.values())
         self.datalist = sorted(self.datalist)
         if limit_num is not None:
             self.datalist = self.datalist[:limit_num]

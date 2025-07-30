@@ -100,25 +100,26 @@ class EvaluationHelper:
 
     def main(
         self,
-        generate_files_path,
-        groundtruth_path,
+        generate_files: str | dict,
+        groundtruth: str | dict,
         limit_num=None,
         recalculate=True,
         num_workers=4,
     ):
-        print("Generted files", generate_files_path)
-        print("Target files", groundtruth_path)
+        if isinstance(generate_files, str):
+            print("Generted files", generate_files)
+            print("Target files", groundtruth)
 
-        self.file_init_check(generate_files_path)
-        self.file_init_check(groundtruth_path)
+            self.file_init_check(generate_files)
+            self.file_init_check(groundtruth)
 
         same_name = self.get_filename_intersection_ratio(
-            generate_files_path, groundtruth_path, limit_num=limit_num
+            generate_files, groundtruth, limit_num=limit_num
         )
 
         metrics = self.calculate_metrics(
-            generate_files_path,
-            groundtruth_path,
+            generate_files,
+            groundtruth,
             same_name,
             limit_num,
             num_workers=num_workers,
@@ -133,13 +134,25 @@ class EvaluationHelper:
         assert len(os.listdir(dir)) > 1, "There is no files in %s" % dir
 
     def get_filename_intersection_ratio(
-        self, dir1, dir2, threshold=0.99, limit_num=None
+        self,
+        data1: str | dict,
+        data2: str | dict,
+        threshold: float = 0.99,
+        limit_num: int | None = None
     ):
-        self.datalist1 = [os.path.join(dir1, x) for x in os.listdir(dir1)]
-        self.datalist1 = sorted(self.datalist1)
+        if isinstance(data1, str):
+            self.datalist1 = [
+                os.path.join(data1, x) for x in os.listdir(data1)
+            ]
+            self.datalist1 = sorted(self.datalist1)
 
-        self.datalist2 = [os.path.join(dir2, x) for x in os.listdir(dir2)]
-        self.datalist2 = sorted(self.datalist2)
+            self.datalist2 = [
+                os.path.join(data2, x) for x in os.listdir(data2)
+            ]
+            self.datalist2 = sorted(self.datalist2)
+        elif isinstance(data1, dict):
+            self.datalist1 = sorted(list(data1.values()))
+            self.datalist2 = sorted(list(data2.values()))
 
         data_dict1 = {os.path.basename(x): x for x in self.datalist1}
         data_dict2 = {os.path.basename(x): x for x in self.datalist2}
@@ -221,21 +234,21 @@ class EvaluationHelper:
 
     def calculate_metrics(
         self,
-        generate_files_path,
-        groundtruth_path,
-        same_name,
-        limit_num=None,
-        num_workers=4,
-        calculate_psnr_ssim=True,
-        calculate_lsd=True,
-        recalculate=True
+        generate_files: str | dict,
+        groundtruth: str | dict,
+        same_name: bool,
+        limit_num: int | None = None,
+        num_workers: int = 4,
+        calculate_psnr_ssim: bool = True,
+        calculate_lsd: bool = True,
+        recalculate: bool = True,
     ):
         # Generation, target
         torch.manual_seed(0)
 
         outputloader = DataLoader(
             WaveDataset(
-                generate_files_path,
+                generate_files,
                 self.sampling_rate,  # TODO
                 # 32000,
                 limit_num=limit_num,
@@ -247,7 +260,7 @@ class EvaluationHelper:
 
         resultloader = DataLoader(
             WaveDataset(
-                groundtruth_path,
+                groundtruth,
                 self.sampling_rate,  # TODO
                 # 32000,
                 limit_num=limit_num,
@@ -264,8 +277,8 @@ class EvaluationHelper:
         if (recalculate):
             print("Calculate FAD score from scratch")
         fad_score = self.frechet.score(
-            generate_files_path,
-            groundtruth_path,
+            generate_files,
+            groundtruth,
             limit_num=limit_num,
             recalculate=recalculate
         )
@@ -275,23 +288,29 @@ class EvaluationHelper:
 
         # PANNs or PassT or mert
         ######################################################################################################################
-        cache_path = groundtruth_path + "classifier_logits_feature_cache.pkl"
-        if (os.path.exists(cache_path) and not recalculate):
-            print("reload", cache_path)
-            featuresdict_2 = load_pickle(cache_path)
+        if isinstance(groundtruth, str):
+            cache_path = groundtruth + "classifier_logits_feature_cache.pkl"
+            if (os.path.exists(cache_path) and not recalculate):
+                print("reload", cache_path)
+                featuresdict_2 = load_pickle(cache_path)
+            else:
+                print("Extracting features from %s." % groundtruth)
+                featuresdict_2 = self.get_featuresdict(resultloader)
+                save_pickle(featuresdict_2, cache_path)
         else:
-            print("Extracting features from %s." % groundtruth_path)
             featuresdict_2 = self.get_featuresdict(resultloader)
-            save_pickle(featuresdict_2, cache_path)
 
-        cache_path = generate_files_path + "classifier_logits_feature_cache.pkl"
-        if (os.path.exists(cache_path) and not recalculate):
-            print("reload", cache_path)
-            featuresdict_1 = load_pickle(cache_path)
+        if isinstance(generate_files, str):
+            cache_path = generate_files + "classifier_logits_feature_cache.pkl"
+            if (os.path.exists(cache_path) and not recalculate):
+                print("reload", cache_path)
+                featuresdict_1 = load_pickle(cache_path)
+            else:
+                print("Extracting features from %s." % generate_files)
+                featuresdict_1 = self.get_featuresdict(outputloader)
+                save_pickle(featuresdict_1, cache_path)
         else:
-            print("Extracting features from %s." % generate_files_path)
             featuresdict_1 = self.get_featuresdict(outputloader)
-            save_pickle(featuresdict_1, cache_path)
         # KL
         metric_kl, kl_ref, paths_1 = calculate_kl(
             featuresdict_1, featuresdict_2, "logits", same_name
@@ -321,8 +340,8 @@ class EvaluationHelper:
         if (calculate_psnr_ssim or calculate_lsd):
             pairedloader = DataLoader(
                 MelPairedDataset(
-                    generate_files_path,
-                    groundtruth_path,
+                    generate_files,
+                    groundtruth,
                     self._stft,
                     self.sampling_rate,
                     self.fbin_mean,
@@ -427,12 +446,13 @@ class EvaluationHelper:
                 out.get("kernel_inception_distance_std", float("nan")),
         }
 
-        json_path = os.path.join(
-            os.path.dirname(generate_files_path),
-            self.get_current_time() + "_" +
-            os.path.basename(generate_files_path) + ".json"
-        )
-        write_json(result, json_path)
+        if isinstance(generate_files, str):
+            json_path = os.path.join(
+                os.path.dirname(generate_files),
+                self.get_current_time() + "_" +
+                os.path.basename(generate_files) + ".json"
+            )
+            write_json(result, json_path)
         return result
 
     def get_current_time(self):
@@ -498,9 +518,6 @@ class EvaluationHelper:
                         for k in out_meta.keys()
                     }
             except Exception as e:
-                import ipdb
-
-                ipdb.set_trace()
                 print("Classifier Inference error: ", e)
                 continue
 

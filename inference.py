@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import soundfile as sf
 import torch
@@ -37,11 +38,16 @@ def main():
     config = configs[0]
 
     exp_dir, ckpt_dir = None, None
-    if Path(config["exp_dir"]).is_dir():
+    if os.path.isdir(config["exp_dir"]):
         exp_dir = Path(config["exp_dir"])
-    if Path(config["ckpt_dir"]).is_dir():
+    if os.path.isdir(config["ckpt_dir"]):
         ckpt_dir = Path(config["ckpt_dir"])
         ckpt_path = ckpt_dir / "model.safetensors"
+
+    if ckpt_dir is None and exp_dir is None:
+        if not os.path.exists(config["ckpt_dir"]):
+            raise ValueError(f"ckpt_dir {config['ckpt_dir']} does not exist.")
+        raise ValueError("Either exp_dir or ckpt_dir should be provided.")
 
     if ckpt_dir is None:
         use_best = config.get("use_best", True)
@@ -53,7 +59,7 @@ def main():
     if exp_dir is None:
         exp_dir = ckpt_dir.parent.parent
 
-    accelerator.print(f'\n ckpt path: {ckpt_path}\n ')
+    accelerator.print(f'\n ckpt path: {ckpt_path}, exp dir: {exp_dir}\n ')
 
     exp_config = OmegaConf.load(exp_dir / "config.yaml")
     model: LoadPretrainedBase = hydra.utils.instantiate(exp_config["model"])

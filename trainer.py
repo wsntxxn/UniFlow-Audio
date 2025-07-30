@@ -108,6 +108,7 @@ class Trainer(CheckpointMixin):
     max_grad_norm: float | None = 2.0
     resume_from_checkpoint: str | Path | None = None
     save_every_n_steps: int | None = None
+    permanent_save_every_n_steps: int | None = None
     save_every_n_epochs: int | None = 1
     save_last_k: int | None = 1
     metric_monitor: MetricMonitor | None = None
@@ -126,7 +127,7 @@ class Trainer(CheckpointMixin):
             ), (
                 f"Unsupported logger: {self.logging_config.report_to}. "
                 "Supported loggers are 'wandb', 'swanlab', and 'tensorboard'."
-                )
+            )
             if self.logging_config.report_to == "swanlab":
                 tracker = SwanLabTracker(
                     run_name=self.logging_config.project,
@@ -145,9 +146,9 @@ class Trainer(CheckpointMixin):
             project_dir=self.project_dir,
             step_scheduler_with_optimizer=(
                 self.lr_scheduler_interval == LRSchedulerInterval.STEP
-                ),
+            ),
             kwargs_handlers=[ddp_kwargs]
-            )
+        )
         # TODO when `loss_fn` does not have named_parameters/buffers, loading will raise error
         (
             self.train_dataloader,
@@ -168,10 +169,10 @@ class Trainer(CheckpointMixin):
         if self.resume_from_checkpoint is not None:
             self.accelerator.print(
                 f"resume from checkpoint: {self.resume_from_checkpoint}"
-                )
+            )
             self.accelerator.load_state(
                 self.resume_from_checkpoint, strict=False
-                                        )
+            )
 
     @abstractmethod
     def training_step(self, batch, batch_idx) -> torch.Tensor:
@@ -188,10 +189,10 @@ class Trainer(CheckpointMixin):
         self.on_validation_start()
 
         pbar = tqdm(
-                    total=len(self.val_dataloader),
-                    desc="Validation",
-                    disable=not self.accelerator.is_local_main_process
-                    )
+            total=len(self.val_dataloader),
+            desc="Validation",
+            disable=not self.accelerator.is_local_main_process
+        )
 
         for batch_idx, batch in enumerate(self.val_dataloader):
             self.validation_step(batch, batch_idx)
@@ -236,16 +237,18 @@ class Trainer(CheckpointMixin):
         if "train_dataloader" in state_dict:
             self.train_dataloader.load_state_dict(
                 state_dict["train_dataloader"]
-                )
+            )
         if "metric_monitor" in state_dict:
             self.metric_monitor.load_state_dict(state_dict["metric_monitor"])
 
     def clean_checkpoints_to_k(
         self, checkpoints_dir: Path | str, k: int
-        ) -> None:
+    ) -> None:
         checkpoints_dir = Path(checkpoints_dir)
-        checkpoints = (list(checkpoints_dir.glob("epoch_*")) +
-                       list(checkpoints_dir.glob("step_*")))
+        checkpoints = (
+            list(checkpoints_dir.glob("epoch_*")) +
+            list(checkpoints_dir.glob("step_*"))
+        )
         # sort `checkpoints` by their last modified timestamp (ascending order)
         checkpoints.sort(key=lambda x: x.stat().st_mtime)
         if k > 0:
@@ -255,7 +258,11 @@ class Trainer(CheckpointMixin):
         for checkpoint in to_delete:
             shutil.rmtree(checkpoint)
 
-    def save_checkpoint(self, save_dir: Path | str) -> None:
+    def save_checkpoint(
+        self,
+        save_dir: Path | str,
+        clean_old_checkpoints: bool = True
+    ) -> None:
         """
         Note: since `wait_for_everyone` is called, user must be responsible for making sure 
         all processes call or not call this function at the same time!!!
@@ -263,11 +270,13 @@ class Trainer(CheckpointMixin):
         self.accelerator.wait_for_everyone()
         if self.accelerator.is_main_process:
             save_dir = Path(save_dir)
-            checkpoints_dir = save_dir.parent
 
-            if self.save_last_k:
-                self.clean_checkpoints_to_k(checkpoints_dir,
-                                            self.save_last_k - 1)
+            if clean_old_checkpoints:
+                checkpoints_dir = save_dir.parent
+                if self.save_last_k:
+                    self.clean_checkpoints_to_k(
+                        checkpoints_dir, self.save_last_k - 1
+                    )
 
             self.accelerator.save_state(save_dir)
         self.accelerator.wait_for_everyone()
@@ -282,7 +291,7 @@ class Trainer(CheckpointMixin):
         if self.accelerator.is_main_process:
             range_iterator = trange(
                 epoch_steps, desc=f"Epoch {self.epoch + 1}/{self.epochs}"
-                )
+            )
         else:
             range_iterator = range(epoch_steps)
 
@@ -301,8 +310,9 @@ class Trainer(CheckpointMixin):
                 self.accelerator.backward(loss)
 
                 if self.accelerator.sync_gradients and self.max_grad_norm:
-                    self.accelerator.clip_grad_norm_(self.model.parameters(),
-                                                     self.max_grad_norm)
+                    self.accelerator.clip_grad_norm_(
+                        self.model.parameters(), self.max_grad_norm
+                    )
 
                 self.optimizer.step()
                 if self.lr_scheduler_interval == LRSchedulerInterval.STEP:
@@ -312,11 +322,25 @@ class Trainer(CheckpointMixin):
             self.step += 1
 
             if self.save_every_n_steps:
+                # TODO don't broadcast every step
                 should_save_checkpoint = self.wrap_and_broadcast_value(
-                    self.step % self.save_every_n_steps == 0, )
+                    self.step % self.save_every_n_steps == 0,
+                )
                 if should_save_checkpoint:
-                    self.save_checkpoint(self.checkpoint_dir /
-                                         f"step_{self.step}")
+                    self.save_checkpoint(
+                        self.checkpoint_dir / f"step_{self.step}"
+                    )
+
+            if self.permanent_save_every_n_steps:
+                # TODO don't broadcast every step
+                should_save_checkpoint = self.wrap_and_broadcast_value(
+                    self.step % self.permanent_save_every_n_steps == 0
+                )
+                if should_save_checkpoint:
+                    self.save_checkpoint(
+                        self.project_dir / f"ckpt_step_{self.step}",
+                        clean_old_checkpoints=False
+                    )
 
         self.val_loop()
         self.epoch += 1
@@ -326,18 +350,20 @@ class Trainer(CheckpointMixin):
 
         if self.save_every_n_epochs:
             should_save_checkpoint = self.wrap_and_broadcast_value(
-                self.epoch % self.save_every_n_epochs == 0)
+                self.epoch % self.save_every_n_epochs == 0
+            )
             if should_save_checkpoint:
                 self.accelerator.print("\n Saving latest checkpoint...")
-                self.save_checkpoint(self.checkpoint_dir /
-                                     f"epoch_{self.epoch}")
+                self.save_checkpoint(
+                    self.checkpoint_dir / f"epoch_{self.epoch}"
+                )
 
         metric_dict: dict = self.get_val_metrics()
         if self.metric_monitor is not None:
             # save checkpoint if the monitored metric improves
             should_save_checkpoint = self.wrap_and_broadcast_value(
                 self.metric_monitor(metric_dict)
-                )
+            )
             if should_save_checkpoint:
                 self.accelerator.print("\n Saving best checkpoint...")
                 self.save_checkpoint(self.checkpoint_dir / "best")

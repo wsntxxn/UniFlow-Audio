@@ -3,7 +3,6 @@
 # ------------------------------
 exp_dir=experiments/base_hybrid_layer_fusion
 ckpt_dir=experiments/base_hybrid_layer_fusion/epoch_150_ckpt
-guidance_scale=5.0
 num_steps=20
 iters=300000
 # ------------------------------
@@ -37,16 +36,25 @@ rm -f "$__snapshot_before"
 
 echo "exp_dir: $exp_dir"
 echo "ckpt_dir: $ckpt_dir"
-echo "guidance_scale: $guidance_scale"
 echo "num_steps: $num_steps"
 
 
-infer_dir="infer_eval_guidance_${guidance_scale}_steps_${num_steps}_iters_${iters}"
+infer_dir="infer_eval_steps_${num_steps}_iters_${iters}"
 export PYTHONPATH=.
 accelerate launch --config-file configs/accelerate/nvidia/8gpus.yaml \
     inference.py \
+    data@data_dict=test_no_cfg \
     exp_dir=${exp_dir} \
     ckpt_dir=${ckpt_dir} \
-    infer_args.guidance_scale=${guidance_scale} \
+    infer_args.guidance_scale=1.0 \
+    infer_args.num_steps=${num_steps} \
+    wav_dir=${infer_dir}
+
+accelerate launch --config-file configs/accelerate/nvidia/8gpus.yaml \
+    inference.py \
+    data@data_dict=test_cfg \
+    exp_dir=${exp_dir} \
+    ckpt_dir=${ckpt_dir} \
+    infer_args.guidance_scale=5.0 \
     infer_args.num_steps=${num_steps} \
     wav_dir=${infer_dir}

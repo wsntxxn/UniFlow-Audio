@@ -23,38 +23,6 @@ GMELAB_CACHE = os.environ.get(
     "GMELAB_CACHE", os.path.expanduser("~/.cache/gmelab")
 )
 
-# def check_and_download_synchformer():
-#     if Path(
-#         f"{GMELAB_CACHE}/sync_models/23-12-22T16-13-38/"
-#     ).exists():
-#         Path(f"{GMELAB_CACHE}/sync_models/24-01-04T16-39-21/").mkdir(
-#             exist_ok=True, parents=True
-#         )
-#         os.system(
-#             f"wget -c https://a3s.fi/swift/v1/AUTH_a235c0f452d648828f745589cde1219a/sync/sync_models/24-01-04T16-39-21/cfg-24-01-04T16-39-21.yaml -O {GMELAB_CACHE}/sync_models/24-01-04T16-39-21/cfg-24-01-04T16-39-21.yaml"
-#         )
-
-
-def create_symlink_folder(gen_folder_path: str) -> str:
-    gen_folder = Path(gen_folder_path).resolve()
-    parent_dir = gen_folder.parent
-    link_folder = parent_dir / (gen_folder.name + "_link")
-
-    # 如果软链接目录已存在，先删除
-
-    if link_folder.exists():
-        shutil.rmtree(link_folder)
-
-    link_folder.mkdir(exist_ok=False)
-
-    # 遍历原始目录中的所有文件，创建软链接
-    for file in gen_folder.iterdir():
-        if file.is_file():
-            link_name = link_folder / (file.stem + '.wav')  # 可自定义重命名逻辑
-            link_name.symlink_to(file.resolve())
-
-    return str(link_folder)
-
 
 def get_common_folder_path(audio_dict):
     """
@@ -145,7 +113,7 @@ def evaluate(args):
     evaluator = EvaluationHelper(16000, device, backbone="cnn14")
 
     eval_result = evaluator.main(
-        gen_folder_path, ref_folder_path, recalculate=False
+        gen_aid_to_audios, ref_aid_to_audios, recalculate=args.recalculate
     )
 
     assert ref_aid_to_audios.keys() == gen_aid_to_audios.keys(
@@ -176,14 +144,15 @@ if __name__ == '__main__':
         "-ibv",
         type=str,
         required=True,
-        help="path to reference video jsonl file"
+        help="path to reference video jsonl file, original videos"
     )
     parser.add_argument(
         "--sync_ref_video_jsonl",
         "-syncv",
         type=str,
         required=True,
-        help="path to reference video jsonl file"
+        help="path to reference video jsonl file, resampled to 25fps, for "
+        "calculating Synchformer score"
     )
     parser.add_argument(
         "--gen_audio_jsonl",
@@ -210,6 +179,12 @@ if __name__ == '__main__':
         default=4,
         type=int,
         help="number of workers for parallel processing"
+    )
+    parser.add_argument(
+        "--recalculate",
+        default=False,
+        action="store_true",
+        help="recalculate metrics if they already exist in the cache"
     )
 
     args = parser.parse_args()

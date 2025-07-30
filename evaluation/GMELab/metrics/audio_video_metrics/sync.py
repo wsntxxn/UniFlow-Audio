@@ -109,6 +109,59 @@ def modify_model_cfg(model_cfg: DictConfig):
         t.target = "submodules.Synchformer." + t.target
 
 
+def infer_sync_single_video(
+    audio_path, video_path, afps, vfps, model_cfg, model, transforms, device,
+    grid
+):
+    rgb, audio, meta = get_video_and_audio(
+        video_path, audio_path, get_meta=True, afps=afps
+    )
+
+    # due to different model sr setting, need extra resample to a_fps
+    # or u should reencode the video
+
+    rgb, audio = repeat_video(
+        rgb, audio, vfps, afps, model_cfg.data.crop_len_sec
+    )
+    item = {
+        "video": rgb,
+        "audio": audio,
+        "meta": meta,
+        "path": "dummy",
+        "split": "test",
+        "targets": {
+            # setting the start of the visual crop and the offset size.
+            # For instance, if the model is trained on 5sec clips, the provided video is 9sec, and `v_start_i_sec=1.3`
+            # the transform will crop out a 5sec-clip from 1.3 to 6.3 seconds and shift the start of the audio
+            # track by `args.offset_sec` seconds. It means that if `offset_sec` > 0, the audio will
+            # start `offset_sec` earlier than the rgb track.
+            # It is a good idea to use something in [-`max_off_sec`, `max_off_sec`] (see `grid`)
+            "v_start_i_sec": 0,
+            "offset_sec": 0,
+            # dummy values -- don't mind them
+            "vggsound_target": 0,
+            "vggsound_label": "PLACEHOLDER",
+        },
+    }
+    # applying the transform
+    item = transforms(item)
+
+    batch = torch.utils.data.default_collate([item])
+    aud, vid, targets = prepare_inputs(batch, device)
+
+    # forward pass
+    with torch.autocast("cuda", enabled=model_cfg.training.use_half_precision):
+        with torch.set_grad_enabled(False):
+            _, off_logits = model(vid, aud, targets["offset_target"])
+    off_logits = off_logits.detach().cpu()
+    off_cls = (
+        torch.softmax(off_logits.float(), dim=-1).detach().cpu().argmax(dim=1)
+    )
+    insync = off_cls == targets["offset_target"].cpu()
+    offset_sec = round(grid[off_cls[0].item()].item(), 3)
+    return offset_sec
+
+
 def calculate_sync(
     aid_to_video: dict[str, str | Path],
     aid_to_audio: dict[str, str | Path],

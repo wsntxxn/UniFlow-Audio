@@ -228,6 +228,8 @@ def evaluate_tts(
         output_path = Path(
             './evaluation/result'
         ) / f'tts_results_{model_name}_{xp_name}.jsonl'
+    else:
+        output_path = Path(output_path)
 
     output_path.parent.mkdir(exist_ok=True, parents=True)
     with open(output_path, 'w') as f:

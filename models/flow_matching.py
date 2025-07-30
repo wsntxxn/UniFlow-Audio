@@ -22,6 +22,7 @@ from utils.torch_utilities import (
     create_alignment_path, create_mask_from_length, loss_with_mask,
     trim_or_pad_length
 )
+from constants import SAME_LENGTH_TASKS
 
 
 class FlowMatchingMixin:
@@ -49,27 +50,34 @@ class FlowMatchingMixin:
     def get_input_target_and_timesteps(
         self,
         latent: torch.Tensor,
+        training: bool,
     ):
-        bsz = latent.shape[0]
+        batch_size = latent.shape[0]
         noise = torch.randn_like(latent)
 
-        if self.sample_strategy == 'normal':
-            u = compute_density_for_timestep_sampling(
-                weighting_scheme="logit_normal",
-                batch_size=bsz,
-                logit_mean=0,
-                logit_std=1,
-                mode_scale=None,
-            )
-        elif self.sample_strategy == 'uniform':
-            u = torch.randn(bsz, )
-        else:
-            raise NotImplementedError(
-                f"{self.sample_strategy} samlping for timesteps is not supported now"
-            )
+        if training:
+            if self.sample_strategy == 'normal':
+                u = compute_density_for_timestep_sampling(
+                    weighting_scheme="logit_normal",
+                    batch_size=batch_size,
+                    logit_mean=0,
+                    logit_std=1,
+                    mode_scale=None,
+                )
+            elif self.sample_strategy == 'uniform':
+                u = torch.rand(batch_size, )
+            else:
+                raise NotImplementedError(
+                    f"{self.sample_strategy} samlping for timesteps is not supported now"
+                )
 
-        indices = (u * self.train_noise_scheduler.config.num_train_timesteps
-                  ).long()
+            indices = (
+                u * self.train_noise_scheduler.config.num_train_timesteps
+            ).long()
+        else:
+            indices = (
+                self.train_noise_scheduler.config.num_train_timesteps // 2
+            ) * torch.ones((batch_size, )).long()
 
         # train_noise_scheduler.timesteps: a list from 1 ~ num_trainsteps with 1 as interval
         timesteps = self.train_noise_scheduler.timesteps[indices].to(
@@ -257,7 +265,7 @@ class SingleTaskCrossAttentionAudioFlowMatching(
                 content[mask_indices] = 0
 
         noisy_latent, target, timesteps = self.get_input_target_and_timesteps(
-            latent
+            latent, training=self.training
         )
 
         pred: torch.Tensor = self.backbone(
@@ -601,7 +609,7 @@ class CrossAttentionAudioFlowMatching(
                 content[mask_indices] = 0
 
         noisy_latent, target, timesteps = self.get_input_target_and_timesteps(
-            latent
+            latent, training=self.training
         )
 
         pred: torch.Tensor = self.backbone(
@@ -663,7 +671,10 @@ class CrossAttentionAudioFlowMatching(
             is_time_aligned,
             use_local=False
         )
+        # TODO: manually set duration for SE and AudioSR
         latent_length = torch.round(global_duration * self.latent_token_rate)
+        task_mask = torch.as_tensor([t in SAME_LENGTH_TASKS for t in task])
+        latent_length[task_mask] = content[task_mask].size(1)
         latent_mask = create_mask_from_length(latent_length).to(device)
         max_latent_length = latent_mask.sum(1).max().item()
 
@@ -837,7 +848,7 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         # prepare latent and noise
         # --------------------------------------------------------------------
         noisy_latent, target, timesteps = self.get_input_target_and_timesteps(
-            latent
+            latent, training=self.training
         )
 
         # --------------------------------------------------------------------
@@ -1029,6 +1040,9 @@ class DoubleContentAudioFlowMatching(DummyContentAudioFlowMatching):
         time_aligned_content = trim_or_pad_length(
             time_aligned_content, target_length, 1
         )
+        context_length = min(content.size(1), time_aligned_content.size(1))
+        time_aligned_content[~is_time_aligned, :context_length] = content[
+            ~is_time_aligned, :context_length]
         length_aligned_content = trim_or_pad_length(
             length_aligned_content, target_length, 1
         )

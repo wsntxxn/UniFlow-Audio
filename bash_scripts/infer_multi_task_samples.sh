@@ -1,21 +1,57 @@
-EXP_DIR=experiments/large_hybrid_layer_fusion/
-NUM_STEPS=20
-INFER_DIR="infer_epoch_last_guidance_5.0_steps_${NUM_STEPS}"
+exp_dir=experiments/large_hybrid_layer_fusion/
+num_steps=20
+infer_dir="infer_epoch_last_steps_${num_steps}"
 export PYTHONPATH=.
 
-NUM_SAMPLES=50
+num_samples=50
+
+# Parse command line arguments
+__snapshot_before=$(mktemp)
+declare -p > "$__snapshot_before"
+
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    val="$2"
+
+    if [[ "$key" =~ ^--(.+) ]]; then
+        var_name="${BASH_REMATCH[1]}"
+
+        if [[ -n "$val" && ! "$val" =~ ^-- ]]; then
+            if grep -q -E "^declare .* $var_name=" "$__snapshot_before"; then
+                eval "$var_name=\"\$val\""
+            fi
+            shift 2
+        else
+            shift 1
+        fi
+    else
+        shift 1
+    fi
+done
+
+rm -f "$__snapshot_before"
 
 python inference.py \
-    +exp_dir=${EXP_DIR} \
+    exp_dir=${exp_dir} \
     +use_best=False \
+    data@data_dict=test_cfg \
     infer_args.guidance_scale=5.0 \
-    infer_args.num_steps=${NUM_STEPS} \
-    wav_dir=${INFER_DIR} \
-    max_test_samples=${NUM_SAMPLES}
+    infer_args.num_steps=${num_steps} \
+    wav_dir=${infer_dir} \
+    max_test_samples=${num_samples}
+
+python inference.py \
+    exp_dir=${exp_dir} \
+    +use_best=False \
+    data@data_dict=test_no_cfg \
+    infer_args.guidance_scale=1.0 \
+    infer_args.num_steps=${num_steps} \
+    wav_dir=${infer_dir} \
+    max_test_samples=${num_samples}
 
 
 python generate_postprocess/merge_v2a_audio_video.py \
     --aid_video_mapping data/vggsound/mapping.csv \
-    --audio_path ${EXP_DIR}/${INFER_DIR}/video_to_audio/ \
-    --output_dir ${EXP_DIR}/${INFER_DIR}/video_to_audio_video \
+    --audio_path ${exp_dir}/${infer_dir}/video_to_audio/ \
+    --output_dir ${exp_dir}/${infer_dir}/video_to_audio_video \
     --backend moviepy
