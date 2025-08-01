@@ -16,6 +16,7 @@ backbone:
   embed_dim: 768
   depth: 16
   num_heads: 12
+  use_checkpoint: false
 
 _target_: models.flow_matching.DummyContentAudioFlowMatching
 content_encoder:

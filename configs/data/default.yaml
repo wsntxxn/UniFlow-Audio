@@ -7,6 +7,7 @@ defaults:
   - datasets@musdb: musdb
   - datasets@moises: moises
   - datasets@vggsound_clip: vggsound_clip
+  - datasets@visual_sound_clip: visual_sound_clip
   - datasets@libritts_100_wham: libritts_100+wham
   - datasets@libritts_360_wham: libritts_360+wham
   - datasets@ljspeech_musan: ljspeech+musan

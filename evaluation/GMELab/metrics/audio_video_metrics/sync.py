@@ -2,11 +2,12 @@ from typing import Dict, Tuple, Union
 from pathlib import Path
 import os
 from math import ceil
+from dataclasses import dataclass
 
 from omegaconf import OmegaConf, DictConfig
 import torch
 from tqdm import tqdm
-from dataclasses import dataclass
+from torch.utils.data import Dataset, DataLoader
 
 from submodules.Synchformer.utils.utils import check_if_file_exists_else_download
 from submodules.Synchformer.dataset.dataset_utils import get_video_and_audio
@@ -36,7 +37,7 @@ class InSyncCfg:
         pass
 
 
-BATCH_SIZE = 3
+BATCH_SIZE = 1
 
 
 def repeat_rgb(
@@ -162,6 +163,56 @@ def infer_sync_single_video(
     return offset_sec
 
 
+class SyncDataset(Dataset):
+    def __init__(
+        self,
+        video_paths,
+        audio_paths,
+        vfps,
+        afps,
+        crop_len_sec,
+        transforms,
+    ):
+        super().__init__()
+        self.video_paths = video_paths
+        self.audio_paths = audio_paths
+        self.vfps = vfps
+        self.afps = afps
+        self.crop_len_sec = crop_len_sec
+        self.transforms = transforms
+
+    def __len__(self):
+        return len(self.video_paths)
+
+    def __getitem__(self, idx):
+        video_path = self.video_paths[idx]
+        audio_path = self.audio_paths[idx]
+
+        rgb, audio, meta = get_video_and_audio(
+            video_path, audio_path, get_meta=True, afps=self.afps
+        )
+
+        rgb, audio = repeat_video(
+            rgb, audio, self.vfps, self.afps, self.crop_len_sec
+        )
+
+        item = {
+            "video": rgb,
+            "audio": audio,
+            "meta": meta,
+            "path": str(video_path),
+            "split": "test",
+            "targets": {
+                "v_start_i_sec": 0.0,
+                "offset_sec": 0.0,
+                "vggsound_target": 0,
+                "vggsound_label": "PLACEHOLDER",
+            },
+        }
+        item = self.transforms(item)
+        return item
+
+
 def calculate_sync(
     aid_to_video: dict[str, str | Path],
     aid_to_audio: dict[str, str | Path],
@@ -172,6 +223,7 @@ def calculate_sync(
     device: str,
     ckpt_parent_path: str,
     verbose: bool = False,
+    num_workers: int = 8,
 ) -> Tuple[float, Dict[str, Dict[str, Union[int, float, None]]]]:
     cfg_path = f"{ckpt_parent_path}/{exp_name}/cfg-{exp_name}.yaml"
     ckpt_path = f"{ckpt_parent_path}/{exp_name}/{exp_name}.pt"
@@ -238,84 +290,50 @@ def calculate_sync(
         all_videos
     ), f"No videos found in {original_video_dir}... Problems with reencoding?"
 
-    for i, video_path in tqdm(
-        enumerate(all_videos),
-        desc="Calculating InSync",
-        total=len(all_videos)
-    ):
-        fname = Path(video_path).name
-        audio_path = all_audios[i]
-        # load visual and audio streams
-        # (Tv, 3, H, W) in [0, 255], (Ta, C) in [-1, 1]
-        try:
-            rgb, audio, meta = get_video_and_audio(
-                video_path, audio_path, get_meta=True, afps=afps
-            )
+    dataset = SyncDataset(
+        video_paths=all_videos,
+        audio_paths=all_audios,
+        vfps=vfps,
+        afps=afps,
+        crop_len_sec=float(model_cfg.data.crop_len_sec),
+        transforms=transforms,
+    )
 
-            # due to different model sr setting, need extra resample to a_fps
-            # or u should reencode the video
+    loader = DataLoader(
+        dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=num_workers,
+        prefetch_factor=2,
+        pin_memory=True,
+        drop_last=False,
+    )
 
-            rgb, audio = repeat_video(
-                rgb, audio, vfps, afps, model_cfg.data.crop_len_sec
-            )
-            item = {
-                "video": rgb,
-                "audio": audio,
-                "meta": meta,
-                "path": f"{original_video_dir}/{fname}",
-                "split": "test",
-                "targets": {
-                    # setting the start of the visual crop and the offset size.
-                    # For instance, if the model is trained on 5sec clips, the provided video is 9sec, and `v_start_i_sec=1.3`
-                    # the transform will crop out a 5sec-clip from 1.3 to 6.3 seconds and shift the start of the audio
-                    # track by `args.offset_sec` seconds. It means that if `offset_sec` > 0, the audio will
-                    # start `offset_sec` earlier than the rgb track.
-                    # It is a good idea to use something in [-`max_off_sec`, `max_off_sec`] (see `grid`)
-                    "v_start_i_sec": 0,
-                    "offset_sec": 0,
-                    # dummy values -- don't mind them
-                    "vggsound_target": 0,
-                    "vggsound_label": "PLACEHOLDER",
-                },
+    results = {}
+    insync_offsets = 0.0
+
+    for batch in tqdm(loader, desc="Calculating InSync"):
+        aud, vid, targets = prepare_inputs(batch, device)
+        # forward pass
+        with torch.autocast(
+            "cuda", enabled=model_cfg.training.use_half_precision
+        ), torch.set_grad_enabled(False):
+            _, off_logits = model(vid, aud, targets["offset_target"])
+        off_logits = off_logits.detach().cpu()
+        off_cls = (
+            torch.softmax(off_logits.float(),
+                          dim=-1).detach().cpu().argmax(dim=1)
+        )
+        insync = off_cls == targets["offset_target"].cpu()
+
+        for i, path in enumerate(batch["path"]):
+            offset_sec = round(grid[off_cls[i].item()].item(), 3)
+            insync_offsets += abs(offset_sec)
+            results[path] = {
+                "insync": insync[i].item(),
+                "offset_sec": offset_sec,
+                "prob": None,
             }
-            # applying the transform
-            item = transforms(item)
-        except KeyboardInterrupt:
-            print("KeyboardInterrupt, exiting...")
-            exit(1)
-        # except Exception as e:
-        #     print(f"Error while transforming {video_path}: {e}")
-        #     continue
-
-        batch.append(item)
-        if len(batch) == BATCH_SIZE or i == len(all_videos) - 1:
-            # prepare inputs for inference
-            batch = torch.utils.data.default_collate(batch)
-            aud, vid, targets = prepare_inputs(batch, device)
-
-            # forward pass
-            with torch.autocast(
-                "cuda", enabled=model_cfg.training.use_half_precision
-            ):
-                with torch.set_grad_enabled(False):
-                    _, off_logits = model(vid, aud, targets["offset_target"])
-            off_logits = off_logits.detach().cpu()
-            off_cls = (
-                torch.softmax(off_logits.float(),
-                              dim=-1).detach().cpu().argmax(dim=1)
-            )
-            insync = off_cls == targets["offset_target"].cpu()
-
-            for i, path in enumerate(batch["path"]):
-                offset_sec = round(grid[off_cls[i].item()].item(), 3)
-                insync_offsets += abs(offset_sec)
-                results[path] = {
-                    "insync": insync[i].item(),
-                    "offset_sec": offset_sec,
-                    "prob": None,
-                }
-
-            batch = []
 
     score = float(insync_offsets / len(results))
     if verbose:

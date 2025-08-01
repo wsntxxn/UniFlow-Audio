@@ -73,12 +73,12 @@ if [ "${v2a_only}" -eq 0 ]; then
         --ref_audio_jsonl data/music_caps/audio_renamed.jsonl \
         -rc data/music_caps/caption.jsonl \
         -gd ${infer_dir}/text_to_music/ \
-        -o ${infer_dir}/ttm_cnn14_results.jsonl
+        -o ${infer_dir}/ttm_cnn14_results.txt
 fi
 
 $PYTHONBIN evaluation/v2a.py \
     -ra data/visual_sound/test_audio_16000Hz_0s_to_10.0s.jsonl \
-    -ibv data/visual_sound/test_videos.jsonl \
+    -ibv data/visual_sound/ib_visual_embed.h5 \
     -syncv data/visual_sound/test_videos_fps_25_sr_16000.jsonl \
     -gd ${infer_dir}/video_to_audio/ \
     -o ${infer_dir}/v2a_results.txt

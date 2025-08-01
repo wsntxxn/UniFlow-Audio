@@ -188,6 +188,7 @@ logs/
 
 # VS Code settings
 .vscode/
+pyrightconfig.json
 
 # Demo files
 demo/

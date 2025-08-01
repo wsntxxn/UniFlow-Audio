@@ -64,6 +64,10 @@ def evaluate(args):
         )
     elif args.gen_audio_dir is not None:
         gen_aid_to_audios = audio_dir_to_mapping(args.gen_audio_dir, "v2a")
+    else:
+        raise ValueError(
+            "Either gen_audio_jsonl or gen_audio_dir must be provided."
+        )
 
     keys = deepcopy(list(ref_aid_to_audios.keys()))
     for key in keys:
@@ -71,21 +75,18 @@ def evaluate(args):
             ref_aid_to_audios.pop(key)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    ref_ib_aid_to_videos = read_jsonl_to_mapping(
-        args.ib_ref_video_jsonl, "audio_id", "video"
-    )
     ref_sync_aid_to_videos = read_jsonl_to_mapping(
         args.sync_ref_video_jsonl, "audio_id", "video"
     )
     """Calculate ImageBind """
     image_bind_score = calculate_imagebind_score(
-        aid_to_video=ref_ib_aid_to_videos,
-        device=device,
         aid_to_audio=gen_aid_to_audios,
+        device=device,
+        vision_embeds=args.ib_vision_embed,
+        num_workers=args.num_workers,
     )
     results["image_bind_score"] = image_bind_score
     """Calculate Sync """
-
     overall_sync_score, score_per_video = calculate_sync(
         aid_to_video=ref_sync_aid_to_videos,
         aid_to_audio=gen_aid_to_audios,
@@ -95,14 +96,16 @@ def evaluate(args):
         input_size=InSyncCfg.input_size,
         device=device,
         ckpt_parent_path=f"{GMELAB_CACHE}/sync_models",
+        num_workers=args.num_workers,
     )
     results["synchformer_score"] = overall_sync_score
-    """Calculate FAD, FD, KL """
 
+    # print("results: ", results)
+    # return
+    """Calculate FAD, FD, KL """
     gen_folder_path, gen_is_same_folder = get_common_folder_path(
         gen_aid_to_audios
     )
-
     ref_folder_path, ref_is_same_folder = get_common_folder_path(
         ref_aid_to_audios
     )
@@ -139,12 +142,19 @@ if __name__ == '__main__':
         required=True,
         help="path to reference audio jsonl file"
     )
+    # parser.add_argument(
+    #     "--ib_ref_video_jsonl",
+    #     "-ibv",
+    #     type=str,
+    #     required=True,
+    #     help="path to reference video jsonl file, original videos"
+    # )
     parser.add_argument(
-        "--ib_ref_video_jsonl",
+        "--ib_vision_embed",
         "-ibv",
         type=str,
         required=True,
-        help="path to reference video jsonl file, original videos"
+        help="path to reference video ImageBind embedding hdf5 file"
     )
     parser.add_argument(
         "--sync_ref_video_jsonl",
@@ -176,7 +186,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--num_workers",
         "-c",
-        default=4,
+        default=8,
         type=int,
         help="number of workers for parallel processing"
     )
