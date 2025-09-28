@@ -1,9 +1,0 @@
-defaults:
-  - default
-  - _self_
-
-train_data_list:
-  - ${..popcs.train}
-
-val_data_list:
-  - ${..popcs.val}

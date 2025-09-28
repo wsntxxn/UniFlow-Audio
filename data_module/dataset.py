@@ -673,61 +673,13 @@ if __name__ == '__main__':
     # dataset = TaskGroupedAudioGenConcatDataset(
     dataset = AudioGenConcatDataset(
         datasets=[
-            # TextToSpeechDataset(
-            #     content="data/libritts/train/phoneme.jsonl",
-            #     audio="data/libritts/train/audio.jsonl",
-            #     base_content_path=
-            #     "/cpfs04/user/xuxuenan/workspace/x_to_audio_generation",
-            #     base_audio_path="/cpfs02/shared/speechllm/",
-            #     target_sr=24000,
-            #     task_instruction="./data/instructions/t5_embeddings.h5",
-            # ),
-            # SpeechEnhancementDataset(
-            #     content=
-            #     "/oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_caption.jsonl",
-            #     audio=
-            #     "/oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_audio.jsonl",
-            #     base_content_path=
-            #     "/oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham",
-            #     base_audio_path=
-            #     "/oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham",
-            #     downsampling_ratio=480,
-            #     target_sr=24000,
-            #     task_instruction="./data/instructions/t5_embeddings.h5",
-            #     max_duration=5.0,
-            # ),
-            # TextToAudioDataset(
-            #     content="./data/audiocaps_v2/test/caption.jsonl",
-            #     audio="./data/audiocaps_v2/test/audio.jsonl",
-            #     task_instruction="./data/instructions/t5_embeddings.h5",
-            #     instruction_idx=1,
-            #     target_sr=24000
-            # ),
-            # MidiSingingDataset(
-            #     content="./data/m4singer/val/midi.jsonl",
-            #     audio="./data/m4singer/val/audio.jsonl",
-            #     phoneme_set="./data/m4singer/phone_set.json",
-            #     spk_set="./data/m4singer/spk_set.json",
-            #     target_sr=24000,
-            #     task_instruction="./data/instructions/t5_embeddings.h5",
-            #     instruction_idx=4
-            # ),
-            # VideoToAudioDataset(
-            #     content="./data/vggsound/clip/train/content.jsonl",
-            #     audio="./data/vggsound/clip/train/audio.jsonl",
-            #     video_fps=10,
-            #     target_sr=24000,
-            #     task_instruction="./data/instructions/t5_embeddings.h5",
-            # ),
-            TextToMusicDataset(
-                content="data/msd/train/caption.jsonl",
-                audio="data/msd/train/audio.jsonl",
-                base_audio_path=
-                "/cpfs02/shared/speechllm/million_song_dataset/files/MSD/songs/",
-                max_duration=10.0,
-                target_sr=24000,
+            TextToAudioDataset(
+                content="./data/audiocaps_v2/test/caption.jsonl",
+                audio="./data/audiocaps_v2/test/audio.jsonl",
                 task_instruction="./data/instructions/t5_embeddings.h5",
-            )
+                instruction_idx=1,
+                target_sr=24000
+            ),
         ]
     )
     # sampler = TaskIteratingSampler(dataset, shuffle=True)

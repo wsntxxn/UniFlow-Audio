@@ -8,6 +8,8 @@ defaults:
 content_dim: 1024
 frame_resolution: 0.005
 duration_offset: 1.0
+noise_scheduler_name: "stabilityai/stable-diffusion-2-1"
+snr_gamma: 5.0
 cfg_drop_ratio: 0.2
 
 backbone:
@@ -17,7 +19,7 @@ backbone:
   depth: 24
   num_heads: 16
 
-_target_: models.flow_matching.DummyContentAudioFlowMatching
+_target_: models.diffusion.DummyContentAudioDiffusion
 content_encoder:
   _target_: models.content_encoder.content_encoder.ContentEncoder
   embed_dim: ${..content_dim}

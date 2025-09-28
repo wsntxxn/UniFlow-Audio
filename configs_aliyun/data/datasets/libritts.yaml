@@ -2,8 +2,8 @@ train:
   _target_: data_module.dataset.TextToSpeechDataset
   content: data/libritts/train/phoneme_duration_filtered.jsonl
   audio: data/libritts/train/audio.jsonl
-  base_content_path: /path/to/processed/libritts/data
-  base_audio_path: /path/to/original/libritts/data
+  base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
+  base_audio_path: /cpfs02/shared/speechllm/data
   target_sr: ${sample_rate}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
@@ -11,8 +11,8 @@ val:
   _target_: data_module.dataset.TextToSpeechDataset
   content: data/libritts/val/phoneme_duration_filtered.jsonl
   audio: data/libritts/val/audio.jsonl
-  base_content_path: /path/to/processed/libritts/data
-  base_audio_path: /path/to/original/libritts/data
+  base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
+  base_audio_path: /cpfs02/shared/speechllm/data
   target_sr: ${sample_rate}
   use_h5_cache: false
   task_instruction: ${instruction_embedding}
@@ -21,7 +21,7 @@ test:
   _target_: data_module.dataset.TextToSpeechDataset
   # content: data/libritts/voiceflow_test/phoneme.jsonl
   content: data/libritts/test/phoneme.jsonl
-  base_content_path: /path/to/processed/libritts/data
+  base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
   task_instruction: ${instruction_embedding}
   instruction_idx: 1
   max_samples: ${max_test_samples}

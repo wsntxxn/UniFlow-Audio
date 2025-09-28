@@ -1,0 +1,12 @@
+defaults:
+  - default
+  - _self_
+
+train_data_list:
+  - ${..libritts.train}
+
+val_data_list:
+  - ${..libritts.val}
+
+test_data_list:
+  - ${..libritts.test}

@@ -13,9 +13,9 @@ cfg_drop_ratio: 0.2
 backbone:
   context_dim: ${..content_dim}
   ta_context_dim: ${..content_dim}
-  embed_dim: 768
-  depth: 16
-  num_heads: 12
+  embed_dim: 512
+  depth: 12
+  num_heads: 8
   use_checkpoint: false
 
 _target_: models.flow_matching.DummyContentAudioFlowMatching

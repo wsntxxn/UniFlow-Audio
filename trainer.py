@@ -11,7 +11,7 @@ from torchdata.stateful_dataloader import StatefulDataLoader
 from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
-from accelerate.utils import set_seed, broadcast
+from accelerate.utils import set_seed, broadcast, DataLoaderConfiguration
 from accelerate import DistributedDataParallelKwargs
 import wandb
 from swanlab.integration.accelerate import SwanLabTracker
@@ -94,8 +94,8 @@ class Trainer(CheckpointMixin):
     checkpoint_dir: str | Path = None
     logging_config: LoggingConfig | None = None
 
-    train_dataloader: StatefulDataLoader | DataLoader
-    val_dataloader: StatefulDataLoader | DataLoader
+    train_dataloader: DataLoader
+    val_dataloader: DataLoader
     model: nn.Module
     optimizer: torch.optim.Optimizer
     lr_scheduler: torch.optim.lr_scheduler.LRScheduler
@@ -113,6 +113,8 @@ class Trainer(CheckpointMixin):
     save_last_k: int | None = 1
     metric_monitor: MetricMonitor | None = None
     early_stop: int | None = None
+
+    # use_stateful_dataloader: bool = False
 
     def wrap_and_broadcast_value(self, value: Any) -> torch.Tensor:
         value = torch.tensor(value, device=self.accelerator.device)
@@ -140,6 +142,9 @@ class Trainer(CheckpointMixin):
             else:
                 tracker = self.logging_config.report_to
 
+        # dataloader_config = DataLoaderConfiguration(
+        #     use_stateful_dataloader=self.use_stateful_dataloader
+        # )
         self.accelerator = AcceleratorSaveTrainableParams(
             log_with=tracker,
             gradient_accumulation_steps=self.gradient_accumulation_steps,
@@ -147,6 +152,7 @@ class Trainer(CheckpointMixin):
             step_scheduler_with_optimizer=(
                 self.lr_scheduler_interval == LRSchedulerInterval.STEP
             ),
+            # dataloader_config=dataloader_config,
             kwargs_handlers=[ddp_kwargs]
         )
         # TODO when `loss_fn` does not have named_parameters/buffers, loading will raise error
@@ -225,8 +231,12 @@ class Trainer(CheckpointMixin):
 
     def state_dict(self) -> dict:
         state_dict = {"epoch": self.epoch, "step": self.step}
-        if isinstance(self.train_dataloader, StatefulDataLoader):
-            state_dict["train_dataloader"] = self.train_dataloader.state_dict()
+        # state_dict = {"step": self.step}
+
+        # if isinstance(self.train_dataloader, StatefulDataLoader):
+        #     # FIXME: after `accelerator.prepare`, how to determine if `train_dataloader` is `StatefulDataLoader`?
+        #     state_dict["train_dataloader"] = self.train_dataloader.state_dict()
+
         if self.metric_monitor is not None:
             state_dict["metric_monitor"] = self.metric_monitor.state_dict()
         return state_dict
@@ -234,10 +244,14 @@ class Trainer(CheckpointMixin):
     def load_state_dict(self, state_dict: dict) -> None:
         self.epoch = state_dict["epoch"]
         self.step = state_dict["step"]
-        if "train_dataloader" in state_dict:
-            self.train_dataloader.load_state_dict(
-                state_dict["train_dataloader"]
-            )
+
+        # self.step = state_dict["step"]
+        # self.epoch = self.step // self.epoch_length
+
+        # if "train_dataloader" in state_dict:
+        #     self.train_dataloader.load_state_dict(
+        #         state_dict["train_dataloader"]
+        #     )
         if "metric_monitor" in state_dict:
             self.metric_monitor.load_state_dict(state_dict["metric_monitor"])
 
@@ -328,13 +342,18 @@ class Trainer(CheckpointMixin):
                         self.checkpoint_dir / f"step_{self.step}"
                     )
 
+            # FIXME `self.epoch` may be not set properly at this step
             if self.permanent_save_every_n_steps:
                 should_save_checkpoint = self.step % self.permanent_save_every_n_steps == 0
                 if should_save_checkpoint:
+                    # if self.step % self.epoch_length == 0:
+                    #     self.epoch += 1
                     self.save_checkpoint(
                         self.project_dir / f"ckpt_step_{self.step}",
                         clean_old_checkpoints=False
                     )
+                    # if self.step % self.epoch_length == 0:
+                    #     self.epoch -= 1
 
         self.val_loop()
         self.epoch += 1

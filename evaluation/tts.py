@@ -184,7 +184,8 @@ def evaluate_tts(
                 for segment in segments:
                     pred_text += " " + segment.text
             elif model_name == 'nemo':
-                pred_text = asr_model.transcribe([wav_path])[0].text.strip()
+                pred_text = asr_model.transcribe([wav_path],
+                                                 verbose=False)[0].text.strip()
 
             for x in string.punctuation:
                 pred_text = pred_text.replace(x, "")

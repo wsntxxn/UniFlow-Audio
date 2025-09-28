@@ -44,7 +44,7 @@ export PYTHONPATH=.:evaluation/GMELab
 if [ "${v2a_only}" -eq 0 ]; then
     $PYTHONBIN evaluation/tts.py \
         --audio_dir ${infer_dir}/text_to_speech/ \
-        --libritts_txt_dir /cpfs02/shared/speechllm/LibriTTS \
+        --libritts_txt_dir /cpfs02/shared/speechllm/data/LibriTTS \
         --xp_name $exp_name \
         --ref_transcript_path data/libritts/test/ref_transcription.json \
         --ref_audio_path data/libritts/test/ref_audio.json \
@@ -65,7 +65,7 @@ if [ "${v2a_only}" -eq 0 ]; then
         --ref_dir /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/clean_testset_wav/ \
         --gen_dir ${infer_dir}/speech_enhancement/ \
         --uuid_jsonl /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/test_metadata_audio.jsonl \
-        --output_file ${infer_dir}/se_results.jsonl
+        --output_file ${infer_dir}/se_results.txt
 
     bash bash_scripts/eval_audio_sr.sh ${infer_dir}
 

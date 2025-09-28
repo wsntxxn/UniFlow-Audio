@@ -3,7 +3,7 @@
 # ------------------------------
 exp_dir=experiments/base_hybrid_layer_fusion
 ckpt_dir=experiments/base_hybrid_layer_fusion/epoch_150_ckpt
-num_steps=20
+num_steps=25
 iters=300000
 # ------------------------------
 
@@ -39,9 +39,12 @@ echo "ckpt_dir: $ckpt_dir"
 echo "num_steps: $num_steps"
 
 
+num_gpus=$(nvidia-smi -L | wc -l)
+
 infer_dir="infer_eval_steps_${num_steps}_iters_${iters}"
 export PYTHONPATH=.
 accelerate launch --config-file configs/accelerate/nvidia/8gpus.yaml \
+    --num_processes $num_gpus \
     inference.py \
     data@data_dict=test_no_cfg \
     exp_dir=${exp_dir} \
@@ -51,6 +54,7 @@ accelerate launch --config-file configs/accelerate/nvidia/8gpus.yaml \
     wav_dir=${infer_dir}
 
 accelerate launch --config-file configs/accelerate/nvidia/8gpus.yaml \
+    --num_processes $num_gpus \
     inference.py \
     data@data_dict=test_cfg \
     exp_dir=${exp_dir} \
