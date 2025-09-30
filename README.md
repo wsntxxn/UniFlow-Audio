@@ -1,18 +1,21 @@
-# UniFlow-Audio
+# :sound: UniFlow-Audio: Unified Flow Matching for Audio Generation from Omni-Modalities
 
-This repository is the official implementation of UniFlow-Audio.
-We provide a lightweight training framework, built on `accelerate`.
-It can be customized easily with all code exposed in `trainer.py`.
+[![arXiv](https://img.shields.io/badge/arXiv-2509.24391-brightgreen.svg?style=flat-square)](https://arxiv.org/abs/2509.24391)  [![githubio](https://img.shields.io/badge/GitHub.io-Audio_Samples-blue?logo=Github&style=flat-square)](https://wsntxxn.github.io/uniflow_audio) <!-- [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/haoheliu/audioldm-text-to-audio-generation) -->
 
-## Inference using Pre-trained Models
+This repository is the official implementation of the paper "[UniFlow-Audio: Unified Flow Matching for Audio Generation from Omni-Modalities](https://arxiv.org/abs/2509.24391)".
+We provide a lightweight training framework, built on [Accelerate](https://huggingface.co/docs/accelerate/index).
+It can be customized easily with all code exposed in [trainer.py](./train.py).
+
+## :bulb: Inference using Pre-trained Models
 
 TBD
 
-## Training
+## :hammer_and_wrench: Training
+
 
 ### Data Format
 
-For each generation dataset, the input content information should be organized in a `content.jsonl`, like `data/audiocaps/train/caption.jsonl`.
+For each generation dataset, the input content information should be organized in a `content.jsonl`.
 Each line in `content.jsonl` is like:
 ```JSON
 {"audio_id": "xxx", "caption": "xxx"}
@@ -103,12 +106,33 @@ accelerate launch \
 ```
 This will infer on AudioCaps test set with the default configurations in `configs/inference.yaml`.
 
-## Evaluation
+## :bar_chart: Evaluation
 
 TBD
 
-## TODO
+## :memo: TODO
 - [ ] Add inference script for pre-trained models.
 - [ ] Add README about evaluation guidance.
 
-## Citation
+## :book: Citation
+
+If you found the paper or the codebase useful, please consider citing
+```bibtex
+@article{xu2025uniflow,
+  title={UniFlow-Audio: Unified Flow Matching for Audio Generation from Omni-Modalities},
+  author={Xu, Xuenan and Mei, Jiahao and Zheng, Zihao and Tao, Ye and Xie, Zeyu and Zhang, Yaoyun and Liu, Haohe and Wu, Yuning and Yan, Ming and Wu, Wen and Zhang, Chao and Wu, Mengyue},
+  author={Zheng, Zihao and Xie, Zeyu and Xu, Xuenan and Wu, Wen and Zhang, Chao and Wu, Mengyue},
+  journal={arXiv preprint arXiv:2509.24391},
+  year={2025}
+}
+```
+
+## :sparkles: Acknowledgements
+
+We would like to express our gratitude to the following projects and their contributors, from which we have borrowed code or drawn inspiration:
+
+- **[EzAudio](https://github.com/haidog-yaqub/EzAudio)**
+- **[DiffSinger](https://github.com/MoonInTheRiver/DiffSinger)**
+- **[Tango](https://github.com/declare-lab/tango)**
+
+We appreciate the open-source community for making these valuable resources available.
