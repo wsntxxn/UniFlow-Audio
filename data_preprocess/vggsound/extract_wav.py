@@ -115,8 +115,7 @@ def process_directory(
         entries = []
         for line in lines:
             item = json.loads(line.strip())
-            video_file = item["audio"]
-            # video_files.append(video_file)
+            video_file = item["video"]
             video_fname = Path(video_file).stem
             audio_file = output_dir / sanitize_filename(
                 f"{video_fname}_{mapping[video_fname]}.wav"

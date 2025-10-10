@@ -86,6 +86,9 @@ if __name__ == '__main__':
     parser.add_argument(
         "--output_dir", "-o", type=str, required=True, help="output directory"
     )
+    parser.add_argument(
+        "--output_jsonl", "-j", type=str, required=True, help="output jsonl file"
+    )
 
     args = parser.parse_args()
 
@@ -96,7 +99,7 @@ if __name__ == '__main__':
             videos = [line.strip() for line in f.readlines()]
     elif args.videos.endswith(".jsonl"):
         with open(args.videos, "r") as f:
-            videos = [json.loads(line)["audio"] for line in f.readlines()]
+            videos = [json.loads(line)["video"] for line in f.readlines()]
 
     out_dir = Path(args.output_dir)
 
@@ -112,3 +115,7 @@ if __name__ == '__main__':
         side=256,
         max_workers=8
     )
+
+    with open(args.output_jsonl, "w") as f:
+        for file in out_dir.glob("*.mp4"):
+            f.write(json.dumps({"audio_id": file.name, "video": str(file)}) + "\n")

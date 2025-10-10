@@ -53,13 +53,13 @@ if [ "${v2a_only}" -eq 0 ]; then
     $PYTHONBIN evaluation/svs.py \
         --ref_audio_jsonl data/m4singer/test/audio.jsonl \
         --gen_audio_dir ${infer_dir}/singing_voice_synthesis/ \
-        --output_file ${infer_dir}/svs_results.jsonl
+        --output_file ${infer_dir}/svs_results.txt
 
-    $PYTHONBIN evaluation/tta.py \
+    $PYTHONBIN evaluation/t2a.py \
         --ref_audio_jsonl data/audiocaps_v2/test/audio_renamed.jsonl \
         -rc data/audiocaps_v2/test/caption.jsonl \
         -gd ${infer_dir}/text_to_audio/ \
-        -o ${infer_dir}/tta_results.txt
+        -o ${infer_dir}/t2a_results.txt
 
     $PYTHONBIN evaluation/se.py \
         --ref_dir /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/clean_testset_wav/ \
@@ -69,11 +69,11 @@ if [ "${v2a_only}" -eq 0 ]; then
 
     bash bash_scripts/eval_audio_sr.sh ${infer_dir}
 
-    $PYTHONBIN evaluation/tta.py \
+    $PYTHONBIN evaluation/t2a.py \
         --ref_audio_jsonl data/music_caps/audio_renamed.jsonl \
         -rc data/music_caps/caption.jsonl \
         -gd ${infer_dir}/text_to_music/ \
-        -o ${infer_dir}/ttm_cnn14_results.txt
+        -o ${infer_dir}/t2m_cnn14_results.txt
 fi
 
 $PYTHONBIN evaluation/v2a.py \

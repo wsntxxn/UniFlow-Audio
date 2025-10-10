@@ -48,16 +48,14 @@ def create_symlink_folder(gen_folder_path: str) -> str:
     parent_dir = gen_folder.parent
     link_folder = parent_dir / (gen_folder.name + "_link")
 
-    # 如果软链接目录已存在，先删除
     if link_folder.exists():
         shutil.rmtree(link_folder)
 
     link_folder.mkdir()
 
-    # 遍历原始目录中的所有文件，创建软链接
     for file in gen_folder.iterdir():
         if file.is_file():
-            link_name = link_folder / (file.stem[:11] + '.wav')  # 可自定义重命名逻辑
+            link_name = link_folder / (file.stem[:11] + '.wav')  # renaming logic can be customized
             link_name.symlink_to(file.resolve())
 
     return str(link_folder)
@@ -135,7 +133,6 @@ def evaluate(args):
         args.ref_audio_jsonl,
         "audio_id",
         "audio",
-        base_path='/cpfs_shared/jiahao.mei/data/tta'
     )
     if args.gen_audio_jsonl is not None:
         gen_aid_to_audios = read_jsonl_to_mapping(

@@ -1,15 +1,3 @@
-"""
-python evaluation/se.py 
-    refdir: reference audio dir   
-    degdir: degraded audio dir
-    uuid2wav file
-
-python evaluation/se.py  \
-    "/cpfs_shared/jiahao.mei/data/se/VCTK+Demand/clean_testset_wav" \
-    "/cpfs_shared/jiahao.mei/code/x_to_audio_generation/experiments/DummyContentAudioDiffusion/double_content+cross_attn_adapter_init_8gpus/inference/speech_enhancement" \
-    "/cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/VCTK+Demand/test/metadata_audio.jsonl"
-
-"""
 import glob
 import time
 import os

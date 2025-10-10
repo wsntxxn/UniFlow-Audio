@@ -28,6 +28,9 @@ The target audio files should be organized in an `audio.jsonl`, with similar for
 
 Then, for each task type, implement a class by inheriting `AudioGenerationDataset` in `data_module/dataset.py`: the content loading method is defined here.
 
+For datasets used in the paper, our pre-processing scripts are in [data_preprocess](./data_preprocess).
+You may use them as reference to process your own data.
+
 ### Configurations
 
 We use `hydra` + `omegaconf` to organize training configurations.
@@ -108,11 +111,11 @@ This will infer on AudioCaps test set with the default configurations in `config
 
 ## :bar_chart: Evaluation
 
-TBD
+For evaluation, please refer to [EVALUATION.md](./docs/EVALUATION.md). 
 
 ## :memo: TODO
 - [ ] Add inference script for pre-trained models.
-- [ ] Add README about evaluation guidance.
+- [x] Add README about evaluation guidance.
 
 ## :book: Citation
 
