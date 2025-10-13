@@ -1,0 +1,5 @@
+test:
+  _target_: data_module.dataset.TextToAudioDataset
+  content: data/tta_caption.yaml
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1

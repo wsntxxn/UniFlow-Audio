@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from utils.config import register_omegaconf_resolvers
 from models.common import LoadPretrainedBase
-from utils.general import sanitize_filename
+from utils.general import sanitize_filename, extract_clip_feature_from_single_video
 
 try:
     import torch_npu
@@ -37,6 +37,31 @@ def main():
     parse_config_from_command_line()
     config = configs[0]
 
+    single_infer = config.get("single_infer", False)
+
+    if single_infer:
+        task = config.get("task", 't2a')
+        caption = config.get("caption", 'dog bark')
+        audio_id = config.get("audio_id", '1000')
+        with open('data/tmp.yaml', mode='w') as f:
+            if task == 'se':
+                f.write(f'{{"UUID": "{audio_id}", "InputPath": "{caption}"}}')
+            elif task == 'tts':
+                f.write(f'{{"audio_id": "{audio_id}", "audio": "{caption}"}}')
+            elif task == 'svs':
+                f.write(f'{{"audio_id": "{audio_id}", "midi": "{caption}"}}')
+            elif task == 'v2a':
+                video_feature, save_path = extract_clip_feature_from_single_video(
+                    caption
+                )
+                f.write(
+                    f'{{"audio_id": "{audio_id}", "video": "{save_path}"}}'
+                )
+            else:
+                f.write(
+                    f'{{"audio_id": "{audio_id}", "caption": "{caption}"}}'
+                )
+
     exp_dir, ckpt_dir = None, None
     if os.path.isdir(config["exp_dir"]):
         exp_dir = Path(config["exp_dir"])
@@ -59,9 +84,17 @@ def main():
     if exp_dir is None:
         exp_dir = ckpt_dir.parent.parent
 
-    accelerator.print(f'\n ckpt path: {ckpt_path}, exp dir: {exp_dir}\n ')
+    if "exp_config_path" in config:
+        exp_config_path = config['exp_config_path']
+        exp_config = OmegaConf.load(config['exp_config_path'])
+    else:
+        exp_config_path = exp_dir / "config.yaml"
 
-    exp_config = OmegaConf.load(exp_dir / "config.yaml")
+    exp_config = OmegaConf.load(exp_config_path)
+    accelerator.print(
+        f'\n ckpt path: {ckpt_path}, model config path: {exp_config_path}\n '
+    )
+
     model: LoadPretrainedBase = hydra.utils.instantiate(exp_config["model"])
     state_dict = load_file(ckpt_path)
     model.load_pretrained(state_dict)
@@ -97,6 +130,7 @@ def main():
 
     if config["wav_dir_root"] is not None:
         wav_dir_root = Path(config["wav_dir_root"])
+        wav_dir_root.mkdir(parents=True, exist_ok=True)
     else:
         wav_dir_root = exp_dir
     audio_output_dir = wav_dir_root / config["wav_dir"]
@@ -106,6 +140,7 @@ def main():
     pbar_disable = not accelerator.is_main_process
 
     with torch.no_grad():
+
         for batch in tqdm(test_dataloader, disable=pbar_disable):
             kwargs = config["infer_args"].copy()
             kwargs.update(batch)

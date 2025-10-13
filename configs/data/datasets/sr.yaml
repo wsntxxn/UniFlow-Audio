@@ -1,0 +1,9 @@
+test:
+  _target_: data_module.dataset.AudioSuperResolutionDataset
+  content: data/tmp.yaml  
+  downsampling_ratio: ${downsampling_ratio}
+  target_sr: ${sample_rate}
+  use_h5_cache: false
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1
+  random_crop: false

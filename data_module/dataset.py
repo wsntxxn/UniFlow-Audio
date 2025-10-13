@@ -5,6 +5,8 @@ from abc import abstractmethod
 from typing import Any, Sequence
 import json
 import pickle
+import os
+import subprocess
 
 from tqdm import tqdm
 import numpy as np
@@ -368,15 +370,19 @@ class VideoToAudioDataset(AudioGenerationDataset):
     def load_content(self, audio_id: str, content_or_path: str):
         video_path = self.id_to_content[audio_id]
 
+        # for training
         if video_path.endswith(".hdf5") or video_path.endswith(".h5"):
             with File(video_path, "r") as hf:
                 video_feature = hf[f"{audio_id}/video"][()]
                 label: bytes = hf[f"{audio_id}/label"][()]
                 label = label.decode()
-
+        # for single inference
+        elif video_path.endswith(".npy"):
+            label = ''
+            video_feature = np.load('./data/tmp_video_feature.npy')
         else:
             raise NotImplementedError(
-                "video feature must be load by h5 file !"
+                'video feature must load from hd5 or npy'
             )
 
         yid_stem = Path(audio_id).stem
@@ -405,20 +411,73 @@ class TextToSpeechDataset(AudioGenerationDataset):
         return "text_to_speech"
 
     def load_content(self, audio_id, content_or_path):
-        with File(content_or_path, "r") as hf:
-            phoneme = hf["phoneme"][audio_id][()]
-            phoneme_duration = hf["phoneme_duration"][audio_id][()]
+        # for training
+        if content_or_path.endswith('.h5'):
+            with File(content_or_path, "r") as hf:
+                phoneme = hf["phoneme"][audio_id][()]
+                phoneme_duration = hf["phoneme_duration"][audio_id][()]
 
-            if "xvector" in hf.keys():
-                spk = hf["xvector"][audio_id][()]
-            else:
-                spk = None
+                if "xvector" in hf.keys():
+                    spk = hf["xvector"][audio_id][()]
+                else:
+                    spk = None
 
-        content = {
-            "phoneme": phoneme,
-            "phoneme_duration": phoneme_duration,
-            "spk": spk,
-        }
+            content = {
+                "phoneme": phoneme,
+                "phoneme_duration": phoneme_duration,
+                "spk": spk,
+            }
+        # for single inference
+        else:
+            caption, ref_audio_path = content_or_path.split('|')
+            ref_audio_path = 'data/egs/tts_speaker_ref.wav'
+            tmp_in = "data/tmp_in.txt"
+            tmp_out = "data/tmp_out.txt"
+            dict_path = "data/english_us_arpa.dict"
+            g2p_model = "data/english_us_arpa.zip"
+            phone_set_path = "data/tts_phone_set.json"
+            with open(tmp_in, "w", encoding="utf-8") as f_in:
+                f_in.write(caption.strip() + "\n")
+
+            cmd = [
+                "mfa", "g2p", "-n", "1", "--dictionary_path", dict_path,
+                tmp_in, g2p_model, tmp_out
+            ]
+            subprocess.run(cmd, check=True)
+
+            phonemes = []
+            with open(tmp_out, "r", encoding="utf-8") as f_out:
+                for line in f_out:
+                    if not line.strip():
+                        continue
+                    parts = line.strip().split("\t")
+                    if len(parts) == 2:
+                        _, phones = parts
+                        phonemes.extend(phones.split())
+
+            with open(phone_set_path, "r", encoding="utf-8") as f_json:
+                phone_set = json.load(f_json)
+
+            phone2id = {p: i for i, p in enumerate(phone_set)}
+            phone_indices = [
+                phone2id.get(p, phone2id.get("spn", 0)) for p in phonemes
+            ]
+
+            os.remove(tmp_in)
+            os.remove(tmp_out)
+
+            import wespeaker
+            model = wespeaker.load_model('english')
+            xvector = model.extract_embedding(ref_audio_path)
+            content = {
+                "phoneme":
+                    np.array(phone_indices, dtype=np.int64),
+                "phoneme_duration":
+                    np.array([1] * len(phone_indices), dtype=np.float64),
+                "spk":
+                    np.array(xvector, dtype=np.float32),
+            }
+
         return content, audio_id
 
     def load_duration(self, content: Any,
@@ -447,11 +506,30 @@ class MidiSingingDataset(AudioGenerationDataset):
         return "singing_voice_synthesis"
 
     def load_content(self, audio_id: str, content_or_path: str):
-        with open(content_or_path, "rb") as file:
-            midi = pickle.load(file)[audio_id]
-        midi["phoneme"] = self.token_encoder.encode(midi["phoneme"])
-        midi["spk"] = self.spk_map[midi["spk"]]
-        text = midi["text"]
+        #midi columns ['phoneme', 'phoneme_duration', 'midi', 'midi_duration', 'is_slur', 'spk', 'text']
+
+        #for training
+        if content_or_path.endswith('pkl'):
+            with open(content_or_path, "rb") as file:
+                midi = pickle.load(file)[audio_id]
+            midi["phoneme"] = self.token_encoder.encode(midi["phoneme"])
+            midi["spk"] = self.spk_map[midi["spk"]]
+            text = midi["text"]
+        #for sinle inference
+        else:
+
+            spk, phone, note, note_dur = content_or_path.split('|')
+            text = ''
+            midi = {
+                'phoneme': self.token_encoder.encode(phone),
+                'phoneme_duration': [1] * len(phone.split()),
+                'midi': eval(note),
+                'midi_duration': eval(note_dur),
+                'is_slur': [0] * len(phone.split()),
+                'spk': self.spk_map[spk],
+                'text': text
+            }
+
         return midi, f"{audio_id}_{text}"
 
     def load_duration(self, content: Any,

@@ -1,0 +1,8 @@
+test:
+  _target_: data_module.dataset.MidiSingingDataset
+  content: data/tmp.yaml
+  task_instruction: ${instruction_embedding}
+  instruction_idx: 1
+  phoneme_set: data/svs_phone_set.json
+  spk_set: data/svs_spk_set.json
+  max_samples: ${max_test_samples}

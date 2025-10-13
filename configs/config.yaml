@@ -1,0 +1,1244 @@
+instruction_embedding: data/instructions/t5_embeddings.h5
+sample_rate: 24000
+downsampling_ratio: 480
+seed: 42
+max_val_samples: 500
+max_test_samples: null
+model:
+  autoencoder:
+    _target_: models.autoencoder.waveform.stable_vae.StableVAE
+    encoder:
+      _target_: models.autoencoder.waveform.stable_vae.OobleckEncoder
+      in_channels: 1
+      channels: 128
+      c_mults:
+      - 1
+      - 2
+      - 4
+      - 8
+      strides:
+      - 2
+      - 4
+      - 6
+      - 10
+      latent_dim: 256
+      use_snake: true
+    decoder:
+      _target_: models.autoencoder.waveform.stable_vae.OobleckDecoder
+      out_channels: 1
+      channels: 128
+      c_mults:
+      - 1
+      - 2
+      - 4
+      - 8
+      strides:
+      - 2
+      - 4
+      - 6
+      - 10
+      latent_dim: 128
+      use_snake: true
+      final_tanh: false
+    io_channels: 1
+    latent_dim: 128
+    downsampling_ratio: 480
+    sample_rate: 24000
+    pretrained_ckpt: /hpc_stor03/sjtu_home/ye.tao/workspace/vae/vae_train_test_one_seg_hdf5_4gpu/vae_24k_all_v2/oeo3wvrc/ckpts/epoch=13-step=1000000.ckpt
+    bottleneck:
+      _target_: models.autoencoder.waveform.stable_vae.VAEBottleneck
+  backbone:
+    _target_: models.dit.audio_dit.LayerFusionAudioDiT
+    img_size: 1000
+    patch_size: 1
+    in_chans: 128
+    out_chans: 128
+    input_type: 1d
+    embed_dim: 1024
+    depth: 24
+    num_heads: 16
+    mlp_ratio: 4.0
+    qkv_bias: false
+    qk_scale: null
+    qk_norm: layernorm
+    norm_layer: layernorm
+    act_layer: geglu
+    context_norm: true
+    use_checkpoint: true
+    time_fusion: ada
+    ada_sola_rank: 32
+    ada_sola_alpha: 32
+    cls_dim: null
+    ta_context_dim: 1024
+    ta_context_fusion: add
+    ta_context_norm: true
+    context_dim: 1024
+    context_fusion: cross
+    context_max_length: null
+    context_pe_method: none
+    pe_method: none
+    rope_mode: shared
+    use_conv: true
+    skip: true
+    skip_norm: true
+  content_adapter:
+    _target_: models.content_adapter.CrossAttentionAdapter
+    content_dim: 1024
+    d_out: 1024
+    prefix_dim: 1024
+    num_heads: 16
+    dropout: 0.2
+    duration_grad_scale: 0.1
+    duration_predictor:
+      _target_: models.content_adapter.DurationPredictor
+      in_channels: 1024
+      filter_channels: 512
+      n_layers: 5
+      kernel_size: 3
+      p_dropout: 0.5
+  content_dim: 1024
+  frame_resolution: 0.005
+  duration_offset: 1.0
+  cfg_drop_ratio: 0.2
+  _target_: models.flow_matching.DummyContentAudioFlowMatching
+  content_encoder:
+    _target_: models.content_encoder.content_encoder.ContentEncoder
+    embed_dim: 1024
+    text_encoder:
+      _target_: models.content_encoder.text_encoder.T5TextEncoder
+      model_name: google/flan-t5-large
+      embed_dim: 1024
+    midi_encoder:
+      _target_: models.content_encoder.midi_encoder.FastSpeech2MIDIEncoder
+      phone_vocab_size: 61
+      midi_vocab_size: 300
+      slur_vocab_size: 2
+      spk_config:
+        _target_: models.content_encoder.midi_encoder.SpkConfig
+        encoding_format: id
+        num_spk: 20
+      d_model: 512
+      num_layers: 4
+      num_heads: 2
+      ffn_kernel_size: 9
+      d_out: 1024
+    audio_encoder:
+      _target_: models.autoencoder.waveform.stable_vae.StableVAEProjectorWrapper
+      vae_dim: 128
+      embed_dim: 1024
+    video_encoder:
+      _target_: models.content_encoder.vision_encoder.MlpVideoEncoder
+      video_feat_dim: 1024
+      embed_dim: 1024
+    phoneme_encoder:
+      _target_: models.content_encoder.midi_encoder.FastSpeech2PhonemeEncoder
+      phone_vocab_size: 92
+      d_model: 512
+      num_layers: 4
+      num_heads: 2
+      ffn_kernel_size: 9
+      d_out: 1024
+      spk_config:
+        _target_: models.content_encoder.midi_encoder.SpkConfig
+        encoding_format: embedding
+        spk_embed_dim: 256
+data_dict:
+  libritts:
+    train:
+      _target_: data_module.dataset.TextToSpeechDataset
+      content: data/libritts/train/phoneme_duration_filtered.jsonl
+      audio: data/libritts/train/audio.jsonl
+      base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
+      base_audio_path: /cpfs02/shared/speechllm/
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+    val:
+      _target_: data_module.dataset.TextToSpeechDataset
+      content: data/libritts/val/phoneme_duration_filtered.jsonl
+      audio: data/libritts/val/audio.jsonl
+      base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
+      base_audio_path: /cpfs02/shared/speechllm/
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+    test:
+      _target_: data_module.dataset.TextToSpeechDataset
+      content: data/libritts/test/phoneme.jsonl
+      base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      max_samples: null
+  audiocaps:
+    train:
+      _target_: data_module.dataset.TextToAudioDataset
+      content: data/audiocaps_v2_kqq/train/caption.jsonl
+      audio: data/audiocaps_v2_kqq/train/audio.jsonl
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+    val:
+      _target_: data_module.dataset.TextToAudioDataset
+      content: data/audiocaps_v2_kqq/val/caption.jsonl
+      audio: data/audiocaps_v2_kqq/val/audio.jsonl
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+    test:
+      _target_: data_module.dataset.TextToAudioDataset
+      content: data/audiocaps_v2_kqq/test/caption.jsonl
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      max_samples: null
+  opencpop:
+    train:
+      _target_: data_module.dataset.MidiSingingDataset
+      content: data/opencpop/train/midi.jsonl
+      audio: data/opencpop/train/audio.jsonl
+      target_sr: 24000
+    val:
+      _target_: data_module.dataset.MidiSingingDataset
+      content: data/opencpop/val/midi.jsonl
+      audio: data/opencpop/val/audio.jsonl
+      target_sr: 24000
+    test:
+      _target_: data_module.dataset.MidiSingingDataset
+      content: data/opencpop/test/midi.jsonl
+  popcs:
+    train:
+      _target_: data_module.dataset.PopCsSingingDataset
+      content: data/popcs/train/phone_pitch.jsonl
+      audio: data/popcs/train/audio.jsonl
+      target_sr: 24000
+      f0_stats: data/popcs/train/f0_mean_std.npy
+      pitch_norm: log
+      use_uv: true
+      max_duration: 16.0
+    val:
+      _target_: data_module.dataset.PopCsSingingDataset
+      content: data/popcs/val/phone_pitch.jsonl
+      audio: data/popcs/val/audio.jsonl
+      target_sr: 24000
+      f0_stats: data/popcs/val/f0_mean_std.npy
+      pitch_norm: log
+      use_uv: true
+      max_duration: 16.0
+    test:
+      _target_: data_module.dataset.PopCsSingingDataset
+      content: data/popcs/test/phone_pitch.jsonl
+      f0_stats: data/popcs/test/f0_mean_std.npy
+      pitch_norm: log
+      use_uv: true
+    train_for_infer:
+      _target_: data_module.dataset.PopCsSingingDataset
+      content: data/popcs/train/phone_pitch.jsonl
+      f0_stats: data/popcs/train/f0_mean_std.npy
+      pitch_norm: log
+      use_uv: true
+  ttshq:
+    train:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/train/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/train/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: true
+    val:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/val/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/val/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: false
+      max_samples: 500
+    test:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/test/content.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+  musdb:
+    train:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/train/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/train/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: true
+    val:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/val/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/val/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: false
+      max_samples: 500
+    test:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/test/content.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      random_crop: false
+      max_samples: null
+  moises:
+    train:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/train/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/train/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: true
+    val:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/val/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/val/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: false
+      max_samples: 500
+    test:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/val/content.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      random_crop: false
+  vggsound_clip:
+    train:
+      _target_: data_module.dataset.VideoToAudioDataset
+      content: data/vggsound/clip/train/content.jsonl
+      audio: data/vggsound/clip/train/audio.jsonl
+      video_fps: 10
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+    val:
+      _target_: data_module.dataset.VideoToAudioDataset
+      content: data/vggsound/clip/val/content.jsonl
+      audio: data/vggsound/clip/val/audio.jsonl
+      video_fps: 10
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+    test:
+      _target_: data_module.dataset.VideoToAudioDataset
+      content: data/vggsound/clip/test/content.jsonl
+      video_fps: 10
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      max_samples: null
+  visual_sound_clip:
+    train:
+      _target_: data_module.dataset.VideoToAudioDataset
+      content: data/visual_sound/clip/train/content.jsonl
+      audio: data/visual_sound/clip/train/audio.jsonl
+      video_fps: 10
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+    val:
+      _target_: data_module.dataset.VideoToAudioDataset
+      content: data/visual_sound/clip/val/content.jsonl
+      audio: data/visual_sound/clip/val/audio.jsonl
+      video_fps: 10
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+    test:
+      _target_: data_module.dataset.VideoToAudioDataset
+      content: data/visual_sound/clip/test/content.jsonl
+      video_fps: 10
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      max_samples: null
+  libritts_100_wham:
+    train:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    val:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/val/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/val/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    test:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/test/metadata_caption.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+  libritts_360_wham:
+    train:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/train/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/train/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    val:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/val/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/val/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    test:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/test/metadata_caption.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+  ljspeech_musan:
+    train:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/train/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/train/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    val:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/val/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/val/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    test:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/test/metadata_caption.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+  vctk_wham:
+    train:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/train/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/train/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    val:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/val/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/val/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    test:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/test/metadata_caption.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+  voicebank_demand:
+    train:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/train_metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/train_metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    val:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/test_metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/test_metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    test:
+      _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/test_metadata_caption.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      max_samples: null
+  m4singer:
+    train:
+      _target_: data_module.dataset.MidiSingingDataset
+      content: data/m4singer/train/midi.jsonl
+      audio: data/m4singer/train/audio.jsonl
+      phoneme_set: data/m4singer/phone_set.json
+      spk_set: data/m4singer/spk_set.json
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+    val:
+      _target_: data_module.dataset.MidiSingingDataset
+      content: data/m4singer/val/midi.jsonl
+      audio: data/m4singer/val/audio.jsonl
+      phoneme_set: data/m4singer/phone_set.json
+      spk_set: data/m4singer/spk_set.json
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+    test:
+      _target_: data_module.dataset.MidiSingingDataset
+      content: data/m4singer/test/midi.jsonl
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      phoneme_set: data/m4singer/phone_set.json
+      spk_set: data/m4singer/spk_set.json
+      max_samples: null
+  msd:
+    train:
+      _target_: data_module.dataset.TextToMusicDataset
+      content: data/msd/all/caption.jsonl
+      audio: data/msd/all/audio.jsonl
+      base_audio_path: /cpfs02/shared/speechllm/million_song_dataset/files/MSD/songs/
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 10.0
+    val:
+      _target_: data_module.dataset.TextToMusicDataset
+      content: data/msd/val/caption.jsonl
+      audio: data/msd/val/audio.jsonl
+      base_audio_path: /cpfs02/shared/speechllm/million_song_dataset/files/MSD/songs/
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 10.0
+  music_caps:
+    test:
+      _target_: data_module.dataset.TextToMusicDataset
+      content: data/music_caps/caption.jsonl
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      max_samples: null
+  esc_audiosr:
+    test:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/esc_test/test/content.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/esc_test/test/
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      random_crop: false
+      max_samples: null
+  vctk_audiosr:
+    test:
+      _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/vctk_test/test/content.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/vctk_test/
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      instruction_idx: 1
+      random_crop: false
+      max_samples: null
+  train_data_list:
+  - _target_: data_module.dataset.TextToSpeechDataset
+    content: data/libritts/train/phoneme_duration_filtered.jsonl
+    audio: data/libritts/train/audio.jsonl
+    base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
+    base_audio_path: /cpfs02/shared/speechllm/
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+  - _target_: data_module.dataset.TextToAudioDataset
+    content: data/audiocaps_v2_kqq/train/caption.jsonl
+    audio: data/audiocaps_v2_kqq/train/audio.jsonl
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+  - _target_: data_module.dataset.MidiSingingDataset
+    content: data/m4singer/train/midi.jsonl
+    audio: data/m4singer/train/audio.jsonl
+    phoneme_set: data/m4singer/phone_set.json
+    spk_set: data/m4singer/spk_set.json
+    target_sr: 24000
+    task_instruction: data/instructions/t5_embeddings.h5
+  - _target_: data_module.dataset.AudioSuperResolutionDataset
+    content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/train/content.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/train/audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+    base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+    target_sr: 24000
+    downsampling_ratio: 480
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+    random_crop: true
+  - _target_: data_module.dataset.AudioSuperResolutionDataset
+    content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/train/content.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/train/audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+    base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+    target_sr: 24000
+    downsampling_ratio: 480
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+    random_crop: true
+  - _target_: data_module.dataset.AudioSuperResolutionDataset
+    content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/train/content.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/train/audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+    base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+    target_sr: 24000
+    downsampling_ratio: 480
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+    random_crop: true
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/train/metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/train/metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/train/metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/train/metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/train_metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/train_metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/train/metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/train/metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+  - _target_: data_module.dataset.VideoToAudioDataset
+    content: data/visual_sound/clip/train/content.jsonl
+    audio: data/visual_sound/clip/train/audio.jsonl
+    video_fps: 10
+    target_sr: 24000
+    task_instruction: data/instructions/t5_embeddings.h5
+  - _target_: data_module.dataset.TextToMusicDataset
+    content: data/msd/all/caption.jsonl
+    audio: data/msd/all/audio.jsonl
+    base_audio_path: /cpfs02/shared/speechllm/million_song_dataset/files/MSD/songs/
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 10.0
+  val_data_list:
+  - _target_: data_module.dataset.TextToSpeechDataset
+    content: data/libritts/val/phoneme_duration_filtered.jsonl
+    audio: data/libritts/val/audio.jsonl
+    base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
+    base_audio_path: /cpfs02/shared/speechllm/
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_samples: 500
+  - _target_: data_module.dataset.TextToAudioDataset
+    content: data/audiocaps_v2_kqq/val/caption.jsonl
+    audio: data/audiocaps_v2_kqq/val/audio.jsonl
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+  - _target_: data_module.dataset.MidiSingingDataset
+    content: data/m4singer/val/midi.jsonl
+    audio: data/m4singer/val/audio.jsonl
+    phoneme_set: data/m4singer/phone_set.json
+    spk_set: data/m4singer/spk_set.json
+    target_sr: 24000
+    task_instruction: data/instructions/t5_embeddings.h5
+  - _target_: data_module.dataset.AudioSuperResolutionDataset
+    content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/val/content.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/val/audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+    base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+    target_sr: 24000
+    downsampling_ratio: 480
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+    random_crop: false
+    max_samples: 500
+  - _target_: data_module.dataset.AudioSuperResolutionDataset
+    content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/val/content.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/val/audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+    base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+    target_sr: 24000
+    downsampling_ratio: 480
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+    random_crop: false
+    max_samples: 500
+  - _target_: data_module.dataset.AudioSuperResolutionDataset
+    content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/val/content.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/val/audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+    base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+    target_sr: 24000
+    downsampling_ratio: 480
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_duration: 5.0
+    random_crop: false
+    max_samples: 500
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/val/metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/val/metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_samples: 500
+    max_duration: 5.0
+    random_crop: false
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/val/metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/val/metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_samples: 500
+    max_duration: 5.0
+    random_crop: false
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/val/metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/val/metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_samples: 500
+    max_duration: 5.0
+    random_crop: false
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/test_metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/test_metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_samples: 500
+    max_duration: 5.0
+    random_crop: false
+  - _target_: data_module.dataset.SpeechEnhancementDataset
+    content: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/val/metadata_caption.jsonl
+    audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/val/metadata_audio.jsonl
+    base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+    base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+    downsampling_ratio: 480
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_samples: 500
+    max_duration: 5.0
+    random_crop: false
+  - _target_: data_module.dataset.VideoToAudioDataset
+    content: data/visual_sound/clip/val/content.jsonl
+    audio: data/visual_sound/clip/val/audio.jsonl
+    video_fps: 10
+    target_sr: 24000
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_samples: 500
+  - _target_: data_module.dataset.TextToMusicDataset
+    content: data/msd/val/caption.jsonl
+    audio: data/msd/val/audio.jsonl
+    base_audio_path: /cpfs02/shared/speechllm/million_song_dataset/files/MSD/songs/
+    target_sr: 24000
+    use_h5_cache: false
+    task_instruction: data/instructions/t5_embeddings.h5
+    max_samples: 500
+    max_duration: 10.0
+loss_fn:
+  _target_: losses.base.LossSumWrapper
+  weights:
+    diff_loss: 1.0
+    local_duration_loss: 1.0
+    global_duration_loss: 1.0
+task_sampling_weights:
+  text_to_audio: 2
+  text_to_music: 3
+  text_to_speech: 1
+  audio_super_resolution: 1
+  speech_enhancement: 1
+  singing_voice_synthesis: 1
+  video_to_audio: 1
+exp_name: base_dummy_layer_fusion_resume_200k
+exp_dir: experiments/all_visual_sound_balanced_sampling/base_dummy_layer_fusion_resume_200k
+logging_file: experiments/all_visual_sound_balanced_sampling/base_dummy_layer_fusion_resume_200k/train.log
+train_dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  dataset:
+    _target_: data_module.dataset.TaskGroupedAudioGenConcatDataset
+    datasets:
+    - _target_: data_module.dataset.TextToSpeechDataset
+      content: data/libritts/train/phoneme_duration_filtered.jsonl
+      audio: data/libritts/train/audio.jsonl
+      base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
+      base_audio_path: /cpfs02/shared/speechllm/
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+    - _target_: data_module.dataset.TextToAudioDataset
+      content: data/audiocaps_v2_kqq/train/caption.jsonl
+      audio: data/audiocaps_v2_kqq/train/audio.jsonl
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+    - _target_: data_module.dataset.MidiSingingDataset
+      content: data/m4singer/train/midi.jsonl
+      audio: data/m4singer/train/audio.jsonl
+      phoneme_set: data/m4singer/phone_set.json
+      spk_set: data/m4singer/spk_set.json
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+    - _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/train/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/train/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: true
+    - _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/train/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/train/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: true
+    - _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/train/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/train/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: true
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/train/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/train/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/train/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/train/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/train/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/train_metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/train_metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/train/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/train/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+    - _target_: data_module.dataset.VideoToAudioDataset
+      content: data/visual_sound/clip/train/content.jsonl
+      audio: data/visual_sound/clip/train/audio.jsonl
+      video_fps: 10
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+    - _target_: data_module.dataset.TextToMusicDataset
+      content: data/msd/all/caption.jsonl
+      audio: data/msd/all/audio.jsonl
+      base_audio_path: /cpfs02/shared/speechllm/million_song_dataset/files/MSD/songs/
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 10.0
+  sampler:
+    _target_: data_module.sampler.TaskIteratingSampler
+    shuffle: true
+    task_sampling_weights:
+      text_to_audio: 2
+      text_to_music: 3
+      text_to_speech: 1
+      audio_super_resolution: 1
+      speech_enhancement: 1
+      singing_voice_synthesis: 1
+      video_to_audio: 1
+  batch_size: 24
+  num_workers: 12
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys:
+    - waveform
+    - duration
+    - instruction
+    torchify_keys:
+    - is_time_aligned
+val_dataloader:
+  _target_: torch.utils.data.DataLoader
+  dataset:
+    _target_: data_module.dataset.AudioGenConcatDataset
+    datasets:
+    - _target_: data_module.dataset.TextToSpeechDataset
+      content: data/libritts/val/phoneme_duration_filtered.jsonl
+      audio: data/libritts/val/audio.jsonl
+      base_content_path: /cpfs04/user/xuxuenan/workspace/x_to_audio_generation
+      base_audio_path: /cpfs02/shared/speechllm/
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+    - _target_: data_module.dataset.TextToAudioDataset
+      content: data/audiocaps_v2_kqq/val/caption.jsonl
+      audio: data/audiocaps_v2_kqq/val/audio.jsonl
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+    - _target_: data_module.dataset.MidiSingingDataset
+      content: data/m4singer/val/midi.jsonl
+      audio: data/m4singer/val/audio.jsonl
+      phoneme_set: data/m4singer/phone_set.json
+      spk_set: data/m4singer/spk_set.json
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+    - _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/val/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/val/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/TTS_HQ/
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: false
+      max_samples: 500
+    - _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/val/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb/val/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/musdb
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: false
+      max_samples: 500
+    - _target_: data_module.dataset.AudioSuperResolutionDataset
+      content: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/val/content.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises/val/audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+      base_audio_path: /oss-speechllm-a100/xuxuenan/audio_super_resolution/moises
+      target_sr: 24000
+      downsampling_ratio: 480
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_duration: 5.0
+      random_crop: false
+      max_samples: 500
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/val/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan/val/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/LJSpeech-1.1+Musan
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/val/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham/val/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/val/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham/val/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/Libritts_360+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/test_metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand/test_metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/voicebank+demand
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    - _target_: data_module.dataset.SpeechEnhancementDataset
+      content: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/val/metadata_caption.jsonl
+      audio: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham/val/metadata_audio.jsonl
+      base_content_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+      base_audio_path: /oss-speechllm-a100/xuxuenan/speech_enhancement/VCTK+Wham
+      downsampling_ratio: 480
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 5.0
+      random_crop: false
+    - _target_: data_module.dataset.VideoToAudioDataset
+      content: data/visual_sound/clip/val/content.jsonl
+      audio: data/visual_sound/clip/val/audio.jsonl
+      video_fps: 10
+      target_sr: 24000
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+    - _target_: data_module.dataset.TextToMusicDataset
+      content: data/msd/val/caption.jsonl
+      audio: data/msd/val/audio.jsonl
+      base_audio_path: /cpfs02/shared/speechllm/million_song_dataset/files/MSD/songs/
+      target_sr: 24000
+      use_h5_cache: false
+      task_instruction: data/instructions/t5_embeddings.h5
+      max_samples: 500
+      max_duration: 10.0
+  batch_size: 24
+  shuffle: false
+  num_workers: 12
+  collate_fn:
+    _target_: data_module.collate_function.PaddingCollate
+    pad_keys:
+    - waveform
+    - duration
+    - instruction
+    torchify_keys:
+    - is_time_aligned
+warmup_params:
+  warmup_steps: 10000
+  warmup_epochs: null
+  epoch_length: 2000
+gradient_accumulation_steps: 1
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 5.0e-05
+  weight_decay: 0.01
+lr_scheduler:
+  _target_: transformers.get_scheduler
+  name: constant_with_warmup
+epochs: 200
+epoch_length: 2000
+trainer:
+  _target_: audio_generation_trainer.MultiTaskAudioGenerationTrainer
+  project_dir: experiments/all_visual_sound_balanced_sampling/base_dummy_layer_fusion_resume_200k
+  logging_file: experiments/all_visual_sound_balanced_sampling/base_dummy_layer_fusion_resume_200k/train.log
+  gradient_accumulation_steps: 1
+  max_grad_norm: 1.0
+  permanent_save_every_n_steps: 100000
+  epochs: 200
+  epoch_length: 2000
+  save_last_k: 2
+  early_stop: null
+  logging_config:
+    _target_: trainer.LoggingConfig
+    report_to: swanlab
+    project: x_to_audio_pjlab
+    save_dir: experiments/all_visual_sound_balanced_sampling/base_dummy_layer_fusion_resume_200k
+    name: base_dummy_layer_fusion_resume_200k
+    resume_id: null
+    workspace: xlance-maa
+  metric_monitor:
+    _target_: trainer.MetricMonitor
+    metric_name: loss
+    mode: min
+  resume_from_checkpoint: experiments/all_visual_sound_balanced_sampling/base_dummy_layer_fusion_resume_200k/checkpoints/step_200000

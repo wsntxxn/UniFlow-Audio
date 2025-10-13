@@ -177,7 +177,6 @@ ckpts/
 evaluation/result/
 
 # Raw / processed data file
-data/*
 
 # Docker build files
 docker/
@@ -197,4 +196,12 @@ test*
 
 start.sh
 
-
+# macOS sys files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.DocumentRevisions-V100
+.fseventsd
