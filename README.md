@@ -174,7 +174,7 @@ This will infer on AudioCaps test set with the default configurations in `config
 For evaluation, please refer to [EVALUATION.md](./docs/EVALUATION.md). 
 
 ## :memo: TODO
-- [ ] Add inference script for pre-trained models.
+- [x] Add inference script for pre-trained models.
 - [x] Add README about evaluation guidance.
 
 ## :book: Citation
