@@ -21,6 +21,7 @@ conda create -n uniflow-audio -c conda-forge python=3.10 montreal-forced-aligner
 ```
 Then install python dependencies:
 ```bash
+conda activate uniflow-audio
 pip install -r requirements.txt
 ```
 
@@ -33,6 +34,7 @@ pip install git+https://github.com/wenet-e2e/wespeaker.git
 ```
 
 **Optional Dependencies for V2A Inference**
+
 To perform video-to-audio (V2A) generation inference, please install the following additional libraries:
 
 ```bash
