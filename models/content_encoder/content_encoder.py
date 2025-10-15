@@ -33,7 +33,6 @@ class ContentEncoder(nn.Module):
 
         zero_la_content = torch.zeros(1, 1, self.embed_dim, device=device)
         for content, task in zip(batch_content, batch_task):
-
             if task == "audio_super_resolution" or task == "speech_enhancement":
                 content_dict = {
                     "waveform": torch.as_tensor(content).float(),
@@ -136,6 +135,8 @@ class ContentEncoder(nn.Module):
                 la_content_output_dict = self.pitch_encoder.encode_pitch(
                     **content_dict
                 )
+            else:
+                raise ValueError(f"Unsupported task: {task}")
 
             batch_content_output.append(content_output_dict["output"][0])
             batch_content_mask.append(content_output_dict["mask"][0])
@@ -233,6 +234,8 @@ class BatchedContentEncoder(ContentEncoder):
                 "uv": batch_content["uv"].float().to(device),
             }
             la_content_output = self.pitch_encoder.encode_pitch(**content_dict)
+        else:
+            raise ValueError(f"Unsupported task: {task}")
 
         return {
             "content": content_output["output"],

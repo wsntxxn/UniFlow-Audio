@@ -1,6 +1,0 @@
-test:
-  _target_: data_module.dataset.VideoToAudioDataset
-  content: data/tmp.yaml
-  video_fps: 10
-  task_instruction: ${instruction_embedding}
-  instruction_idx: 1

@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from utils.config import register_omegaconf_resolvers
 from models.common import LoadPretrainedBase
-from utils.general import sanitize_filename, extract_clip_feature_from_single_video
+from utils.general import sanitize_filename
 
 try:
     import torch_npu
@@ -37,37 +37,15 @@ def main():
     parse_config_from_command_line()
     config = configs[0]
 
-    single_infer = config.get("single_infer", False)
-
-    if single_infer:
-        task = config.get("task", 't2a')
-        caption = config.get("caption", 'dog bark')
-        audio_id = config.get("audio_id", '1000')
-        with open('data/tmp.yaml', mode='w') as f:
-            if task == 'se':
-                f.write(f'{{"UUID": "{audio_id}", "InputPath": "{caption}"}}')
-            elif task == 'tts':
-                f.write(f'{{"audio_id": "{audio_id}", "audio": "{caption}"}}')
-            elif task == 'svs':
-                f.write(f'{{"audio_id": "{audio_id}", "midi": "{caption}"}}')
-            elif task == 'v2a':
-                video_feature, save_path = extract_clip_feature_from_single_video(
-                    caption
-                )
-                f.write(
-                    f'{{"audio_id": "{audio_id}", "video": "{save_path}"}}'
-                )
-            else:
-                f.write(
-                    f'{{"audio_id": "{audio_id}", "caption": "{caption}"}}'
-                )
-
     exp_dir, ckpt_dir = None, None
     if os.path.isdir(config["exp_dir"]):
         exp_dir = Path(config["exp_dir"])
-    if os.path.isdir(config["ckpt_dir"]):
+    if os.path.isdir(config["ckpt_dir_or_file"]):
         ckpt_dir = Path(config["ckpt_dir"])
         ckpt_path = ckpt_dir / "model.safetensors"
+    elif os.path.isfile(config["ckpt_dir_or_file"]):
+        ckpt_path = config["ckpt_dir_or_file"]
+        ckpt_dir = Path(ckpt_path).parent
 
     if ckpt_dir is None and exp_dir is None:
         if not os.path.exists(config["ckpt_dir"]):
@@ -120,17 +98,19 @@ def main():
 
     model, test_dataloader = accelerator.prepare(model, test_dataloader)
 
-    scheduler = getattr(
-        noise_schedulers,
-        config["noise_scheduler"]["type"],
-    ).from_pretrained(
-        config["noise_scheduler"]["name"],
-        subfolder="scheduler",
-    )
+    if "noise_scheduler" in config:
+        scheduler = getattr(
+            noise_schedulers,
+            config["noise_scheduler"]["type"],
+        ).from_pretrained(
+            config["noise_scheduler"]["name"],
+            subfolder="scheduler",
+        )
+    else:
+        scheduler = None
 
     if config["wav_dir_root"] is not None:
         wav_dir_root = Path(config["wav_dir_root"])
-        wav_dir_root.mkdir(parents=True, exist_ok=True)
     else:
         wav_dir_root = exp_dir
     audio_output_dir = wav_dir_root / config["wav_dir"]

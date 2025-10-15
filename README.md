@@ -10,68 +10,40 @@ It can be customized easily with all code exposed in [trainer.py](./train.py).
 
 ### Dependency Installation
 
-First, please install the training dependencies required for the project.
-
-```
-conda create -n uniflow-aduio python=3.10
-pip install requirements.txt
-```
-
-
-
-**Additional Dependencies for TTS Inference**
-
-To perform Text-to-Speech (TTS) inference, you need to install the following extra dependencies. Note: To avoid potential compatibility issues, please be sure to install `kaldi`, `pynini`, and `montreal-forced-aligner` using Conda.
+First, please install dependencies required for training and inference.
 
 ```bash
-conda install -c conda-forge kaldi pynini montreal-forced-aligner
+conda create -n uniflow-audio python=3.10
+```
+If you want to perform text-to-speech (TTS) synthesis inference, you also need to install `montreal-forced-aligner`, so executing the following command instead:
+```bash
+conda create -n uniflow-audio -c conda-forge python=3.10 montreal-forced-aligner
+```
+Then install python dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+**Optional Dependencies for TTS Inference**
+
+To extract speaker embedding for TTS inference, you need to install `wespeaker`: 
+
+```bash
 pip install git+https://github.com/wenet-e2e/wespeaker.git
 ```
 
-**Additional Dependencies for V2A Inference**
-
-To perform Video-to-Audio (V2A) inference, please install the following libraries:
+**Optional Dependencies for V2A Inference**
+To perform video-to-audio (V2A) generation inference, please install the following additional libraries:
 
 ```bash
 pip install moviepy av torchvision
 ```
 
-### Models and Configuration
-
-Before running inference, please ensure you have the following files ready:
-
-*   **Model Checkpoint**: Use the `model.safetensors` we provide and specify its path in the `ckpt_dir` argument of the inference script.
-*   **VAE Checkpoint**: Use the `vae.ckpt` we provide and ensure its path is correctly specified in the configuration file.
-*   **Configuration File**: Use our static configuration file located at `configs/config.yaml` for inference. This config must be used together with the corresponding model checkpoint. You should specify the path to the VAE checkpoint in the `model.autoencoder.pretrained_ckpt` field within this file.
-
-We design 10 instructions for each task, which you can find in `data/instructions/task_instruction.csv`. These instructions have been encoded using the T5 model and are stored as embeddings in `data/instructions/t5_embeddings.h5` for direct use by the model during inference.
-
 ### Running Inference
 
-We support both batch and single-instance inference modes. 
-
-*   **Batch Inference**: To process multiple data samples, use the `bash_scripts/infer_batch.sh` script.
-*   **Single Inference**: To process a single data sample, use the `bash_scripts/infer_single.sh` script.
-
-Different inference tasks require different types of input data, as detailed below:
-
-*   **Text-to-Audio (T2A) / Text-to-Music (T2M)**:
-    *   `caption`: Provide a plain text description.
-*   **Speech Enhancement (SE) / Speech Super-Resolution (SR)**:
-    *   `audio_path`: Provide the file path to the audio to be processed.
-*   **Video-to-Audio (V2A)**:
-    *   `video_path`: Provide the video file path. The video content will be encoded using the CLIP model.
-*   **Singing Voice Synthesis (SVS)**:
-    *   `speaker_name`: Specify the speaker's name.
-    *   `phoneme_sequence`: Provide the phoneme sequence of the lyrics.
-    *   `note`: Provide the note sequence.
-    *   `note_duration`: Provide the duration of each note.
-*   **Text-to-Speech (TTS)**:
-    *   `transcript`: Provide the text to be synthesized. This text will be automatically converted to a phoneme sequence using the [Montreal Forced Aligner](https://mfa-models.readthedocs.io/en/latest/index.html).
-    *   `ref_speaker_audio`: Provide the reference speaker's audio. Acoustic features (X-vector) will be extracted from this audio using [WeSpeaker](https://github.com/wenet-e2e/wespeaker).
+Please refer to [INFERENCE_CLI.md](./docs/INFERENCE_CLI.md) for inference CLI examples.
 
 ## :hammer_and_wrench: Training
-
 
 ### Data Format
 
@@ -163,9 +135,9 @@ exp_dir="/path/to/exp_dir"
 ckpt_dir="/path/to/exp_dir/checkpoints/epoch_xxx"
 accelerate launch \
   inference.py \
-  data@data_dict=tta_audiocaps \
+  data@data_dict=t2a_audiocaps \
   exp_dir=${exp_dir} \
-  ckpt_dir=${ckpt_dir}
+  ckpt_dir_or_file=${ckpt_dir}
 ```
 This will infer on AudioCaps test set with the default configurations in `configs/inference.yaml`.
 

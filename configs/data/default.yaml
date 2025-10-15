@@ -1,12 +1,3 @@
 defaults:
   - datasets@libritts: libritts
   - datasets@audiocaps: audiocaps
-  - datasets@t2a: t2a
-  - datasets@t2a_batch: t2a_batch
-  - datasets@se: se
-  - datasets@sr: sr
-  - datasets@svs: svs
-  - datasets@t2m: t2m
-  - datasets@tts: tts
-  - datasets@v2a: v2a
-

@@ -16,7 +16,7 @@ test_dataloader:
     pad_keys: ["instruction"]
 
 exp_dir: ""
-ckpt_dir: ""
+ckpt_dir_or_file: ""
 wav_dir: inference
 
 noise_scheduler:
