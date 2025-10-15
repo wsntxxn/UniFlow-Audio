@@ -14,7 +14,7 @@ First, please install the training dependencies required for the project.
 
 ```
 conda create -n uniflow-aduio python=3.10
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 
 
