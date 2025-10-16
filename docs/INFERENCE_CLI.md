@@ -10,7 +10,7 @@ Below are examples for different tasks:
 python inference_cli.py tts \
     --transcript "Hello this is a special sentence with zyloph" \
     --ref_speaker_speech ./data/egs/tts_speaker_ref.wav \
-    --model_name "UniFlow-Audio-large"
+    --model_name "UniFlow-Audio-large" \
     --output_path speech.wav
 ```
 
@@ -29,11 +29,11 @@ Music scores are represented as sequences separated by `<sep>`: lyric, note name
 ```bash
 python inference_cli.py t2a \
     --caption "a man is speaking then a dog barks" \
-    --model_name "UniFlow-Audio-large"
+    --model_name "UniFlow-Audio-large" \
     --output_path audio.wav
 python inference_cli.py t2m \
     --caption "pop music with a male singing rap" \
-    --model_name "UniFlow-Audio-large"
+    --model_name "UniFlow-Audio-large" \
     --output_path music.wav
 ```
 
@@ -41,13 +41,13 @@ python inference_cli.py t2m \
 ```bash
 python inference_cli.py se \
     --noisy_speech ./data/egs/se_noisy_sample.wav \
-    --model_name "UniFlow-Audio-large"
+    --model_name "UniFlow-Audio-large" \
     --output_path clean_speech.wav
 
 python inference_cli.py sr \
-    --noisy_speech ./data/egs/sr_low_sr_sample.wav \
-    --model_name "UniFlow-Audio-large"
-    --output_path clean_speech.wav
+    --low_sr_audio ./data/egs/sr_low_sr_sample.wav \
+    --model_name "UniFlow-Audio-large" \
+    --output_path 24k_sr_audio.wav
 ```
 
 ### Video-to-Audio (V2A)

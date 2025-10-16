@@ -11,7 +11,6 @@ import numpy as np
 
 from modeling_uniflow_audio import UniFlowAudioModel
 from constants import TIME_ALIGNED_TASKS, NON_TIME_ALIGNED_TASKS
-from utils.video import read_video_frames, merge_audio_video
 
 
 class InferenceCLI:
@@ -262,6 +261,8 @@ class InferenceCLI:
         num_steps: int = 25,
         output_path: str = "./output.mp4",
     ):
+        from utils.video import read_video_frames, merge_audio_video
+
         self.init_video_preprocessor()
         video_path = video
         video = read_video_frames(
