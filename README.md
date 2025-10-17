@@ -1,6 +1,6 @@
 # :sound: UniFlow-Audio: Unified Flow Matching for Audio Generation from Omni-Modalities
 
-[![arXiv](https://img.shields.io/badge/arXiv-2509.24391-brightgreen.svg?style=flat-square)](https://arxiv.org/abs/2509.24391)  [![githubio](https://img.shields.io/badge/GitHub.io-Audio_Samples-blue?logo=Github&style=flat-square)](https://wsntxxn.github.io/uniflow_audio) [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/wsntxxn/UniFlow-Audio)
+[![arXiv](https://img.shields.io/badge/arXiv-2509.24391-brightgreen.svg?logo=Arxiv&style=flat-square)](https://arxiv.org/abs/2509.24391)  [![githubio](https://img.shields.io/badge/GitHub.io-Audio_Samples-blue?logo=Github&style=flat-square)](https://wsntxxn.github.io/uniflow_audio) [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/wsntxxn/UniFlow-Audio) [![Hugging Face Model](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Model-yellow?style=flat-square)](https://huggingface.co/wsntxxn/UniFlow-Audio-large)
 
 This repository is the official implementation of the paper "[UniFlow-Audio: Unified Flow Matching for Audio Generation from Omni-Modalities](https://arxiv.org/abs/2509.24391)".
 We provide a lightweight training framework, built on [Accelerate](https://huggingface.co/docs/accelerate/index).
