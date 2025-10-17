@@ -192,6 +192,9 @@ pyrightconfig.json
 # Demo files
 demo/
 
+# Binary data files
+**/*.h5
+
 test*
 
 start.sh
