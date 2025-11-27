@@ -1,12 +1,12 @@
 from pathlib import Path
+import os
 from dataclasses import dataclass
 from collections import defaultdict
 from abc import abstractmethod
 from typing import Any, Sequence
 import json
 import pickle
-import os
-import subprocess
+import random
 
 from tqdm import tqdm
 import numpy as np
@@ -14,11 +14,14 @@ from h5py import File
 import torch
 from torch.utils.data import Dataset
 import torchaudio
-import random
 
+from utils.petrel_oss import is_petrel_client_available, load_audio_from_petrel_oss
 from utils.diffsinger_utilities import norm_interp_f0, TokenTextEncoder
 from utils.general import read_jsonl_to_mapping
 from constants import TIME_ALIGNED_TASKS, NON_TIME_ALIGNED_TASKS
+
+if is_petrel_client_available():
+    from petrel_client.client import Client
 
 
 def read_from_h5(
@@ -90,10 +93,15 @@ class AudioWaveformDataset(HDF5DatasetMixin):
 
     target_sr: int | None = None
     use_h5_cache: bool = True
+    petrel_oss_config: str | None = None
 
     def __post_init__(self):
         super().__post_init__()
         self.h5_src_sr_map = {}
+        if is_petrel_client_available() and self.petrel_oss_config:
+            self.petrel_client = Client(self.petrel_oss_config)
+        else:
+            self.petrel_client = None
 
     def load_waveform(self, audio_id: str, audio_path: str):
         if audio_path.endswith(".hdf5") or audio_path.endswith(".h5"):
@@ -115,7 +123,12 @@ class AudioWaveformDataset(HDF5DatasetMixin):
                 with open('./broken_audio_list.txt', 'a') as f:
                     f.write(audio_id + ',' + audio_path + '\n')
                 return torch.zeros([100], dtype=torch.float32)
-        else:
+        elif audio_path.startswith("s3://"):  # from petrel OSS bucket
+            waveform, orig_sr = load_audio_from_petrel_oss(
+                audio_path, self.petrel_client
+            )
+            waveform = waveform.mean(0)
+        else:  # from raw audio file
             try:
                 waveform, orig_sr = torchaudio.load(audio_path)
 
@@ -166,9 +179,9 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
             self.content, id_col_in_content, self.content_col
         )
         # id_to_content: {'id1': '<content1>', 'id2': '<content2>'}
-        self.base_content_path = Path(
-            self.base_content_path
-        ) if self.base_content_path else None
+        # self.base_content_path = Path(
+        #     self.base_content_path
+        # ) if self.base_content_path else None
 
         id_col_in_audio = self.id_col_in_audio or self.id_col
         if self.audio:
@@ -178,9 +191,9 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
         else:
             self.id_to_audio = None
         # id_to_audio: {'id1': '<audio path1>', 'id2': '<audio path2>'}
-        self.base_audio_path = Path(
-            self.base_audio_path
-        ) if self.base_audio_path else None
+        # self.base_audio_path = Path(
+        #     self.base_audio_path
+        # ) if self.base_audio_path else None
 
         if self.condition:
             id_col_in_condition = self.id_col_in_condition or self.id_col
@@ -239,13 +252,15 @@ class AudioGenerationDataset(AudioWaveformDataset, TaskMixin):
         """
         content_or_path = self.id_to_content[audio_id]
         if self.base_content_path:
-            content_or_path = str(self.base_content_path / content_or_path)
+            content_or_path = os.path.join(
+                self.base_content_path, content_or_path
+            )  # compatible with s3:// prefix
         content, item_name = self.load_content(audio_id, content_or_path)
 
         if self.id_to_audio:  # training, audio is the target
             audio_path = self.id_to_audio[audio_id]
             if self.base_audio_path:
-                audio_path = str(self.base_audio_path / audio_path)
+                audio_path = os.path.join(self.base_audio_path, audio_path)
             waveform = self.load_waveform(audio_id, audio_path)
         else:  # inference, only content is available
             waveform = None
@@ -336,13 +351,15 @@ class TextToMusicDataset(TextToAudioDataset):
     def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
         content_or_path = self.id_to_content[audio_id]
         if self.base_content_path:
-            content_or_path = str(self.base_content_path / content_or_path)
+            content_or_path = os.path.join(
+                self.base_content_path, content_or_path
+            )
         content, item_name = self.load_content(audio_id, content_or_path)
 
         if self.id_to_audio:  # training, audio is the target
             audio_path = self.id_to_audio[audio_id]
             if self.base_audio_path:
-                audio_path = str(self.base_audio_path / audio_path)
+                audio_path = os.path.join(self.base_audio_path, audio_path)
             waveform = self.load_waveform(audio_id, audio_path)
             # randomly select a segment
             if self.max_frame_num is not None and len(
@@ -534,7 +551,7 @@ class PopCsSingingDataset(AudioGenerationDataset):
 class AudioSuperResolutionDataset(AudioGenerationDataset):
 
     downsampling_ratio: int | None
-    content_col: str = "caption"
+    content_col: str = "low_sr_audio"
     max_duration: float | None = None
     random_crop: bool = True
 
@@ -568,7 +585,9 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
     def load_content_waveform(self, audio_id: str) -> tuple[Any, torch.Tensor]:
         content_or_path = self.id_to_content[audio_id]
         if self.base_content_path:
-            content_or_path = str(self.base_content_path / content_or_path)
+            content_or_path = os.path.join(
+                self.base_content_path, content_or_path
+            )
         content = self.load_content(audio_id, content_or_path)
 
         # truncate long audio clip
@@ -589,7 +608,7 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
         if self.id_to_audio:  # training, audio is the target
             audio_path = self.id_to_audio[audio_id]
             if self.base_audio_path:
-                audio_path = str(self.base_audio_path / audio_path)
+                audio_path = os.path.join(self.base_audio_path, audio_path)
             waveform = self.load_waveform(audio_id, audio_path)
             if start_index is not None:
                 waveform = waveform[start_index:start_index +
@@ -604,9 +623,7 @@ class AudioSuperResolutionDataset(AudioGenerationDataset):
 @dataclass(kw_only=True)
 class SpeechEnhancementDataset(AudioSuperResolutionDataset):
 
-    id_col: str = "UUID"
-    content_col: str = "InputPath"
-    audio_col: str = "WavPath"
+    content_col: str = "noisy_speech"
 
     @property
     def task(self):
@@ -674,15 +691,27 @@ if __name__ == '__main__':
     # dataset = TaskGroupedAudioGenConcatDataset(
     dataset = AudioGenConcatDataset(
         datasets=[
-            TextToAudioDataset(
-                content="./data/audiocaps_v2/test/caption.jsonl",
-                audio="./data/audiocaps_v2/test/audio.jsonl",
+            # TextToAudioDataset(
+            #     content="./data/audiocaps_v2/test/caption.jsonl",
+            #     audio="./data/audiocaps_v2/test/audio.jsonl",
+            #     task_instruction="./data/instructions/t5_embeddings.h5",
+            #     instruction_idx=1,
+            #     target_sr=24000
+            # ),
+            VideoToAudioDataset(
+                content="./data/visual_sound/clip/train/content.jsonl",
+                audio="./data/visual_sound/clip/train/audio.jsonl",
+                base_content_path="s3://data/VGGSound/video",
+                video_fps=10,
+                target_sr=24000,
                 task_instruction="./data/instructions/t5_embeddings.h5",
                 instruction_idx=1,
-                target_sr=24000
-            ),
+                petrel_oss_config=
+                "/mnt/shared-storage-user/xuxuenan/petreloss.conf"
+            )
         ]
     )
+    item = dataset.datasets[1][0]
     # sampler = TaskIteratingSampler(dataset, shuffle=True)
     # batch_sampler = TaskGroupedSequentialBatchSampler(
     #     dataset, batch_size=16, shuffle=False

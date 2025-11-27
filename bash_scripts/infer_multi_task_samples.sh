@@ -1,6 +1,7 @@
-exp_dir=experiments/large_hybrid_layer_fusion/
+ckpt_dir=experiments/large_dummy_layer_fusion/iters_400000
 num_steps=20
-infer_dir="infer_epoch_last_steps_${num_steps}"
+iters=400000
+infer_dir="infer_iters_${iters}_steps_${num_steps}"
 export PYTHONPATH=.
 
 num_samples=50
@@ -32,8 +33,7 @@ done
 rm -f "$__snapshot_before"
 
 python inference.py \
-    exp_dir=${exp_dir} \
-    +use_best=False \
+    ckpt_dir_or_file=${ckpt_dir} \
     data@data_dict=test_cfg \
     infer_args.guidance_scale=5.0 \
     infer_args.num_steps=${num_steps} \
@@ -41,8 +41,7 @@ python inference.py \
     max_test_samples=${num_samples}
 
 python inference.py \
-    exp_dir=${exp_dir} \
-    +use_best=False \
+    ckpt_dir_or_file=${ckpt_dir} \
     data@data_dict=test_no_cfg \
     infer_args.guidance_scale=1.0 \
     infer_args.num_steps=${num_steps} \

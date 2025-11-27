@@ -121,7 +121,7 @@ This will use `path/to/config/dir/conf.yaml` as the configuration entrypoint, an
 
 Command line overrides are stil supported:
 ```bash
-accelerate launch --config_file configs/accelerate/8gpus.yaml train.py \
+accelerate launch --config_file configs/accelerate/nvidia/8gpus.yaml train.py \
     warmup_params.warmup_steps=500 \
     train_dataloader.batch_size=12 \
     val_dataloader.batch_size=12 \

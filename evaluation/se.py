@@ -784,7 +784,7 @@ def compare(refdir, degdir, uuid_jsonl, use_tqdm=True):
     reffiles = sorted(glob.glob('%s/*.wav' % refdir))
     degfiles = sorted(glob.glob('%s/*.wav' % degdir))
     uuid2ref_audio_path = read_jsonl_to_mapping(
-        uuid_jsonl, key_col='UUID', value_col='WavPath'
+        uuid_jsonl, key_col='audio_id', value_col='audio'
     )
 
     degfiles = sorted(
@@ -821,7 +821,11 @@ if __name__ == "__main__":
         '--gen_dir', type=str, help='generated directory', required=True
     )
     parser.add_argument(
-        '--uuid_jsonl', type=str, help='uuid jsonl file', required=True
+        '--audio_jsonl',
+        type=str,
+        help='audio jsonl file, with each line in the format of ' \
+        '{"audio_id": "[AUDIO_ID]", "audio": "/path/to/audio"}',
+        required=True
     )
     parser.add_argument(
         '--output_file', type=str, help='output file', required=True
@@ -829,7 +833,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     t1 = time.time()
-    res = compare(args.ref_dir, args.gen_dir, args.uuid_jsonl)
+    res = compare(args.ref_dir, args.gen_dir, args.audio_jsonl)
     t2 = time.time()
 
     pm = np.array([x[0:] for x in res])

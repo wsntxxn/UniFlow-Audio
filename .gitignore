@@ -185,6 +185,18 @@ docker/
 logs/
 *log
 
+# Data
+data/
+!data/egs/
+!data/instructions
+
+# Configs
+configs_hcluster/
+
+# Scripts
+bash_scripts_hcluster/
+bash_scripts/
+
 # VS Code settings
 .vscode/
 pyrightconfig.json

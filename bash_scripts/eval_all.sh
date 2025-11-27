@@ -45,7 +45,7 @@ if [ "${v2a_only}" -eq 0 ]; then
     $PYTHONBIN evaluation/tts.py \
         --audio_dir ${infer_dir}/text_to_speech/ \
         --libritts_txt_dir /cpfs02/shared/speechllm/data/LibriTTS \
-        --xp_name $exp_name \
+        --exp_name $exp_name \
         --ref_transcript_path data/libritts/test/ref_transcription.json \
         --ref_audio_path data/libritts/test/ref_audio.json \
         --output_path ${infer_dir}/tts_results.txt

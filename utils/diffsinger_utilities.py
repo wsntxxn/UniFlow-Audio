@@ -5,7 +5,7 @@ import json
 from collections import OrderedDict
 from typing import Union
 
-from pypinyin import pinyin, lazy_pinyin, Style
+from pypinyin import lazy_pinyin
 import numpy as np
 import librosa
 import torch

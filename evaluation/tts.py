@@ -1,11 +1,11 @@
 # python evaluation/tts.py  \
 #   --audio_dir '/cpfs_shared/jiahao.mei/code/x_to_audio_generation/experiments/voiceflow_infer' \
-#   --xp_name voiceflow
+#   --exp_name voiceflow
 
 # python evaluation/tts.py  \
 #     --audio_dir '/cpfs_shared/jiahao.mei/code/x_to_audio_generation/experiments/voiceflow_infer' \
 #     --libritts_txt_dir '/cpfs_shared/jiahao.mei/data/tts/LibriTTS' \
-#     --xp_name voiceflow
+#     --exp_name voiceflow
 
 from pathlib import Path
 import os
@@ -19,7 +19,10 @@ from tqdm import tqdm
 from whisper_normalizer.english import EnglishTextNormalizer
 import torch.nn.functional as F
 import torchaudio
-import nemo.collections.asr as nemo_asr
+from nemo.collections.asr.models import EncDecRNNTBPEModel, EncDecSpeakerLabelModel
+if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
+    from nemo.core.connectors.save_restore_connector import SaveRestoreConnector
+    from huggingface_hub import snapshot_download
 
 from utils.general import read_jsonl_to_mapping
 
@@ -56,10 +59,26 @@ def load_asr_model(model_name, lang='en', ckpt_dir=""):
                 model_size, device="cuda", compute_type="float16"
             )
     elif model_name == "nemo":  # requires numpy<2.0
-        import nemo.collections.asr as nemo_asr
-        model = nemo_asr.models.EncDecRNNTBPEModel.from_pretrained(
-            "nvidia/stt_en_conformer_transducer_xlarge"
-        )
+        if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
+            save_restore_connector = SaveRestoreConnector()
+            nemo_dir = snapshot_download(
+                "nvidia/stt_en_conformer_transducer_xlarge"
+            )
+            model = EncDecRNNTBPEModel.restore_from(
+                restore_path=os.path.join(
+                    nemo_dir, "stt_en_conformer_transducer_xlarge.nemo"
+                ),
+                override_config_path=None,
+                map_location=None,
+                strict=True,
+                return_config=False,
+                trainer=None,
+                save_restore_connector=save_restore_connector
+            )
+        else:
+            model = EncDecRNNTBPEModel.from_pretrained(
+                "nvidia/stt_en_conformer_transducer_xlarge"
+            )
 
     return model
 
@@ -118,15 +137,32 @@ def extract_utt_id(filepath):
 
 def evaluate_tts(
     audio_dir_or_jsonl: str, libritts_txt_dir: str, ref_transcript_path: str,
-    ref_audio_path: str, output_path: str, model_name: str, xp_name: str
+    ref_audio_path: str, output_path: str, model_name: str, exp_name: str
 ):
     print("Loading ASR model...")
     asr_model = load_asr_model(model_name)
 
     print("Loading speaker embedding model...")
-    speaker_model = nemo_asr.models.EncDecSpeakerLabelModel.from_pretrained(
-        "nvidia/speakerverification_en_titanet_large"
-    )
+    if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
+        save_restore_connector = SaveRestoreConnector()
+        nemo_dir = snapshot_download(
+            "nvidia/speakerverification_en_titanet_large"
+        )
+        speaker_model = EncDecSpeakerLabelModel.restore_from(
+            restore_path=os.path.join(
+                nemo_dir, "speakerverification_en_titanet_large.nemo"
+            ),
+            override_config_path=None,
+            map_location=None,
+            strict=True,
+            return_config=False,
+            trainer=None,
+            save_restore_connector=save_restore_connector
+        )
+    else:
+        speaker_model = EncDecSpeakerLabelModel.from_pretrained(
+            "nvidia/speakerverification_en_titanet_large"
+        )
 
     print("Building reference transcript map...")
     if not Path(ref_transcript_path).exists():
@@ -228,7 +264,7 @@ def evaluate_tts(
     if output_path == '':
         output_path = Path(
             './evaluation/result'
-        ) / f'tts_results_{model_name}_{xp_name}.jsonl'
+        ) / f'tts_results_{model_name}_{exp_name}.jsonl'
     else:
         output_path = Path(output_path)
 
@@ -292,7 +328,7 @@ if __name__ == "__main__":
         help='Name of ASR model to use'
     )
     parser.add_argument(
-        '--xp_name', type=str, default='', help='Experiment name'
+        '--exp_name', type=str, default='', help='Experiment name'
     )
 
     args = parser.parse_args()
@@ -300,5 +336,5 @@ if __name__ == "__main__":
     evaluate_tts(
         args.audio_dir_or_jsonl, args.libritts_txt_dir,
         args.ref_transcript_path, args.ref_audio_path, args.output_path,
-        args.model_name, args.xp_name
+        args.model_name, args.exp_name
     )

@@ -29,32 +29,37 @@ def extract_audio_segment(
     entry, output_dir, start_time, end_time, sample_rate=44100
 ):
     """
-    从视频文件中提取指定时间段的音频，并以指定采样率保存
+    Extract audio segment from video file with specified time range and sample rate
     
-    :param video_path: 视频文件路径
-    :param output_dir: 输出目录
-    :param start_time: 开始时间(秒或HH:MM:SS格式)
-    :param end_time: 结束时间(秒或HH:MM:SS格式)
-    :param sample_rate: 音频采样率(默认44100Hz)
+    :param entry: Tuple containing video_path and audio_path
+    :param output_dir: Output directory
+    :param start_time: Start time (seconds or HH:MM:SS format)
+    :param end_time: End time (seconds or HH:MM:SS format)
+    :param sample_rate: Audio sample rate (default 44100Hz)
     """
     video_path, audio_path = entry
 
-    # 构建ffmpeg命令
+    ffmpeg_bin = which_ffmpeg()
+
+    if ffmpeg_bin == "":
+        raise ValueError("ffmpeg not found")
+
+    # Build ffmpeg command
     cmd = [
         which_ffmpeg(),
-        '-y',  # 覆盖已存在文件
+        '-y',  # Overwrite existing files
         '-i',
         str(video_path),
         '-ss',
-        str(start_time),  # 开始时间
+        str(start_time),  # Start time
         '-to',
-        str(end_time),  # 结束时间
+        str(end_time),  # End time
         '-ar',
-        str(sample_rate),  # 采样率
+        str(sample_rate),  # Sample rate
         '-ac',
-        '1',  # 立体声
+        '1',  # Mono (single channel)
         '-q:a',
-        '0',  # 最高质量
+        '0',  # Highest quality
         str(audio_path)
     ]
 
@@ -62,9 +67,9 @@ def extract_audio_segment(
         subprocess.run(cmd, check=True)
         sys.stdout.flush()
     except subprocess.CalledProcessError as e:
-        print(f"提取音频失败: {e.stderr.decode('utf-8')}")
+        print(f"Failed to extract audio: {e.stderr.decode('utf-8')}")
     except Exception as e:
-        print(f"发生错误: {str(e)}")
+        print(f"Error occurred: {str(e)}")
 
 
 def process_directory(
@@ -82,13 +87,8 @@ def process_directory(
     output_dir = Path(output_dir)
 
     if not audio_jsonl.exists():
-        print(f"输入目录不存在: {audio_jsonl}")
+        print(f"Input directory does not exist: {audio_jsonl}")
         return
-
-    output_dir_name = output_dir.name
-    output_dir = output_dir.with_name(
-        f"{output_dir_name}_{sample_rate}Hz_{start_time}s_to_{end_time}s"
-    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -106,10 +106,6 @@ def process_directory(
     )
 
     output_jsonl = Path(output_jsonl)
-    output_jsonl_name = output_jsonl.stem
-    output_jsonl = output_jsonl.with_stem(
-        f"{output_jsonl_name}_{sample_rate}Hz_{start_time}s_to_{end_time}s"
-    )
     with open(audio_jsonl, "r") as reader, open(output_jsonl, "w") as writer:
         lines = reader.readlines()
         entries = []
@@ -131,9 +127,9 @@ def process_directory(
         with ThreadPoolExecutor(max_workers=args.num_workers) as executor:
             list(tqdm(executor.map(worker, entries), total=len(entries)))
 
-    print("所有文件处理完成")
+    print("All files processed")
     sys.stdout.flush()
-    os.system("stty sane")  # 修复终端状态
+    os.system("stty sane")  # Restore terminal state
 
 
 if __name__ == "__main__":

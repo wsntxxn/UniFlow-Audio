@@ -7,8 +7,8 @@ This document explains how to run evaluation for various tasks.
 It is recommended to create a separate environment for evaluation, as described in [requirements_eval.txt](../requirements_eval.txt).
 
 ```bash
-conda create -n uniflow_audio_eval python=3.10
-conda activate uniflow_audio_eval
+conda create -n uniflow-audio-eval python=3.10
+conda activate uniflow-audio-eval
 ```
 
 Then, install the dependencies:
@@ -49,8 +49,8 @@ Evaluation of V2A involves [audioldm_eval](https://github.com/haoheliu/audioldm_
 export PYTHONPATH=.
 python data_preprocess/vggsound/extract_wav.py \
     --audio_jsonl data/visual_sound/test_videos.jsonl \
-    --output_dir data/visual_sound/test_wav_16000Hz_0s_to_10.0s \
-    --output_jsonl data/visual_sound/test_wav_16000Hz_0s_to_10.0s.jsonl \
+    --output_dir data/visual_sound/test_audio_16000Hz_0s_to_10.0s \
+    --output_jsonl data/visual_sound/test_audio_16000Hz_0s_to_10.0s.jsonl \
     --vggsound_label_path /path/to/label/csv
 ```
 
@@ -62,8 +62,8 @@ python data_preprocess/vggsound/reencode_video.py \
     -i data/visual_sound/test_videos.jsonl \
     --video_fps 25 \
     --audio_fps 16000 \
-    -o data/visual_sound/test_video_fps_25_sr_16000 \
-    -j data/visual_sound/test_video_fps_25_sr_16000.jsonl
+    -o data/visual_sound/test_videos_fps_25_sr_16000 \
+    -j data/visual_sound/test_videos_fps_25_sr_16000.jsonl
 ```
 
 **3. Extract ImageBind visual embeddings**
@@ -94,8 +94,8 @@ export CLAP_MODEL_PATH="/path/to/laion_clap/630k-audioset-best.pt"
 
 ```bash
 python evaluation/tts.py \
-  --audio_dir /path/to/tts_inference \
-  --xp_name "your_exp_name" \
+  --audio_dir_or_jsonl /path/to/tts_inference \
+  --exp_name "your_exp_name" \
   --ref_transcript_path data/libritts/test/ref_transcription.json
   --ref_audio_path data/libritts/test/ref_audio.json \
   --output_path /path/to/tts_result.txt
@@ -137,15 +137,15 @@ python evaluation/t2a.py \
 python evaluation/se.py \
     --ref_dir /path/to/clean/speech/dir \
     --gen_dir /path/to/se_inference \
-    --uuid_jsonl /path/to/uuid.jsonl \
+    --audio_jsonl /path/to/audio.jsonl \
     --output_file /path/to/se_results.txt
 ```
-where `uuid_jsonl` follows this format (due to historical reasons there are such inconsistencies somewhere):
+where `audio_jsonl` follows this format:
 
 ```JSON
-{"UUID": "5d247b58-bd56-4d53-9a21-b5e24365686a", "WavPath": "clean_testset_wav/p232_002.wav"}
-{"UUID": "33ecf74d-ba9e-4cc4-8ae5-51f53601aa3a", "WavPath": "clean_testset_wav/p232_017.wav"}
-{"UUID": "1051c94e-bbcc-4b58-888d-53457ae9376b", "WavPath": "clean_testset_wav/p232_021.wav"}
+{"audio_id": "5d247b58-bd56-4d53-9a21-b5e24365686a", "audio": "clean_testset_wav/p232_002.wav"}
+{"audio_id": "33ecf74d-ba9e-4cc4-8ae5-51f53601aa3a", "audio": "clean_testset_wav/p232_017.wav"}
+{"audio_id": "1051c94e-bbcc-4b58-888d-53457ae9376b", "audio": "clean_testset_wav/p232_021.wav"}
 ```
 
 ### SR

@@ -8,7 +8,6 @@ from accelerate import Accelerator
 
 from omegaconf import OmegaConf
 from safetensors.torch import load_file
-import diffusers.schedulers as noise_schedulers
 from tqdm import tqdm
 
 from utils.config import register_omegaconf_resolvers
@@ -41,16 +40,20 @@ def main():
     if os.path.isdir(config["exp_dir"]):
         exp_dir = Path(config["exp_dir"])
     if os.path.isdir(config["ckpt_dir_or_file"]):
-        ckpt_dir = Path(config["ckpt_dir"])
+        ckpt_dir = Path(config["ckpt_dir_or_file"])
         ckpt_path = ckpt_dir / "model.safetensors"
     elif os.path.isfile(config["ckpt_dir_or_file"]):
         ckpt_path = config["ckpt_dir_or_file"]
         ckpt_dir = Path(ckpt_path).parent
 
     if ckpt_dir is None and exp_dir is None:
-        if not os.path.exists(config["ckpt_dir"]):
-            raise ValueError(f"ckpt_dir {config['ckpt_dir']} does not exist.")
-        raise ValueError("Either exp_dir or ckpt_dir should be provided.")
+        if not os.path.exists(config["ckpt_dir_or_file"]):
+            raise ValueError(
+                f"ckpt_dir {config['ckpt_dir_or_file']} does not exist."
+            )
+        raise ValueError(
+            "Either exp_dir or ckpt_dir_or_file should be provided."
+        )
 
     if ckpt_dir is None:
         use_best = config.get("use_best", True)
@@ -76,6 +79,7 @@ def main():
     model: LoadPretrainedBase = hydra.utils.instantiate(exp_config["model"])
     state_dict = load_file(ckpt_path)
     model.load_pretrained(state_dict)
+    model.eval()
 
     if "sampler" in config["test_dataloader"]:
         data_source = hydra.utils.instantiate(
@@ -94,20 +98,11 @@ def main():
             config["test_dataloader"], _convert_="all"
         )
 
-    model.eval()
-
     model, test_dataloader = accelerator.prepare(model, test_dataloader)
 
-    if "noise_scheduler" in config:
-        scheduler = getattr(
-            noise_schedulers,
-            config["noise_scheduler"]["type"],
-        ).from_pretrained(
-            config["noise_scheduler"]["name"],
-            subfolder="scheduler",
-        )
-    else:
-        scheduler = None
+    scheduler = hydra.utils.instantiate(
+        config["noise_scheduler"], _convert_="all"
+    )
 
     if config["wav_dir_root"] is not None:
         wav_dir_root = Path(config["wav_dir_root"])

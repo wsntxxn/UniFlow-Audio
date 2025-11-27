@@ -9,6 +9,7 @@ import copy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import init
 
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers import FlowMatchEulerDiscreteScheduler
@@ -503,14 +504,16 @@ class DurationAdapterMixin:
         x: torch.Tensor,
         content_mask: torch.Tensor,
         local_duration: torch.Tensor,
-        global_duration: torch.Tensor | None = None,
+        global_duration: torch.Tensor,
     ):
+        training = getattr(self, 'training', False)
         n_latents = torch.round(local_duration * self.latent_token_rate)
-        if global_duration is not None:
+        # TODO unify duration input scale for training and inference: num_frames
+        if not training:  # inference mode
             latent_length = torch.round(
                 global_duration * self.latent_token_rate
             )
-        else:
+        else:  # training mode
             latent_length = n_latents.sum(1)
         latent_mask = create_mask_from_length(latent_length).to(
             content_mask.device
@@ -735,7 +738,8 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         duration_offset: float = 1.0,
         cfg_drop_ratio: float = 0.2,
         sample_strategy: str = 'normal',
-        num_train_steps: int = 1000
+        num_train_steps: int = 1000,
+        task_weights: dict | None = None,
     ):
 
         super().__init__(
@@ -758,6 +762,7 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         )
         self.dummy_nta_embed = nn.Parameter(torch.zeros(content_dim))
         self.dummy_ta_embed = nn.Parameter(torch.zeros(content_dim))
+        self.task_weights = task_weights
 
     def get_backbone_input(
         self, target_length: int, content: torch.Tensor,
@@ -808,7 +813,12 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         **kwargs
     ):
         device = self.dummy_param.device
-        loss_reduce = self.training or (loss_reduce and not self.training)
+        if self.training:
+            if self.task_weights:
+                loss_reduce = False
+            else:
+                loss_reduce = True
+        # loss_reduce = self.training or (loss_reduce and not self.training)
 
         self.autoencoder.eval()
         with torch.no_grad():
@@ -863,6 +873,7 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
             x=content[:, :trunc_ta_length],
             content_mask=ta_content_mask,
             local_duration=duration,
+            global_duration=latent_mask.sum(1),
         )
 
         # --------------------------------------------------------------------
@@ -899,6 +910,16 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         target = target.transpose(1, self.autoencoder.time_dim)
         diff_loss = F.mse_loss(pred, target, reduction="none")
         diff_loss = loss_with_mask(diff_loss, latent_mask, reduce=loss_reduce)
+
+        if self.training and self.task_weights:
+            loss_weights = torch.tensor([self.task_weights[t] for t in task],
+                                        device=device)
+            diff_loss = (diff_loss * loss_weights).sum() / loss_weights.sum()
+            local_duration_loss = (local_duration_loss *
+                                   loss_weights).sum() / loss_weights.sum()
+            global_duration_loss = (global_duration_loss *
+                                    loss_weights).sum() / loss_weights.sum()
+
         return {
             "diff_loss": diff_loss,
             "local_duration_loss": local_duration_loss,
@@ -1080,3 +1101,67 @@ class HybridContentAudioFlowMatching(DummyContentAudioFlowMatching):
         context_mask = content_mask.detach().clone()
 
         return context, context_mask, time_aligned_content
+
+
+class DummyContentFillerAudioFlowMatching(DummyContentAudioFlowMatching):
+    def __init__(
+        self,
+        autoencoder: AutoEncoderBase,
+        content_encoder: ContentEncoder,
+        content_adapter: ContentAdapterBase,
+        backbone: nn.Module,
+        content_dim: int,
+        frame_resolution: float,
+        duration_offset: float = 1,
+        cfg_drop_ratio: float = 0.2,
+        sample_strategy: str = 'normal',
+        num_train_steps: int = 1000
+    ):
+        super().__init__(
+            autoencoder, content_encoder, content_adapter, backbone,
+            content_dim, frame_resolution, duration_offset, cfg_drop_ratio,
+            sample_strategy, num_train_steps
+        )
+        self.filler_embedding = nn.Parameter(torch.empty(content_dim))
+        init.normal_(self.filler_embedding)
+
+    def expand_by_duration(
+        self,
+        x: torch.Tensor,
+        content_mask: torch.Tensor,
+        local_duration: torch.Tensor | None,
+        global_duration: torch.Tensor,
+    ):
+        """
+        x: content tensor, [batch_size, content_length, content_dim]
+        content_mask: content mask, [batch_size, content_length]
+        local_duration: content element length, not used in this model
+        global_duration: clip length in latent tokens during training; clip duration in seconds during inference
+        """
+        if not self.training:
+            global_duration = torch.round(
+                global_duration * self.latent_token_rate
+            ).long()
+        if x.size(1) < global_duration.max():
+            padding_length = global_duration.max() - x.size(1)
+            padding = torch.zeros(x.size(0), padding_length,
+                                  x.size(2)).to(x.device).to(x.dtype)
+            x = torch.cat([x, padding], dim=1)
+
+        filling_mask = torch.ones(
+            x.size(0), global_duration.max(), dtype=bool
+        ).to(x.device)
+        filling_mask[:, :content_mask.size(1)][content_mask] = 0
+        filling_mask = filling_mask.unsqueeze(-1)
+        num_filling = filling_mask.sum()
+        filler_embedding = self.filler_embedding.to(dtype=x.dtype)
+        x = x.masked_scatter(
+            filling_mask, filler_embedding.repeat(num_filling, 1)
+        )
+
+        if self.training:
+            latent_mask = None
+        else:
+            latent_length = global_duration
+            latent_mask = create_mask_from_length(latent_length).to(x.device)
+        return x, latent_mask

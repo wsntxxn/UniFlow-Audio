@@ -323,10 +323,18 @@ class Trainer(CheckpointMixin):
 
                 self.accelerator.backward(loss)
 
-                if self.accelerator.sync_gradients and self.max_grad_norm:
-                    self.accelerator.clip_grad_norm_(
-                        self.model.parameters(), self.max_grad_norm
-                    )
+                # gradient clipping and logging
+                if self.accelerator.sync_gradients:
+                    if self.max_grad_norm:
+                        grad_norm = self.accelerator.clip_grad_norm_(
+                            self.model.parameters(), self.max_grad_norm
+                        )
+                    else:
+                        grad_norm = nn.utils.clip_grad_norm_(
+                            self.model.parameters(), float('inf')
+                        )
+                    self.accelerator.log({"train/grad_norm": grad_norm},
+                                         step=self.step)
 
                 self.optimizer.step()
                 if self.lr_scheduler_interval == LRSchedulerInterval.STEP:

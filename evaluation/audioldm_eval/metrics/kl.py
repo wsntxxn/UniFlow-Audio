@@ -16,23 +16,24 @@ def path_to_sharedkey(path, dataset_name, classes=None):
         target_to_label = {f"cls_{i}": c for i, c in enumerate(classes)}
         # replacing class folder with the name of the class to match the original dataset (cls_2 -> dog)
         for folder_cls_name, label in target_to_label.items():
-            path = path.replace(folder_cls_name, label).replace(
-                "melspec_10s_22050hz/", ""
-            )
+            path = path.replace(folder_cls_name,
+                                label).replace("melspec_10s_22050hz/", "")
         # merging video name with class name to make a unique shared key
         sharedkey = (
-            Path(path).parent.stem
-            + "_"
-            + Path(path).stem.replace("_mel", "").split("_sample_")[0]
+            Path(path).parent.stem + "_" +
+            Path(path).stem.replace("_mel", "").split("_sample_")[0]
         )
     elif dataset_name.lower() == "caps":  # stem : 获取/.之间的部分
-        sharedkey = Path(path).stem.replace("_mel", "").split("_sample_")[0]  # 获得原文件名称
+        sharedkey = Path(path).stem.replace("_mel",
+                                            "").split("_sample_")[0]  # 获得原文件名称
     else:
         raise NotImplementedError
     return sharedkey
 
 
-def calculate_kl(featuresdict_1, featuresdict_2, feat_layer_name, same_name=True):
+def calculate_kl(
+    featuresdict_1, featuresdict_2, feat_layer_name, same_name=True
+):
     # test_input(featuresdict_1, featuresdict_2, feat_layer_name, dataset_name, classes)
     if not same_name:
         return (
@@ -99,9 +100,9 @@ def calculate_kl(featuresdict_1, featuresdict_2, feat_layer_name, same_name=True
     ) / len(features_1)
 
     # For multi-class audio clips, this formulation could be better
-    kl_sigmoid = torch.nn.functional.kl_div(
-        (features_1.sigmoid() + EPS).log(), features_2.sigmoid(), reduction="sum"
-    ) / len(features_1)
+    kl_sigmoid = torch.nn.functional.kl_div((features_1.sigmoid() + EPS).log(),
+                                            features_2.sigmoid(),
+                                            reduction="sum") / len(features_1)
 
     return (
         {
@@ -113,7 +114,9 @@ def calculate_kl(featuresdict_1, featuresdict_2, feat_layer_name, same_name=True
     )
 
 
-def test_input(featuresdict_1, featuresdict_2, feat_layer_name, dataset_name, classes):
+def test_input(
+    featuresdict_1, featuresdict_2, feat_layer_name, dataset_name, classes
+):
     assert feat_layer_name == "logits", "This KL div metric is implemented on logits."
     assert (
         "file_path_" in featuresdict_1 and "file_path_" in featuresdict_2
