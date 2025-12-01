@@ -81,7 +81,7 @@ class InferenceCLI:
     @staticmethod
     def add_prehook(func: Callable, ):
         def wrapper(self, *args, **kwargs):
-            model_name = kwargs["model_name"]
+            model_name = kwargs.get("model_name", "UniFlow-Audio-large")
             self.on_inference_start(model_name)
             return func(self, *args, **kwargs)
 
@@ -157,7 +157,7 @@ class InferenceCLI:
             self.g2p.setup()
 
         phonemes = self.g2p.rewriter(transcript.lower())[0][0].split()
-        print(phonemes)
+        # print(phonemes)
         phone_indices = [
             self.model.tts_phone2id.get(
                 p, self.model.tts_phone2id.get("spn", 0)
@@ -368,6 +368,7 @@ class InferenceCLI:
         )
         waveform = waveform[0, 0].cpu().numpy()
 
+        output_path = output_path.__str__()
         if not output_path.endswith(".mp4"):
             sf.write(output_path, waveform, self.sample_rate)
 

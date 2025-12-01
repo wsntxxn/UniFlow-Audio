@@ -36,7 +36,17 @@ class FrechetAudioDistance:
             (i) a string which is the directory of a set of audio files, or
             (ii) a np.ndarray of shape (num_samples, sample_length)
         """
-        self.model = torch.hub.load("harritaylor/torchvggish", "vggish")
+        torch_home_dir = os.environ.get(
+            "TORCH_HOME", os.path.expanduser("~/.cache/torch")
+        )
+        ckpt_path = os.path.join(
+            torch_home_dir, "hub/harritaylor_torchvggish_master"
+        )
+        if os.path.exists(ckpt_path):
+            self.model = torch.hub.load(ckpt_path, "vggish", source="local")
+        else:
+            self.model = torch.hub.load("harritaylor/torchvggish", "vggish")
+
         if not use_pca:
             self.model.postprocess = False
         if not use_activation:

@@ -424,8 +424,11 @@ class TextToSpeechDataset(AudioGenerationDataset):
 
         with File(content_or_path, "r") as hf:
             phoneme = hf["phoneme"][audio_id][()]
-            phoneme_duration = hf["phoneme_duration"][audio_id][()]
-
+            if "phoneme_duration" in hf.keys():
+                phoneme_duration = hf["phoneme_duration"][audio_id][()]
+            else:
+                # dummy duration, for inference when no phoneme duration is provided
+                phoneme_duration = np.ones(len(phoneme))
             if "xvector" in hf.keys():
                 spk = hf["xvector"][audio_id][()]
             else:
