@@ -6,23 +6,12 @@ from multiprocessing import Pool, cpu_count
 from collections import Counter
 
 
-from montreal_forced_aligner.g2p.generator import PyniniConsoleGenerator
 
-# 初始化 G2P（可在主程序启动时调用一次）
-g2p = PyniniConsoleGenerator(
-    g2p_model_path='english_us_arpa',
-    strict_graphemes=False,
-    num_pronunciations=1,
-    include_bracketed=False
-)
-g2p.setup()
-g2p_error_cnt=0
-g2p_error_list=[]
 
-def g2p_resolve(word):
+def g2p_resolve(word,g2p_model):
     """调用 G2P 生成发音（用于处理 OOV）"""
     try:
-        result = g2p.rewriter(word.lower())
+        result = g2p_model.rewriter(word.lower())
         if result and result[0][0]:
             return result[0][0].split()
     except Exception:
@@ -68,7 +57,7 @@ def load_word2phone(json_path):
 
 
 # ---------------- 核心转换 ----------------
-def sentence_to_phones(sentence, word2phones):
+def sentence_to_phones(sentence, word2phones,g2p_model):
     """
     句子转 phone：
     1. 对原句做拆分，保留标点位置信息用于后面添加 sil
@@ -92,7 +81,7 @@ def sentence_to_phones(sentence, word2phones):
             word = text_norm(token)  # 规范化词
                 
             if word not in word2phones:
-                g2p_ph = g2p_resolve(word)
+                g2p_ph = g2p_resolve(word,g2p_model)
                 if g2p_ph:
                     phone_sequence.extend(g2p_ph)
                 else:
@@ -111,8 +100,8 @@ def sentence_to_phones(sentence, word2phones):
     return phone_sequence, oov_list
 
 
-def convert_sentence(sentence, word2phones):
-    phones, oov_list = sentence_to_phones(sentence, word2phones)
+def convert_sentence(sentence, word2phones,g2p_model):
+    phones, oov_list = sentence_to_phones(sentence, word2phones,g2p_model)
     return " ".join(phones), oov_list
 
 
@@ -218,12 +207,25 @@ def process_lab_files_parallel(root_dir, word2phones, num_workers=None):
 
 # ========================= 主函数 =========================
 if __name__ == "__main__":
+    from montreal_forced_aligner.g2p.generator import PyniniConsoleGenerator
+    # 初始化 G2P
+    g2p = PyniniConsoleGenerator(
+        g2p_model_path='english_us_arpa',
+        strict_graphemes=False,
+        num_pronunciations=1,
+        include_bracketed=False
+    )
+    g2p.setup()
+    g2p_error_cnt=0
+    g2p_error_list=[]
+
+
     word2phones = load_word2phone("data/word2phone.json")
 
     # sentence = """You'll see in a moment what the difference is between 'convenient' and 'inconvenient.' You quite understand it now, don't you?" """
     sentence="""Stagecraft is the art of getting over these and other difficulties, and (if possible) getting over them in a showy manner, so that people will say, "How remarkable his stagecraft is for so young a writer," when otherwise they mightn't have noticed it at all."""
     print("sentence:", sentence)
-    phone,OOV=convert_sentence(sentence, word2phones)
+    phone,OOV=convert_sentence(sentence, word2phones,g2p)
     print("norm sentence:", text_norm(sentence))
     print("→ Phone:", phone)
     print("→ OOV:", OOV)

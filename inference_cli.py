@@ -145,13 +145,24 @@ class InferenceCLI:
         output_path: str = "./output.wav",
     ):
 
+        from montreal_forced_aligner.g2p.generator import PyniniConsoleGenerator
+
         self.init_speaker_model()
+
+        if not self.g2p:
+            self.g2p = PyniniConsoleGenerator(
+                g2p_model_path=self.model.g2p_model_path,
+                strict_graphemes=False,
+                num_pronunciations=1,
+                include_bracketed=False
+            )
+            self.g2p.setup()
         if not self.word2phone:
             self.word2phone=load_word2phone(self.model.tts_word2phone_dict_path)
         
         
         # OOV word will use a g2p model to predict phoneme
-        phonemes,OOV_list=sentence_to_phones(transcript, self.word2phone)
+        phonemes,OOV_list=sentence_to_phones(transcript, self.word2phone,self.g2p)
 
         # print(phonemes)
         phone_indices = [
