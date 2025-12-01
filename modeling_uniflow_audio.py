@@ -1,6 +1,7 @@
 from typing import Any, Sequence
 from pathlib import Path
 import json
+import os
 import shutil
 
 import h5py
@@ -28,6 +29,17 @@ class UniFlowAudioModel(nn.Module):
         self.config["model"]["autoencoder"]["pretrained_ckpt"] = str(
             model_dir / self.config["model"]["autoencoder"]["pretrained_ckpt"]
         )
+        flan_t5_path = os.environ.get("FLAN_T5_PATH", "google/flan-t5-large")
+        try:
+            tokenizer = T5Tokenizer.from_pretrained(flan_t5_path)
+            encoder = T5EncoderModel.from_pretrained(flan_t5_path)
+        except Exception as e:
+            raise RuntimeError(
+                "Failed to initialize Flan-T5, please download it manually and set the `FLAN_T5_PATH`"
+                "environment variable to the path of the downloaded model."
+            ) from e
+        self.config["model"]["content_encoder"]["text_encoder"]["model_name"
+                                                               ] = flan_t5_path
         self.model = hydra.utils.instantiate(
             self.config["model"], _convert_="all"
         )
@@ -42,7 +54,7 @@ class UniFlowAudioModel(nn.Module):
             shutil.copy(ori_model_path, self.g2p_model_path)
 
         self.tts_phone_set_path = model_dir / "mfa_g2p" / "phone_set.json"
-        self.tts_word2phone_dict_path=model_dir / "mfa_g2p" / "word2phone.json"
+        self.tts_word2phone_dict_path = model_dir / "mfa_g2p" / "word2phone.json"
         self.build_tts_phone_mapping()
         self.svs_phone_set_path = model_dir / "svs" / "phone_set.json"
         singers = json.load(open(model_dir / "svs" / "spk_set.json", "r"))
@@ -66,12 +78,20 @@ class UniFlowAudioModel(nn.Module):
         self.tts_phone2id = {p: i for i, p in enumerate(phone_set)}
 
     def init_instruction_encoder(self):
-        self.instruction_tokenizer = T5Tokenizer.from_pretrained(
-            "google/flan-t5-large"
-        )
-        self.instruction_encoder = T5EncoderModel.from_pretrained(
-            "google/flan-t5-large"
-        )
+        flan_t5_path = os.environ.get("FLAN_T5_PATH", "google/flan-t5-large")
+        try:
+            self.instruction_tokenizer = T5Tokenizer.from_pretrained(
+                flan_t5_path
+            )
+            self.instruction_encoder = T5EncoderModel.from_pretrained(
+                flan_t5_path
+            )
+        except Exception as e:
+            raise RuntimeError(
+                "Failed to initialize Flan-T5, please download it manually and set the `FLAN_T5_PATH`"
+                "environment variable to the path of the downloaded model."
+            ) from e
+
         self.instruction_encoder.eval()
 
     @torch.inference_mode()

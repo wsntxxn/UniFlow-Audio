@@ -10,8 +10,8 @@ import soundfile as sf
 import numpy as np
 
 from modeling_uniflow_audio import UniFlowAudioModel
-from constants import TIME_ALIGNED_TASKS, NON_TIME_ALIGNED_TASKS
-from data_preprocess.word2phone import load_word2phone,sentence_to_phones
+from constants import TIME_ALIGNED_TASKS
+from utils.phonemize import sentence_to_phones
 
 
 class InferenceCLI:
@@ -21,6 +21,7 @@ class InferenceCLI:
             "cuda" if torch.cuda.is_available() else "cpu"
         )
         self.g2p = None
+        self.word2phone = None
         self.speaker_model = None
         self.svs_processor = None
         self.singer_mapping = None
@@ -157,12 +158,18 @@ class InferenceCLI:
                 include_bracketed=False
             )
             self.g2p.setup()
+
         if not self.word2phone:
-            self.word2phone=load_word2phone(self.model.tts_word2phone_dict_path)
-        
-        
+            self.word2phone = json.load(
+                open(
+                    self.model.tts_word2phone_dict_path, "r", encoding="utf-8"
+                )
+            )
+
         # OOV word will use a g2p model to predict phoneme
-        phonemes,OOV_list=sentence_to_phones(transcript, self.word2phone,self.g2p)
+        phonemes, OOV_list = sentence_to_phones(
+            transcript, self.word2phone, self.g2p
+        )
 
         # print(phonemes)
         phone_indices = [

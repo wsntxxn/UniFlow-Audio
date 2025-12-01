@@ -1,29 +1,31 @@
 import os
 import tqdm
-from h5py import File
-from multiprocessing import Process, Queue
-from wespeaker import load_model
-from pydub import AudioSegment
-
-import os
 import argparse
-import tqdm
 from h5py import File
 from multiprocessing import Process, Queue
 from wespeaker import load_model
-from pydub import AudioSegment
-
 
 GPU_NUM = 2
 
 # === 解析命令行参数 ===
-parser = argparse.ArgumentParser(description="Extract xvectors from audio directory")
-parser.add_argument("--dir_path", type=str, required=True, help="Path to the directory containing audio files")
-parser.add_argument("--ext", type=str, default=".mp3", help="Audio file extension to look for")
-parser.add_argument("--h5_save_path", type=str, required=True, help="Path to save the h5 file")
+parser = argparse.ArgumentParser(
+    description="Extract xvectors from audio directory"
+)
+parser.add_argument(
+    "--dir_path",
+    type=str,
+    required=True,
+    help="Path to the directory containing audio files"
+)
+parser.add_argument(
+    "--ext", type=str, default=".mp3", help="Audio file extension to look for"
+)
+parser.add_argument(
+    "--h5_save_path", type=str, required=True, help="Path to save the h5 file"
+)
 
 args = parser.parse_args()
-dataset_name=args.dir_path.split('/')[-1]
+dataset_name = args.dir_path.split('/')[-1]
 # === 加载模型（避免多进程冲突） ===
 _ = load_model('english')  # 触发模型下载
 
@@ -42,6 +44,7 @@ for dir, _, file_names in os.walk(dir_path):
 
 print(f'✅ Found {len(all_files)} files in "{dir_path}" with extension "{ext}"')
 
+
 # 子进程工作函数
 def worker(gpu_id, file_list, queue):
     print(f"[GPU:{gpu_id}] 开始")
@@ -58,9 +61,9 @@ def worker(gpu_id, file_list, queue):
         try:
             emb = model.extract_embedding(audio_path)
             utt_id = file.replace(ext, '')
-            if dataset_name=="L2arctic":
-                parent_dir_name=dir.split('/')[-2]
-                utt_id=f"l2arctic_{parent_dir_name}_{utt_id}"
+            if dataset_name == "L2arctic":
+                parent_dir_name = dir.split('/')[-2]
+                utt_id = f"l2arctic_{parent_dir_name}_{utt_id}"
             print(f"uttid:{utt_id}")
             result[utt_id] = emb
         except Exception as e:
@@ -85,10 +88,14 @@ def worker(gpu_id, file_list, queue):
 
     queue.put((len(result), len(failed)))  # 汇总统计用
 
+
 # 工具函数：均分列表
 def chunk_list(lst, n):
     k, m = divmod(len(lst), n)
-    return [lst[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)]
+    return [
+        lst[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)
+    ]
+
 
 # 进程调度
 num_gpus = GPU_NUM  # 👈 根据你服务器的显卡数设置
@@ -114,7 +121,7 @@ for gpu_id in range(num_gpus):
     with File(temp_h5_path, 'r') as hf:
         for utt_id in hf['xvector']:
             total_embeds[utt_id] = hf['xvector'][utt_id][()]
-    
+
     # 加载失败日志
     fail_log = os.path.join(intermediate_dir, f'failed_{gpu_id}.txt')
     if os.path.exists(fail_log):
