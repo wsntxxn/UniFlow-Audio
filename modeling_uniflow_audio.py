@@ -42,6 +42,7 @@ class UniFlowAudioModel(nn.Module):
             shutil.copy(ori_model_path, self.g2p_model_path)
 
         self.tts_phone_set_path = model_dir / "mfa_g2p" / "phone_set.json"
+        self.tts_word2phone_dict_path=model_dir / "mfa_g2p" / "word2phone.json"
         self.build_tts_phone_mapping()
         self.svs_phone_set_path = model_dir / "svs" / "phone_set.json"
         singers = json.load(open(model_dir / "svs" / "spk_set.json", "r"))

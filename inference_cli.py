@@ -11,6 +11,7 @@ import numpy as np
 
 from modeling_uniflow_audio import UniFlowAudioModel
 from constants import TIME_ALIGNED_TASKS, NON_TIME_ALIGNED_TASKS
+from data_preprocess.word2phone import load_word2phone,sentence_to_phones
 
 
 class InferenceCLI:
@@ -143,20 +144,15 @@ class InferenceCLI:
         num_steps: int = 25,
         output_path: str = "./output.wav",
     ):
-        from montreal_forced_aligner.g2p.generator import PyniniConsoleGenerator
 
         self.init_speaker_model()
+        if not self.word2phone:
+            self.word2phone=load_word2phone(self.model.tts_word2phone_dict_path)
+        
+        
+        # OOV word will use a g2p model to predict phoneme
+        phonemes,OOV_list=sentence_to_phones(transcript, self.word2phone)
 
-        if not self.g2p:
-            self.g2p = PyniniConsoleGenerator(
-                g2p_model_path=self.model.g2p_model_path,
-                strict_graphemes=False,
-                num_pronunciations=1,
-                include_bracketed=False
-            )
-            self.g2p.setup()
-
-        phonemes = self.g2p.rewriter(transcript.lower())[0][0].split()
         # print(phonemes)
         phone_indices = [
             self.model.tts_phone2id.get(
