@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from audioldm_eval.datasets.load_mel import load_npy_data, MelPairedDataset, WaveDataset
 import numpy as np
 import argparse
@@ -150,12 +151,16 @@ class EvaluationHelper:
                 os.path.join(data2, x) for x in os.listdir(data2)
             ]
             self.datalist2 = sorted(self.datalist2)
+            data_dict1 = {os.path.basename(x): x for x in self.datalist1}
+            data_dict2 = {os.path.basename(x): x for x in self.datalist2}
         elif isinstance(data1, dict):
-            self.datalist1 = sorted(list(data1.values()))
-            self.datalist2 = sorted(list(data2.values()))
+            # self.datalist1 = sorted(list(data1.values()))
+            # self.datalist2 = sorted(list(data2.values()))
+            data_dict1 = data1
+            data_dict2 = data2
 
-        data_dict1 = {os.path.basename(x): x for x in self.datalist1}
-        data_dict2 = {os.path.basename(x): x for x in self.datalist2}
+        # data_dict1 = {os.path.basename(x): x for x in self.datalist1}
+        # data_dict2 = {os.path.basename(x): x for x in self.datalist2}
 
         keyset1 = set(data_dict1.keys())
         keyset2 = set(data_dict2.keys())
@@ -286,31 +291,47 @@ class EvaluationHelper:
         print("FAD: %s" % fad_score)
         ######################################################################################################################
 
-        # PANNs or PassT or mert
+        # PANNs or PassT or MERT
         ######################################################################################################################
         if isinstance(groundtruth, str):
             cache_path = groundtruth + "classifier_logits_feature_cache.pkl"
-            if (os.path.exists(cache_path) and not recalculate):
-                print("reload", cache_path)
-                featuresdict_2 = load_pickle(cache_path)
-            else:
-                print("Extracting features from %s." % groundtruth)
-                featuresdict_2 = self.get_featuresdict(resultloader)
-                save_pickle(featuresdict_2, cache_path)
+        elif isinstance(groundtruth, dict):
+            first_file = next(iter(groundtruth.values()))
+            groundtruth_dir = Path(first_file).parent
+            cache_path = groundtruth_dir.with_name(
+                groundtruth_dir.stem + "classifier_logits_feature_cache.pkl"
+            )
+        if (os.path.exists(cache_path) and not recalculate):
+            print("reload", cache_path)
+            featuresdict_2 = load_pickle(cache_path)
         else:
+            if isinstance(groundtruth, str):
+                print(f"Extracting features from {groundtruth}.")
+            else:
+                print(f"Extracting features from {groundtruth_dir}.")
             featuresdict_2 = self.get_featuresdict(resultloader)
+            save_pickle(featuresdict_2, cache_path)
 
         if isinstance(generate_files, str):
             cache_path = generate_files + "classifier_logits_feature_cache.pkl"
-            if (os.path.exists(cache_path) and not recalculate):
-                print("reload", cache_path)
-                featuresdict_1 = load_pickle(cache_path)
-            else:
-                print("Extracting features from %s." % generate_files)
-                featuresdict_1 = self.get_featuresdict(outputloader)
-                save_pickle(featuresdict_1, cache_path)
+        elif isinstance(generate_files, dict):
+            first_file = next(iter(generate_files.values()))
+            generated_dir = Path(first_file).parent
+            cache_path = generated_dir.with_name(
+                generated_dir.stem + "classifier_logits_feature_cache.pkl"
+            )
+
+        if (os.path.exists(cache_path) and not recalculate):
+            print("reload", cache_path)
+            featuresdict_1 = load_pickle(cache_path)
         else:
+            if isinstance(generate_files, str):
+                print(f"Extracting features from {generate_files}.")
+            else:
+                print(f"Extracting features from {generated_dir}.")
             featuresdict_1 = self.get_featuresdict(outputloader)
+            save_pickle(featuresdict_1, cache_path)
+
         # KL
         metric_kl, kl_ref, paths_1 = calculate_kl(
             featuresdict_1, featuresdict_2, "logits", same_name
@@ -464,10 +485,10 @@ class EvaluationHelper:
         out_meta = None
 
         # transforms=StandardNormalizeAudio()
-        for waveform, filename in tqdm(dataloader):
+        for waveform, audio_id in tqdm(dataloader):
             try:
                 metadict = {
-                    "file_path_": filename,
+                    "file_path_": audio_id,
                 }
                 waveform = waveform.squeeze(1)
 

@@ -8,11 +8,11 @@ VGGish adapted from: https://github.com/harritaylor/torchvggish
 import os
 import numpy as np
 import torch
+from pathlib import Path
 
 from torch import nn
 from scipy import linalg
 from tqdm import tqdm
-from multiprocessing.dummy import Pool as ThreadPool
 from audioldm_eval.datasets.load_mel import WaveDataset
 from torch.utils.data import DataLoader
 
@@ -181,45 +181,44 @@ class FrechetAudioDistance:
         try:
             if isinstance(background_files, str):
                 fad_generated_folder_cache = background_files + "_fad_feature_cache.npy"
-
-                if (
-                    not os.path.exists(fad_generated_folder_cache) or
-                    recalculate
-                ):
-                    embds_background = self.get_embeddings(
-                        background_files, limit_num=limit_num
-                    )
-                    np.save(fad_generated_folder_cache, embds_background)
-                else:
-                    print(
-                        "Reload fad_generated_folder_cache",
-                        fad_generated_folder_cache
-                    )
-                    embds_background = np.load(fad_generated_folder_cache)
             elif isinstance(background_files, dict):
+                first_file = next(iter(background_files.values()))
+                background_dir = Path(first_file).parent
+                fad_generated_folder_cache = background_dir.with_name(
+                    background_dir.stem + "_fad_feature_cache.npy"
+                )
+
+            if (not os.path.exists(fad_generated_folder_cache) or recalculate):
                 embds_background = self.get_embeddings(
                     background_files, limit_num=limit_num
                 )
+                np.save(fad_generated_folder_cache, embds_background)
+            else:
+                print(
+                    "Reload fad_generated_folder_cache",
+                    fad_generated_folder_cache
+                )
+                embds_background = np.load(fad_generated_folder_cache)
 
             if isinstance(eval_files, str):
                 fad_target_folder_cache = eval_files + "_fad_feature_cache.npy"
-                if (
-                    not os.path.exists(fad_target_folder_cache) or recalculate
-                ):
-                    embds_eval = self.get_embeddings(
-                        eval_files, limit_num=limit_num
-                    )
-                    np.save(fad_target_folder_cache, embds_eval)
-                else:
-                    print(
-                        "Reload fad_target_folder_cache",
-                        fad_target_folder_cache
-                    )
-                    embds_eval = np.load(fad_target_folder_cache)
             elif isinstance(eval_files, dict):
+                first_file = next(iter(eval_files.values()))
+                eval_dir = Path(first_file).parent
+                fad_target_folder_cache = eval_dir.with_name(
+                    eval_dir.stem + "_fad_feature_cache.npy"
+                )
+
+            if (not os.path.exists(fad_target_folder_cache) or recalculate):
                 embds_eval = self.get_embeddings(
                     eval_files, limit_num=limit_num
                 )
+                np.save(fad_target_folder_cache, embds_eval)
+            else:
+                print(
+                    "Reload fad_target_folder_cache", fad_target_folder_cache
+                )
+                embds_eval = np.load(fad_target_folder_cache)
 
             if store_embds:
                 np.save("embds_background.npy", embds_background)

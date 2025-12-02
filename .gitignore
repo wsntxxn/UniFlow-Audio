@@ -207,8 +207,6 @@ demo/
 # Binary data files
 **/*.h5
 
-test*
-
 start.sh
 
 # macOS sys files

@@ -1,19 +1,10 @@
-# Usage:
-# export CLAP_MODEL_PATH=/cpfs02/shared/speechllm/xuxuenan/hf_cache/hub/models--lukewys--laion_clap/snapshots/b3708341862f581175dba5c356a4ebf74a9b6651/630k-audioset-best.pt
-# python evaluation/tta.py \
-#   --ref_audio_jsonl /cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/audiocaps/test/audio.jsonl \
-#   --ref_caption_jsonl  /cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/audiocaps/test/caption.jsonl \
-#   --gen_audio_dir /cpfs_shared/jiahao.mei/code/x_to_audio_generation/xxx/tta_infer \
-#   --output_file evaluation/result/tta.jsonl \
-#   -c 16
+#!/usr/bin/env python3
+"""
+Text-to-Audio evaluation script.
 
-# gt
-# python evaluation/tta.py \
-#   --ref_audio_jsonl /cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/audiocaps/test/audio.jsonl \
-#   --ref_caption_jsonl  /cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/audiocaps/test/caption.jsonl \
-#   --gen_audio_dir /cpfs_shared/jiahao.mei/code/x_to_audio_generation/data/audiocaps/test/audio \
-#   --output_file evaluation/result/tta.jsonl \
-#   -c 16
+This script evaluates generated audio against reference audio using metrics
+including FAD, FD, KL, and CLAP scores.
+"""
 
 import torch
 
@@ -55,7 +46,9 @@ def create_symlink_folder(gen_folder_path: str) -> str:
 
     for file in gen_folder.iterdir():
         if file.is_file():
-            link_name = link_folder / (file.stem[:11] + '.wav')  # renaming logic can be customized
+            link_name = link_folder / (
+                'Y' + file.stem[:11] + '.wav'
+            )  # renaming logic can be customized
             link_name.symlink_to(file.resolve())
 
     return str(link_folder)
@@ -149,6 +142,7 @@ def evaluate(args):
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     backbone = "cnn14" if args.task == "tta" else "mert"
     evaluator = EvaluationHelper(16000, args.device, backbone=backbone)
+
     gen_folder_path, gen_is_same_folder = get_common_folder_path(
         gen_aid_to_audios
     )
@@ -157,10 +151,11 @@ def evaluate(args):
     )
     assert gen_is_same_folder == True, "Generated audio files must be in the same folder."
     assert ref_is_same_folder == True, "Reference audio files must be in the same folder."
-    gen_folder_path_symlink = create_symlink_folder(gen_folder_path)
+    # gen_folder_path_symlink = create_symlink_folder(gen_folder_path)
+
     eval_result = evaluator.main(
-        gen_folder_path_symlink,
-        ref_folder_path,
+        gen_aid_to_audios,
+        ref_aid_to_audios,
         recalculate=args.recalculate,
         num_workers=args.num_workers,
     )
@@ -213,7 +208,20 @@ def evaluate(args):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=
+        "Evaluate text-to-audio generation using FAD, FD, KL, and CLAP metrics.",
+        epilog="""
+Examples:
+    export CLAP_MODEL_PATH="xxx/630k-audioset-best.pt"
+    python evaluation/t2a.py \\
+      --ref_audio_jsonl data/audiocaps_v2/test/audio.jsonl \\
+      --rc data/audiocaps_v2/test/caption.jsonl \\
+      --gd xxxx/tta_infer \\
+      -o xxx/tta.txt
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
         "--ref_audio_jsonl",
         "-r",

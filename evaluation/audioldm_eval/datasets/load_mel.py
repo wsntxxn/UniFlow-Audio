@@ -29,24 +29,26 @@ class MelPairedDataset(torch.utils.data.Dataset):
         limit_num=None,
     ):
         if isinstance(data1, str):
-            self.datalist1 = [
-                os.path.join(data1, x) for x in os.listdir(data1)
-            ]
-            self.datalist1 = sorted(self.datalist1)
+            self.aid_to_audio1 = {
+                x: os.path.join(data1, x)
+                for x in os.listdir(data1)
+            }
         else:
-            self.datalist1 = sorted(list(data1.values()))
+            self.aid_to_audio1 = data1
+        self.aids1 = sorted(self.aid_to_audio1.keys())
 
         if isinstance(data2, str):
-            self.datalist2 = [
-                os.path.join(data2, x) for x in os.listdir(data2)
-            ]
-            self.datalist2 = sorted(self.datalist2)
+            self.aid_to_audio2 = {
+                x: os.path.join(data1, x)
+                for x in os.listdir(data1)
+            }
         else:
-            self.datalist2 = sorted(list(data2.values()))
+            self.aid_to_audio2 = data2
+        self.aids2 = sorted(self.aid_to_audio2.keys())
 
         if limit_num is not None:
-            self.datalist1 = self.datalist1[:limit_num]
-            self.datalist2 = self.datalist2[:limit_num]
+            self.aids1 = self.aids1[:limit_num]
+            self.aids2 = self.aids2[:limit_num]
 
         self.align_two_file_list()
 
@@ -62,30 +64,28 @@ class MelPairedDataset(torch.utils.data.Dataset):
         #     self.fbin_std = None
 
     def align_two_file_list(self):
-        data_dict1 = {os.path.basename(x): x for x in self.datalist1}
-        data_dict2 = {os.path.basename(x): x for x in self.datalist2}
 
-        keyset1 = set(data_dict1.keys())
-        keyset2 = set(data_dict2.keys())
+        keyset1 = set(self.aids1)
+        keyset2 = set(self.aids2)
 
         intersect_keys = keyset1.intersection(keyset2)
 
-        self.datalist1 = [data_dict1[k] for k in intersect_keys]
-        self.datalist2 = [data_dict2[k] for k in intersect_keys]
+        self.aids = list(intersect_keys)
 
-        print("Two path have %s intersection files" % len(intersect_keys))
+        print(f"Two path have {len(intersect_keys)} intersection files")
 
     def __getitem__(self, index):
         while True:
             try:
-                filename1 = self.datalist1[index]
-                filename2 = self.datalist2[index]
+                aid = self.aids[index]
+                filename1 = self.aid_to_audio1[aid]
+                filename2 = self.aid_to_audio2[aid]
                 mel1, _, audio1 = self.get_mel_from_file(filename1)
                 mel2, _, audio2 = self.get_mel_from_file(filename2)
                 break
             except Exception as e:
                 print(index, e)
-                index = (index + 1) % len(self.datalist)
+                index = (index + 1) % len(self.aids)
 
         # if(self.fbin_mean is not None):
         #     mel = (mel - self.fbin_mean) / self.fbin_std
@@ -93,12 +93,12 @@ class MelPairedDataset(torch.utils.data.Dataset):
         return (
             mel1[..., :min_len],
             mel2[..., :min_len],
-            os.path.basename(filename1),
+            aid,
             (audio1, audio2),
         )
 
     def __len__(self):
-        return len(self.datalist1)
+        return len(self.aids)
 
     def get_mel_from_file(self, audio_file):
         audio, file_sr = torchaudio.load(audio_file)
@@ -149,18 +149,22 @@ class WaveDataset(torch.utils.data.Dataset):
         limit_num: int | None = None,
     ):
         if isinstance(data, str):
-            self.datalist = [os.path.join(data, x) for x in os.listdir(data)]
+            self.aid_to_audio = {
+                x: os.path.join(data, x)
+                for x in os.listdir(data)
+            }
         elif isinstance(data, dict):
-            self.datalist = list(data.values())
-        self.datalist = sorted(self.datalist)
+            self.aid_to_audio = data
+        self.aids = sorted(list(self.aid_to_audio.keys()))
         if limit_num is not None:
-            self.datalist = self.datalist[:limit_num]
+            self.aids = self.aids[:limit_num]
         self.sr = sr
 
     def __getitem__(self, index):
         while True:
             try:
-                filename = self.datalist[index]
+                aid = self.aids[index]
+                filename = self.aid_to_audio[aid]
                 waveform = self.read_from_file(filename)
                 if waveform.size(-1) < 1:
                     raise ValueError("empty file %s" % filename)
@@ -169,10 +173,10 @@ class WaveDataset(torch.utils.data.Dataset):
                 print(index, e)
                 index = (index + 1) % len(self.datalist)
 
-        return waveform, os.path.basename(filename)
+        return waveform, aid
 
     def __len__(self):
-        return len(self.datalist)
+        return len(self.aids)
 
     def read_from_file(self, audio_file):
         audio, file_sr = torchaudio.load(audio_file)

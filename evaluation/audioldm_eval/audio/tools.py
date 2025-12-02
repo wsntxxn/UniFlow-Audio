@@ -7,13 +7,13 @@ from audioldm_eval.audio.audio_processing import griffin_lim
 
 
 def save_pickle(obj, fname):
-    print("Save pickle at " + fname)
+    print(f"Save pickle at {fname}")
     with open(fname, "wb") as f:
         pickle.dump(obj, f)
 
 
 def load_pickle(fname):
-    print("Load pickle at " + fname)
+    print(f"Load pickle at {fname}")
     with open(fname, "rb") as f:
         res = pickle.load(f)
     return res
@@ -51,7 +51,8 @@ def inv_mel_spec(mel, out_filename, _stft, griffin_iters=60):
     spec_from_mel = spec_from_mel * spec_from_mel_scaling
 
     audio = griffin_lim(
-        torch.autograd.Variable(spec_from_mel[:, :, :-1]), _stft._stft_fn, griffin_iters
+        torch.autograd.Variable(spec_from_mel[:, :, :-1]), _stft._stft_fn,
+        griffin_iters
     )
 
     audio = audio.squeeze()
