@@ -6,18 +6,18 @@ This script evaluates generated audio against reference audio using metrics
 including FAD, FD, KL, and CLAP scores.
 """
 
-import torch
-
-torch.multiprocessing.set_sharing_strategy('file_system')
 import argparse
 from collections import defaultdict
-
 import os
+import shutil
+from copy import deepcopy
+from pathlib import Path
+
 import numpy as np
 import librosa
-from pathlib import Path
 from tqdm import tqdm
-from copy import deepcopy
+
+import torch
 
 # Ref: https://github.com/haoheliu/audioldm_eval/tree/main
 # This script uses a locally modified version of audioldm_eval.
@@ -29,29 +29,7 @@ import laion_clap
 
 from utils.general import read_jsonl_to_mapping, audio_dir_to_mapping
 
-import os
-import shutil
-from pathlib import Path
-
-
-def create_symlink_folder(gen_folder_path: str) -> str:
-    gen_folder = Path(gen_folder_path).resolve()
-    parent_dir = gen_folder.parent
-    link_folder = parent_dir / (gen_folder.name + "_link")
-
-    if link_folder.exists():
-        shutil.rmtree(link_folder)
-
-    link_folder.mkdir()
-
-    for file in gen_folder.iterdir():
-        if file.is_file():
-            link_name = link_folder / (
-                'Y' + file.stem[:11] + '.wav'
-            )  # renaming logic can be customized
-            link_name.symlink_to(file.resolve())
-
-    return str(link_folder)
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 
 def compute_clap_metrics(batch: dict, model: laion_clap.CLAP_Module):
@@ -151,7 +129,6 @@ def evaluate(args):
     )
     assert gen_is_same_folder == True, "Generated audio files must be in the same folder."
     assert ref_is_same_folder == True, "Reference audio files must be in the same folder."
-    # gen_folder_path_symlink = create_symlink_folder(gen_folder_path)
 
     eval_result = evaluator.main(
         gen_aid_to_audios,

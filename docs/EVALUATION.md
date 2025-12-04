@@ -19,15 +19,6 @@ pip install nemo_toolkit['all']
 pip install -r requirements_eval.txt
 ```
 
-**Troubleshooting:** If you encounter `ImportError: cannot import name 'functional_tensor'` when running V2A evaluation, a simple but not elegant way is to modify `pytorchvideo/transforms/augmentations.py` line 9:
-
-```python
-# Change from:
-import torchvision.transforms.functional_tensor as F_t
-# To:
-import torchvision.transforms.functional as F_t
-```
-
 ## 2. Prepare Data
 
 Prepare the test dataset for each task.
@@ -96,9 +87,10 @@ export CLAP_MODEL_PATH="/path/to/laion_clap/630k-audioset-best.pt"
 python evaluation/tts.py \
   --audio_dir_or_jsonl /path/to/tts_inference \
   --exp_name "your_exp_name" \
-  --ref_transcript_path data/libritts/test/ref_transcription.json
-  --ref_audio_path data/libritts/test/ref_audio.json \
-  --output_path /path/to/tts_result.txt
+  --ref_transcript_path data/librispeech_pc/test/ref_transcription.json
+  --ref_audio_path data/librispeech_pc/test/prompt_audio.json \
+  --output_path /path/to/tts_result.txt \
+  --speaker_model_name ecapa_tdnn
 ```
 
 where `ref_audio_path` is a simple JSON file like:

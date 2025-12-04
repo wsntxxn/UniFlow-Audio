@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torchaudio
 from PIL import Image
-from pytorchvideo import transforms as pv_transforms
+import pytorchvideo
 from pytorchvideo.data.clip_sampling import ConstantClipsPerVideoSampler
 from pytorchvideo.data.encoded_video import EncodedVideo
 from torchvision import transforms
@@ -22,6 +22,55 @@ from torchvision.transforms._transforms_video import NormalizeVideo
 from .models.multimodal_preprocessors import SimpleTokenizer
 
 DEFAULT_AUDIO_FRAME_SHIFT_MS = 10  # in milliseconds
+
+
+class ShortSideScale(torch.nn.Module):
+    """
+    ``nn.Module`` wrapper for ``pytorchvideo.transforms.functional.short_side_scale``.
+    """
+    def __init__(
+        self,
+        size: int,
+        interpolation: str = "bilinear",
+        backend: str = "pytorch"
+    ):
+        super().__init__()
+        self._size = size
+        self._interpolation = interpolation
+        self._backend = backend
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): video tensor with shape (C, T, H, W).
+        """
+        return pytorchvideo.transforms.functional.short_side_scale(
+            x, self._size, self._interpolation, self._backend
+        )
+
+
+class UniformTemporalSubsample(torch.nn.Module):
+    """
+    ``nn.Module`` wrapper for ``pytorchvideo.transforms.functional.uniform_temporal_subsample``.
+    """
+    def __init__(self, num_samples: int, temporal_dim: int = -3):
+        """
+        Args:
+            num_samples (int): The number of equispaced samples to be selected
+            temporal_dim (int): dimension of temporal to perform temporal subsample.
+        """
+        super().__init__()
+        self._num_samples = num_samples
+        self._temporal_dim = temporal_dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): video tensor with shape (C, T, H, W).
+        """
+        return pytorchvideo.transforms.functional.uniform_temporal_subsample(
+            x, self._num_samples, self._temporal_dim
+        )
 
 
 def return_bpe_path():
@@ -307,7 +356,7 @@ def load_and_transform_video_data(
 
     video_outputs = []
     video_transform = transforms.Compose([
-        pv_transforms.ShortSideScale(224),
+        ShortSideScale(224),
         NormalizeVideo(
             mean=(0.48145466, 0.4578275, 0.40821073),
             std=(0.26862954, 0.26130258, 0.27577711),
@@ -317,9 +366,7 @@ def load_and_transform_video_data(
     clip_sampler = ConstantClipsPerVideoSampler(
         clip_duration=clip_duration, clips_per_video=clips_per_video
     )
-    frame_sampler = pv_transforms.UniformTemporalSubsample(
-        num_samples=clip_duration
-    )
+    frame_sampler = UniformTemporalSubsample(num_samples=clip_duration)
 
     for video_path in video_paths:
         video = EncodedVideo.from_path(

@@ -9,16 +9,16 @@ from collections import defaultdict
 from multiprocessing import Pool
 from functools import partial
 from math import log2
+import json
 
 import numpy as np
 import pysptk
 import soundfile as sf
 import librosa
 # from fastdtw import fastdtw
-from scipy import spatial
+# from scipy import spatial
 from tqdm import tqdm
 import pyworld as pw
-import json
 
 from utils.general import read_jsonl_to_mapping, audio_dir_to_mapping
 

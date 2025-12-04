@@ -10,16 +10,16 @@
 from pathlib import Path
 import os
 import json
-import jiwer
 import argparse
 import string
 import numpy as np
 
+import jiwer
 import torch
-from tqdm import tqdm
-from whisper_normalizer.english import EnglishTextNormalizer
 import torch.nn.functional as F
 import torchaudio
+from tqdm import tqdm
+from whisper_normalizer.english import EnglishTextNormalizer
 from nemo.collections.asr.models import EncDecRNNTBPEModel, EncDecSpeakerLabelModel
 if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
     from nemo.core.connectors.save_restore_connector import SaveRestoreConnector

@@ -28,7 +28,9 @@ def main():
     accelerator = Accelerator(mixed_precision="no")
     configs = []
 
-    @hydra.main(config_path="configs", config_name="inference")
+    @hydra.main(
+        config_path="configs", config_name="inference", version_base=None
+    )
     def parse_config_from_command_line(config):
         config = OmegaConf.to_container(config, resolve=True)
         configs.append(config)
