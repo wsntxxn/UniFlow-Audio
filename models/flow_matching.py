@@ -476,6 +476,7 @@ class DurationAdapterMixin:
         pred = torch.exp(pred) * mask
         pred = torch.ceil(pred) - self.offset
         pred *= self.frame_resolution
+        pred = torch.round(pred * self.latent_token_rate)
         return pred
 
     def prepare_global_duration(
@@ -490,11 +491,10 @@ class DurationAdapterMixin:
         local_pred: predicted latent length 
         """
         global_pred = torch.exp(global_pred) - self.offset
-        result = global_pred
+        result = torch.round(global_pred * self.latent_token_rate)
         # avoid error accumulation for each frame
         if use_local:
-            pred_from_local = torch.round(local_pred * self.latent_token_rate)
-            pred_from_local = pred_from_local.sum(1) / self.latent_token_rate
+            pred_from_local = local_pred.sum(1)
             result[is_time_aligned] = pred_from_local[is_time_aligned]
 
         return result
@@ -507,19 +507,15 @@ class DurationAdapterMixin:
         global_duration: torch.Tensor,
     ):
         training = getattr(self, 'training', False)
-        n_latents = torch.round(local_duration * self.latent_token_rate)
-        # TODO unify duration input scale for training and inference: num_frames
         if not training:  # inference mode
-            latent_length = torch.round(
-                global_duration * self.latent_token_rate
-            )
+            latent_length = global_duration
         else:  # training mode
-            latent_length = n_latents.sum(1)
+            latent_length = local_duration.sum(1)
         latent_mask = create_mask_from_length(latent_length).to(
             content_mask.device
         )
         attn_mask = content_mask.unsqueeze(-1) * latent_mask.unsqueeze(1)
-        align_path = create_alignment_path(n_latents, attn_mask)
+        align_path = create_alignment_path(local_duration, attn_mask)
         expanded_x = torch.matmul(align_path.transpose(1, 2).to(x.dtype), x)
         return expanded_x, latent_mask
 
@@ -668,14 +664,12 @@ class CrossAttentionAudioFlowMatching(
             )
 
         # prepare global duration
-        global_duration = self.prepare_global_duration(
+        latent_length = self.prepare_global_duration(
             global_duration_pred,
             local_duration_pred,
             is_time_aligned,
             use_local=False
         )
-        # TODO: manually set duration for SE and AudioSR
-        latent_length = torch.round(global_duration * self.latent_token_rate)
         task_mask = torch.as_tensor([t in SAME_LENGTH_TASKS for t in task])
         latent_length[task_mask] = content[task_mask].size(1)
         latent_mask = create_mask_from_length(latent_length).to(device)
@@ -869,10 +863,11 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
             duration = F.pad(
                 duration, (0, content_mask.size(1) - duration.size(1))
             )
+        local_latent_duration = torch.round(duration * self.latent_token_rate)
         time_aligned_content, _ = self.expand_by_duration(
             x=content[:, :trunc_ta_length],
             content_mask=ta_content_mask,
-            local_duration=duration,
+            local_duration=local_latent_duration,
             global_duration=latent_mask.sum(1),
         )
 
@@ -960,17 +955,21 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
             trunc_ta_length = content.size(1)
 
         # prepare local duration
-        local_duration = self.prepare_local_duration(
+        local_latent_duration = self.prepare_local_duration(
             local_duration_pred, content_mask
         )
-        local_duration = local_duration[:, :trunc_ta_length]
+        local_latent_duration = local_latent_duration[:, :trunc_ta_length]
         # use ground truth duration
         if use_gt_duration and "duration" in kwargs:
-            local_duration = torch.as_tensor(kwargs["duration"]).to(device)
+            local_latent_duration = torch.as_tensor(kwargs["duration"]
+                                                   ).to(device)
+            local_latent_duration = torch.round(
+                local_latent_duration * self.latent_token_rate
+            )
 
         # prepare global duration
-        global_duration = self.prepare_global_duration(
-            global_duration_pred, local_duration, is_time_aligned
+        global_latent_duration = self.prepare_global_duration(
+            global_duration_pred, local_latent_duration, is_time_aligned
         )
 
         # --------------------------------------------------------------------
@@ -979,8 +978,8 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         time_aligned_content, latent_mask = self.expand_by_duration(
             x=content[:, :trunc_ta_length],
             content_mask=content_mask[:, :trunc_ta_length],
-            local_duration=local_duration,
-            global_duration=global_duration,
+            local_duration=local_latent_duration,
+            global_duration=global_latent_duration,
         )
 
         context, context_mask, time_aligned_content = self.get_backbone_input(
@@ -1136,12 +1135,14 @@ class DummyContentFillerAudioFlowMatching(DummyContentAudioFlowMatching):
         x: content tensor, [batch_size, content_length, content_dim]
         content_mask: content mask, [batch_size, content_length]
         local_duration: content element length, not used in this model
-        global_duration: clip length in latent tokens during training; clip duration in seconds during inference
+        global_duration: clip length in latent tokens
         """
-        if not self.training:
-            global_duration = torch.round(
-                global_duration * self.latent_token_rate
-            ).long()
+
+        # if not self.training:
+        #     global_duration = torch.round(
+        #         global_duration * self.latent_token_rate
+        #     ).long()
+
         if x.size(1) < global_duration.max():
             padding_length = global_duration.max() - x.size(1)
             padding = torch.zeros(x.size(0), padding_length,
@@ -1159,9 +1160,5 @@ class DummyContentFillerAudioFlowMatching(DummyContentAudioFlowMatching):
             filling_mask, filler_embedding.repeat(num_filling, 1)
         )
 
-        if self.training:
-            latent_mask = None
-        else:
-            latent_length = global_duration
-            latent_mask = create_mask_from_length(latent_length).to(x.device)
+        latent_mask = create_mask_from_length(global_duration).to(x.device)
         return x, latent_mask
