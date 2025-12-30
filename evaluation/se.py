@@ -16,8 +16,7 @@ from pystoi.stoi import stoi  # https://github.com/mpariente/pystoi
 import numpy as np
 import tqdm
 import torch
-
-from utils.general import read_jsonl_to_mapping
+from accel_hydra.utils.general import read_jsonl_to_mapping
 
 #################################################
 #

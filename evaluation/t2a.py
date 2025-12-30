@@ -9,25 +9,21 @@ including FAD, FD, KL, and CLAP scores.
 import argparse
 from collections import defaultdict
 import os
-import shutil
 from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
 import librosa
 from tqdm import tqdm
-
 import torch
+from accel_hydra.utils.general import read_jsonl_to_mapping
+import laion_clap
 
 # Ref: https://github.com/haoheliu/audioldm_eval/tree/main
 # This script uses a locally modified version of audioldm_eval.
 from audioldm_eval import EvaluationHelper
 
-# Ref: https://github.com/LAION-AI/CLAP
-# The ref command for installing: pip install laion-clap
-import laion_clap
-
-from utils.general import read_jsonl_to_mapping, audio_dir_to_mapping
+from utils.general import audio_dir_to_mapping
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 

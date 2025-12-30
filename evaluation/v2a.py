@@ -10,11 +10,12 @@ from pathlib import Path
 import argparse
 
 import torch
+from accel_hydra.utils.general import read_jsonl_to_mapping
 
 from audioldm_eval import EvaluationHelper
 from GMELab.metrics.audio_video_metrics.imagebind_score import calculate_imagebind_score
 from GMELab.metrics.audio_video_metrics.sync import calculate_sync, InSyncCfg
-from utils.general import read_jsonl_to_mapping, audio_dir_to_mapping
+from utils.general import audio_dir_to_mapping
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 GMELAB_CACHE = os.environ.get(

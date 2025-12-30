@@ -13,6 +13,7 @@ def main(args):
 
     if args.aid_video_mapping.endswith('.csv'):
         df = pd.read_csv(args.aid_video_mapping, sep='\t')
+        df["audio_id"] = df["audio_id"].apply(lambda x: "_".join(x.split()))
         aid_to_video = dict(zip(df['audio_id'], df['video_path']))
     elif args.aid_video_mapping.endswith('.jsonl'):
         aid_to_video = read_jsonl_to_mapping(
@@ -29,10 +30,17 @@ def main(args):
         if audio_id.endswith('_dummy'):
             audio_id = audio_id[:-6]
         if audio_id not in aid_to_video:
+            print(f"{audio_id} not found in aid_to_video")
             continue
         video_file = aid_to_video[audio_id]
         output_file = output_dir / f"{audio_id}.mp4"
-        merge_audio_video(audio_file, video_file, output_file, args.backend)
+        merge_audio_video(
+            audio_file,
+            video_file,
+            output_file,
+            args.backend,
+            low_quality=args.low_quality
+        )
 
 
 if __name__ == '__main__':
@@ -64,6 +72,12 @@ if __name__ == '__main__':
         type=int,
         default=None,
         help="number of samples to process, default is all"
+    )
+    parser.add_argument(
+        "--low_quality",
+        action="store_true",
+        help=
+        "use lower quality settings to reduce file size (higher CRF, lower resolution for ffmpeg backend)"
     )
     args = parser.parse_args()
     main(args)

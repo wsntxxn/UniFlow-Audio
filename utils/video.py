@@ -18,7 +18,8 @@ def merge_audio_video(
     target_path: str | Path,
     backend: str = "moviepy",
     logging: bool = False,
-    audio_fps: int | None = None
+    audio_fps: int | None = None,
+    low_quality: bool = False
 ):
     """
     Merge audio and video into a single file.
@@ -28,6 +29,7 @@ def merge_audio_video(
         video_path (str | Path): Path to the video file.
         target_path (str | Path): Path to the target file.
         backend (str, optional): The backend to use for merging. Defaults to "moviepy".
+        low_quality (bool, optional): If True, use lower quality settings to reduce file size. Defaults to False.
     """
     assert backend in [
         "moviepy", "ffmpeg"
@@ -50,19 +52,29 @@ def merge_audio_video(
         video = video.with_audio(audio)
 
         target_path = Path(target_path)
+        # Use higher CRF value (28-30) for lower quality/smaller file size
+        crf_value = "28" if low_quality else "23"
         video.write_videofile(
             target_path,
             logger=None if not logging else "bar",
             threads=8,
             preset="ultrafast",
-            ffmpeg_params=["-crf", "23"]
+            ffmpeg_params=["-crf", crf_value]
         )
         if tmp_wav:
             os.remove(tmp_wav.name)
     else:
         logging_arg = "" if logging else "-loglevel quiet"
-        command = f"ffmpeg {logging_arg} -i '{video_path.__str__()}' -i '{audio.__str__()}' -c:v copy " \
-                  f"-c:a copy -map 0:v:0 -map 1:a:0 '{target_path.__str__()}'"
+        if low_quality:
+            # Re-encode video with lower quality settings
+            # Use CRF 28 for smaller file size, scale down to 720p if larger
+            command = f"ffmpeg {logging_arg} -i '{video_path.__str__()}' -i '{audio.__str__()}' " \
+                      f"-c:v libx264 -crf 28 -preset fast -vf 'scale=\'if(gt(iw,1280),1280,-1)\':\'if(gt(ih,720),720,-1)\'' " \
+                      f"-c:a aac -b:a 128k -map 0:v:0 -map 1:a:0 '{target_path.__str__()}'"
+        else:
+            # Use copy mode to preserve original quality
+            command = f"ffmpeg {logging_arg} -i '{video_path.__str__()}' -i '{audio.__str__()}' -c:v copy " \
+                      f"-c:a copy -map 0:v:0 -map 1:a:0 '{target_path.__str__()}'"
         os.system(command)
 
 

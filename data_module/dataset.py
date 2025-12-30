@@ -392,6 +392,7 @@ class VideoToAudioDataset(AudioGenerationDataset):
                 video_feature = hf[f"{audio_id}/video"][()]
                 label: bytes = hf[f"{audio_id}/label"][()]
                 label = label.decode()
+                label = "_".join(label.split())
         else:
             raise NotImplementedError('video feature must load from hdf5')
 

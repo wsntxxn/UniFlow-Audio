@@ -30,7 +30,7 @@ class FlowMatchingMixin:
     def __init__(
         self,
         cfg_drop_ratio: float = 0.2,
-        sample_strategy: str = 'normal',
+        sample_strategy: str = 'uniform',
         num_train_steps: int = 1000
     ) -> None:
         r"""
@@ -218,7 +218,7 @@ class SingleTaskCrossAttentionAudioFlowMatching(
         content_encoder: ContentEncoder,
         backbone: nn.Module,
         cfg_drop_ratio: float = 0.2,
-        sample_strategy: str = 'normal',
+        sample_strategy: str = 'uniform',
         num_train_steps: int = 1000,
     ):
         nn.Module.__init__(self)
@@ -497,6 +497,7 @@ class DurationAdapterMixin:
             pred_from_local = local_pred.sum(1)
             result[is_time_aligned] = pred_from_local[is_time_aligned]
 
+        result = result.long()
         return result
 
     def expand_by_duration(
@@ -533,7 +534,7 @@ class CrossAttentionAudioFlowMatching(
         frame_resolution: float,
         duration_offset: float = 1.0,
         cfg_drop_ratio: float = 0.2,
-        sample_strategy: str = 'normal',
+        sample_strategy: str = 'uniform',
         num_train_steps: int = 1000
     ):
         super().__init__(
@@ -731,7 +732,7 @@ class DummyContentAudioFlowMatching(CrossAttentionAudioFlowMatching):
         frame_resolution: float,
         duration_offset: float = 1.0,
         cfg_drop_ratio: float = 0.2,
-        sample_strategy: str = 'normal',
+        sample_strategy: str = 'uniform',
         num_train_steps: int = 1000,
         task_weights: dict | None = None,
     ):
@@ -1113,7 +1114,7 @@ class DummyContentFillerAudioFlowMatching(DummyContentAudioFlowMatching):
         frame_resolution: float,
         duration_offset: float = 1,
         cfg_drop_ratio: float = 0.2,
-        sample_strategy: str = 'normal',
+        sample_strategy: str = 'uniform',
         num_train_steps: int = 1000
     ):
         super().__init__(

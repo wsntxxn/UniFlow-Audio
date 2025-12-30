@@ -19,8 +19,9 @@ import librosa
 # from scipy import spatial
 from tqdm import tqdm
 import pyworld as pw
+from accel_hydra.utils.general import read_jsonl_to_mapping
 
-from utils.general import read_jsonl_to_mapping, audio_dir_to_mapping
+from utils.general import audio_dir_to_mapping
 
 N_FFT = 1024
 N_SHIFT = 256
