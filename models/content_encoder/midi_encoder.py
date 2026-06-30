@@ -1,12 +1,14 @@
+import math
 from typing import Sequence
 from dataclasses import dataclass
-import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from accel_hydra.utils.torch import create_mask_from_length
 from torch.nn import Parameter
 
-from utils.torch_utilities import create_mask_from_length
+from models.content_encoder.text_encoder import precompute_freqs_cis, ConvNeXtV2Block
 from utils.diffsinger_utilities import denorm_f0, f0_to_coarse
 
 
@@ -414,21 +416,17 @@ class MultiheadAttention(nn.Module):
             k = torch.cat([k, self.bias_k.repeat(1, bsz, 1)])
             v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
             if attn_mask is not None:
-                attn_mask = torch.cat(
-                    [attn_mask,
-                     attn_mask.new_zeros(attn_mask.size(0), 1)],
-                    dim=1
-                )
+                attn_mask = torch.cat([
+                    attn_mask,
+                    attn_mask.new_zeros(attn_mask.size(0), 1)
+                ],
+                                      dim=1)
             if key_padding_mask is not None:
-                key_padding_mask = torch.cat(
-                    [
-                        key_padding_mask,
-                        key_padding_mask.new_zeros(
-                            key_padding_mask.size(0), 1
-                        )
-                    ],
-                    dim=1
-                )
+                key_padding_mask = torch.cat([
+                    key_padding_mask,
+                    key_padding_mask.new_zeros(key_padding_mask.size(0), 1)
+                ],
+                                             dim=1)
 
         q = q.contiguous().view(tgt_len, bsz * self.num_heads,
                                 self.head_dim).transpose(0, 1)
@@ -458,27 +456,23 @@ class MultiheadAttention(nn.Module):
 
         if self.add_zero_attn:
             src_len += 1
-            k = torch.cat(
-                [k, k.new_zeros((k.size(0), 1) + k.size()[2:])], dim=1
-            )
-            v = torch.cat(
-                [v, v.new_zeros((v.size(0), 1) + v.size()[2:])], dim=1
-            )
+            k = torch.cat([k, k.new_zeros((k.size(0), 1) + k.size()[2:])],
+                          dim=1)
+            v = torch.cat([v, v.new_zeros((v.size(0), 1) + v.size()[2:])],
+                          dim=1)
             if attn_mask is not None:
-                attn_mask = torch.cat(
-                    [attn_mask,
-                     attn_mask.new_zeros(attn_mask.size(0), 1)],
-                    dim=1
-                )
+                attn_mask = torch.cat([
+                    attn_mask,
+                    attn_mask.new_zeros(attn_mask.size(0), 1)
+                ],
+                                      dim=1)
             if key_padding_mask is not None:
-                key_padding_mask = torch.cat(
-                    [
-                        key_padding_mask,
-                        torch.zeros(key_padding_mask.size(0),
-                                    1).type_as(key_padding_mask)
-                    ],
-                    dim=1
-                )
+                key_padding_mask = torch.cat([
+                    key_padding_mask,
+                    torch.zeros(key_padding_mask.size(0),
+                                1).type_as(key_padding_mask)
+                ],
+                                             dim=1)
 
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         attn_weights = self.apply_sparse_mask(
@@ -493,9 +487,9 @@ class MultiheadAttention(nn.Module):
             if len(attn_mask.shape) == 2:
                 attn_mask = attn_mask.unsqueeze(0)
             elif len(attn_mask.shape) == 3:
-                attn_mask = attn_mask[:, None].repeat(
-                    [1, self.num_heads, 1, 1]
-                ).reshape(bsz * self.num_heads, tgt_len, src_len)
+                attn_mask = attn_mask[:, None].repeat([
+                    1, self.num_heads, 1, 1
+                ]).reshape(bsz * self.num_heads, tgt_len, src_len)
             attn_weights = attn_weights + attn_mask
 
         if enc_dec_attn_constraint_mask is not None:  # bs x head x L_kv
@@ -777,17 +771,15 @@ class FFTBlocks(nn.Module):
         self.padding_set_zero = padding_set_zero
 
         self.layers = nn.ModuleList([])
-        self.layers.extend(
-            [
-                TransformerEncoderLayer(
-                    self.hidden_size,
-                    self.dropout,
-                    kernel_size=ffn_kernel_size,
-                    num_heads=num_heads,
-                    padding_set_zero=padding_set_zero,
-                ) for _ in range(self.num_layers)
-            ]
-        )
+        self.layers.extend([
+            TransformerEncoderLayer(
+                self.hidden_size,
+                self.dropout,
+                kernel_size=ffn_kernel_size,
+                num_heads=num_heads,
+                padding_set_zero=padding_set_zero,
+            ) for _ in range(self.num_layers)
+        ])
         if self.use_last_norm:
             self.layer_norm = nn.LayerNorm(embed_dim)
         else:
@@ -1044,3 +1036,136 @@ class FastSpeech2PitchEncoder(FastSpeech2EncoderBase):
         pitch = f0_to_coarse(f0_denorm)
         pitch_embed = self.pitch_embed(pitch)
         return {"output": pitch_embed}
+
+
+class ConvNeXT2MIDIEncoder(nn.Module):
+    def __init__(
+        self,
+        phone_vocab_size: int,
+        midi_vocab_size: int,
+        slur_vocab_size: int,
+        d_model: int,
+        conv_layers: int,
+        conv_mult: int,
+        d_out: int,
+        mask_padding: bool = True,
+        average_upsampling: bool = False,
+        spk_config: SpkConfig | None = None,
+    ):
+        super().__init__()
+        self.phone_embed = Embedding(phone_vocab_size, d_model)
+        self.midi_embed = Embedding(midi_vocab_size, d_model, padding_idx=0)
+        self.midi_dur_embed = Linear(1, d_model)
+        self.is_slur_embed = Embedding(slur_vocab_size, d_model)
+        self.out_proj = Linear(d_model, d_out)
+
+        self.mask_padding = mask_padding
+        self.average_upsampling = average_upsampling
+        if average_upsampling:
+            assert mask_padding, "midi_embedding_average_upsampling requires mask_padding to be True"
+        if conv_layers > 0:
+            self.extra_modeling = True
+            self.precompute_max_pos = 8192
+            self.register_buffer(
+                "freqs_cis",
+                precompute_freqs_cis(d_model, self.precompute_max_pos),
+                persistent=False
+            )
+            self.midi_blocks = nn.Sequential(
+                *[
+                    ConvNeXtV2Block(d_model, d_model * conv_mult)
+                    for _ in range(conv_layers)
+                ]
+            )
+        else:
+            self.extra_modeling = False
+
+        self.embed_scale = math.sqrt(d_model)
+        self.spk_config = spk_config
+        if spk_config is not None:
+            if spk_config.encoding_format == "id":
+                self.spk_embed_proj = Embedding(
+                    spk_config.num_spk + 1, d_model
+                )
+            elif spk_config.encoding_format == "embedding":
+                self.spk_embed_proj = Linear(spk_config.spk_embed_dim, d_model)
+
+    def average_upsample_text_by_mask(self, text, text_mask):
+        batch, text_len, text_dim = text.shape
+
+        audio_len = text_len
+        text_lens = text_mask.sum(dim=1)  # [batch]
+
+        upsampled_text = torch.zeros_like(text)
+
+        for i in range(batch):
+            text_len = text_lens[i].item()
+
+            if text_len == 0:
+                continue
+
+            valid_ind = torch.where(text_mask[i])[0]
+            valid_data = text[i, valid_ind, :]  # [text_len, text_dim]
+
+            base_repeat = audio_len // text_len
+            remainder = audio_len % text_len
+
+            indices = []
+            for j in range(text_len):
+                repeat_count = base_repeat + (
+                    1 if j >= text_len - remainder else 0
+                )
+                indices.extend([j] * repeat_count)
+
+            indices = torch.tensor(
+                indices[:audio_len], device=text.device, dtype=torch.long
+            )
+            upsampled = valid_data[indices]  # [audio_len, text_dim]
+
+            upsampled_text[i, :audio_len, :] = upsampled
+
+        return upsampled_text
+
+    def forward(
+        self,
+        phoneme: torch.Tensor,
+        midi: torch.Tensor,
+        midi_duration: torch.Tensor,
+        is_slur: torch.Tensor,
+        lengths: Sequence[int],
+        spk: torch.Tensor | None = None,
+    ):
+        x = self.embed_scale * self.phone_embed(phoneme)
+        midi_embedding = self.midi_embed(midi)
+        midi_dur_embedding = self.midi_dur_embed(midi_duration[:, :, None])
+        slur_embedding = self.is_slur_embed(is_slur)
+
+        x = x + midi_embedding + midi_dur_embedding + slur_embedding
+        padding_mask = ~create_mask_from_length(lengths).to(phoneme.device)
+        seq_len = int(lengths.max().item())
+
+        if self.extra_modeling:
+            x = x + self.freqs_cis[:seq_len, :]
+            if self.mask_padding:
+                x = x.masked_fill(
+                    padding_mask.unsqueeze(-1).expand(-1, -1, x.size(-1)), 0.0
+                )
+                for block in self.midi_blocks:
+                    x = block(x)
+                    x = x.masked_fill(
+                        padding_mask.unsqueeze(-1).expand(-1, -1, x.size(-1)),
+                        0.0
+                    )
+            else:
+                x = self.midi_blocks(x)
+
+        if self.average_upsampling:
+            x = self.average_upsample_text_by_mask(x, ~padding_mask)
+
+        if self.spk_config is not None:
+            spk_embed = self.spk_embed_proj(spk).unsqueeze(1)
+            x = x + spk_embed
+
+        x = self.out_proj(x)
+
+        return {"output": x, "mask": ~padding_mask}

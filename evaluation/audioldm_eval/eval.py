@@ -5,7 +5,9 @@ import numpy as np
 import argparse
 import datetime
 import torch
+import torch.distributed as dist
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 import torchaudio.transforms as T
 from transformers import Wav2Vec2Processor, AutoModel, Wav2Vec2FeatureExtractor
@@ -28,9 +30,7 @@ class EvaluationHelper:
         self.backbone = backbone
         self.sampling_rate = sampling_rate
         self.frechet = FrechetAudioDistance(
-            use_pca=False,
-            use_activation=False,
-            verbose=True,
+            use_pca=False, use_activation=False, verbose=True, device=device
         )
 
         # self.passt_model = get_basic_model(mode="logits")
@@ -97,6 +97,16 @@ class EvaluationHelper:
 
         self.mel_model.eval()
         self.mel_model.to(self.device)
+        if dist.is_initialized():
+            local_rank = int(os.environ.get("LOCAL_RANK", 0))
+            if torch.device(self.device).type == "cuda":
+                self.mel_model = torch.nn.parallel.DistributedDataParallel(
+                    self.mel_model, device_ids=[local_rank]
+                )
+            else:
+                self.mel_model = torch.nn.parallel.DistributedDataParallel(
+                    self.mel_model
+                )
         self.fbin_mean, self.fbin_std = None, None
 
     def main(
@@ -141,6 +151,9 @@ class EvaluationHelper:
         threshold: float = 0.99,
         limit_num: int | None = None
     ):
+        distributed = dist.is_available() and dist.is_initialized()
+        rank = dist.get_rank() if distributed else 0
+        is_main_rank = rank == 0
         if isinstance(data1, str):
             self.datalist1 = [
                 os.path.join(data1, x) for x in os.listdir(data1)
@@ -170,16 +183,18 @@ class EvaluationHelper:
             len(intersect_keys) / len(keyset1) > threshold and
             len(intersect_keys) / len(keyset2) > threshold
         ):
-            print(
-                "+Two path have %s intersection files out of total %s & %s files. Processing two folder with same_name=True"
-                % (len(intersect_keys), len(keyset1), len(keyset2))
-            )
+            if is_main_rank:
+                print(
+                    "+Two path have %s intersection files out of total %s & %s files. Processing two folder with same_name=True"
+                    % (len(intersect_keys), len(keyset1), len(keyset2))
+                )
             return True
         else:
-            print(
-                "-Two path have %s intersection files out of total %s & %s files. Processing two folder with same_name=False"
-                % (len(intersect_keys), len(keyset1), len(keyset2))
-            )
+            if is_main_rank:
+                print(
+                    "-Two path have %s intersection files out of total %s & %s files. Processing two folder with same_name=False"
+                    % (len(intersect_keys), len(keyset1), len(keyset2))
+                )
             return False
 
     def calculate_lsd(self, pairedloader, same_name=True, time_offset=160 * 7):
@@ -191,7 +206,11 @@ class EvaluationHelper:
         print("Calculating LSD using a time offset of %s ..." % time_offset)
         lsd_avg = []
         ssim_stft_avg = []
-        for _, _, filename, (audio1, audio2) in tqdm(pairedloader):
+        for _, _, filename, (audio1, audio2) in tqdm(
+            pairedloader,
+            disable=dist.is_initialized() and dist.get_rank() != 0,
+            desc="Calculating LSD"
+        ):
             audio1 = audio1.cpu().numpy()[0, 0]
             audio2 = audio2.cpu().numpy()[0, 0]
 
@@ -213,6 +232,12 @@ class EvaluationHelper:
             lsd_avg.append(result["lsd"])
             ssim_stft_avg.append(result["ssim"])
 
+        if dist.is_available() and dist.is_initialized():
+            gathered = [None for _ in range(dist.get_world_size())]
+            dist.all_gather_object(gathered, (lsd_avg, ssim_stft_avg))
+            lsd_avg = sum([part[0] for part in gathered], [])
+            ssim_stft_avg = sum([part[1] for part in gathered], [])
+
         return {"lsd": np.mean(lsd_avg), "ssim_stft": np.mean(ssim_stft_avg)}
 
     def lsd(self, audio1, audio2):
@@ -224,7 +249,11 @@ class EvaluationHelper:
             return {"psnr": -1, "ssim": -1}
         psnr_avg = []
         ssim_avg = []
-        for mel_gen, mel_target, filename, _ in tqdm(pairedloader):
+        for mel_gen, mel_target, filename, _ in tqdm(
+            pairedloader,
+            disable=dist.is_initialized() and dist.get_rank() != 0,
+            desc="Calculating LSD"
+        ):
             mel_gen = mel_gen.cpu().numpy()[0]
             mel_target = mel_target.cpu().numpy()[0]
             psnrval = psnr(mel_gen, mel_target)
@@ -235,6 +264,13 @@ class EvaluationHelper:
             data_range = max(np.max(mel_gen), np.max(mel_target)
                             ) - min(np.min(mel_gen), np.min(mel_target))
             ssim_avg.append(ssim(mel_gen, mel_target, data_range=data_range))
+
+        if dist.is_available() and dist.is_initialized():
+            gathered = [None for _ in range(dist.get_world_size())]
+            dist.all_gather_object(gathered, (psnr_avg, ssim_avg))
+            psnr_avg = sum([part[0] for part in gathered], [])
+            ssim_avg = sum([part[1] for part in gathered], [])
+
         return {"psnr": np.mean(psnr_avg), "ssim": np.mean(ssim_avg)}
 
     def calculate_metrics(
@@ -251,28 +287,57 @@ class EvaluationHelper:
         # Generation, target
         torch.manual_seed(0)
 
+        distributed = dist.is_available() and dist.is_initialized()
+        world_size = dist.get_world_size() if distributed else 1
+        rank = dist.get_rank() if distributed else 0
+        is_main_rank = rank == 0
+        dataset = WaveDataset(
+            generate_files,
+            self.sampling_rate,  # TODO
+            # 32000,
+            limit_num=limit_num,
+        )
+        if distributed:
+            sampler = DistributedSampler(
+                dataset=dataset,
+                num_replicas=world_size,
+                rank=rank,
+                shuffle=False,
+                drop_last=False
+            )
+        else:
+            sampler = None
+
         outputloader = DataLoader(
-            WaveDataset(
-                generate_files,
-                self.sampling_rate,  # TODO
-                # 32000,
-                limit_num=limit_num,
-            ),
+            dataset,
             batch_size=1,
-            sampler=None,
+            sampler=sampler,
             num_workers=num_workers,
+            drop_last=False
         )
 
+        dataset = WaveDataset(
+            groundtruth,
+            self.sampling_rate,  # TODO
+            # 32000,
+            limit_num=limit_num,
+        )
+        if distributed:
+            sampler = DistributedSampler(
+                dataset=dataset,
+                num_replicas=world_size,
+                rank=rank,
+                shuffle=False,
+                drop_last=False
+            )
+        else:
+            sampler = None
         resultloader = DataLoader(
-            WaveDataset(
-                groundtruth,
-                self.sampling_rate,  # TODO
-                # 32000,
-                limit_num=limit_num,
-            ),
+            dataset,
             batch_size=1,
-            sampler=None,
+            sampler=sampler,
             num_workers=num_workers,
+            drop_last=False
         )
 
         out = {}
@@ -280,15 +345,19 @@ class EvaluationHelper:
         # FAD
         ######################################################################################################################
         if (recalculate):
-            print("Calculate FAD score from scratch")
+            if is_main_rank:
+                print("Calculate FAD score from scratch")
         fad_score = self.frechet.score(
             generate_files,
             groundtruth,
             limit_num=limit_num,
             recalculate=recalculate
         )
+        if fad_score == -1:
+            raise Exception("Calculating FAD failed")
         out.update(fad_score)
-        print("FAD: %s" % fad_score)
+        if is_main_rank:
+            print("FAD: %s" % fad_score)
         ######################################################################################################################
 
         # PANNs or PassT or MERT
@@ -302,15 +371,18 @@ class EvaluationHelper:
                 groundtruth_dir.stem + "classifier_logits_feature_cache.pkl"
             )
         if (os.path.exists(cache_path) and not recalculate):
-            print("reload", cache_path)
+            if is_main_rank:
+                print("reload", cache_path)
             featuresdict_2 = load_pickle(cache_path)
         else:
-            if isinstance(groundtruth, str):
-                print(f"Extracting features from {groundtruth}.")
-            else:
-                print(f"Extracting features from {groundtruth_dir}.")
+            if is_main_rank:
+                if isinstance(groundtruth, str):
+                    print(f"Extracting features from {groundtruth}.")
+                else:
+                    print(f"Extracting features from {groundtruth_dir}.")
             featuresdict_2 = self.get_featuresdict(resultloader)
-            save_pickle(featuresdict_2, cache_path)
+            if is_main_rank:
+                save_pickle(featuresdict_2, cache_path)
 
         if isinstance(generate_files, str):
             cache_path = generate_files + "classifier_logits_feature_cache.pkl"
@@ -322,15 +394,18 @@ class EvaluationHelper:
             )
 
         if (os.path.exists(cache_path) and not recalculate):
-            print("reload", cache_path)
+            if is_main_rank:
+                print("reload", cache_path)
             featuresdict_1 = load_pickle(cache_path)
         else:
-            if isinstance(generate_files, str):
-                print(f"Extracting features from {generate_files}.")
-            else:
-                print(f"Extracting features from {generated_dir}.")
+            if is_main_rank:
+                if isinstance(generate_files, str):
+                    print(f"Extracting features from {generate_files}.")
+                else:
+                    print(f"Extracting features from {generated_dir}.")
             featuresdict_1 = self.get_featuresdict(outputloader)
-            save_pickle(featuresdict_1, cache_path)
+            if is_main_rank:
+                save_pickle(featuresdict_1, cache_path)
 
         # KL
         metric_kl, kl_ref, paths_1 = calculate_kl(
@@ -359,19 +434,31 @@ class EvaluationHelper:
         # Metrics for Autoencoder
         ######################################################################################################################
         if (calculate_psnr_ssim or calculate_lsd):
+            paired_dataset = MelPairedDataset(
+                generate_files,
+                groundtruth,
+                self._stft,
+                self.sampling_rate,
+                self.fbin_mean,
+                self.fbin_std,
+                limit_num=limit_num,
+            )
+            if distributed:
+                paired_sampler = DistributedSampler(
+                    dataset=paired_dataset,
+                    num_replicas=world_size,
+                    rank=rank,
+                    shuffle=False,
+                    drop_last=False
+                )
+            else:
+                paired_sampler = None
             pairedloader = DataLoader(
-                MelPairedDataset(
-                    generate_files,
-                    groundtruth,
-                    self._stft,
-                    self.sampling_rate,
-                    self.fbin_mean,
-                    self.fbin_std,
-                    limit_num=limit_num,
-                ),
+                paired_dataset,
                 batch_size=1,
-                sampler=None,
+                sampler=paired_sampler,
                 num_workers=16,
+                drop_last=False,
             )
 
         if (calculate_lsd):
@@ -396,34 +483,35 @@ class EvaluationHelper:
         #     rng_seed=2020,
         # )
         # out.update(metric_kid)
-
-        print("\n".join((f"{k}: {v:.7f}" for k, v in out.items())))
-        print("\n")
-        print(limit_num)
-        print(
-            f'KL_Sigmoid: {out.get("kullback_leibler_divergence_sigmoid", float("nan")):8.5f};',
-            f'KL: {out.get("kullback_leibler_divergence_softmax", float("nan")):8.5f};',
-            f'PSNR: {out.get("psnr", float("nan")):.5f}',
-            f'SSIM: {out.get("ssim", float("nan")):.5f}',
-            f'ISc: {out.get("inception_score_mean", float("nan")):8.5f} ({out.get("inception_score_std", float("nan")):5f});',
-            f'KID: {out.get("kernel_inception_distance_mean", float("nan")):.5f}',
-            f'({out.get("kernel_inception_distance_std", float("nan")):.5f})',
-            f'FD: {out.get("frechet_distance", float("nan")):8.5f};',
-            f'FAD: {out.get("frechet_audio_distance", float("nan")):.5f}',
-            f'LSD: {out.get("lsd", float("nan")):.5f}',
-            # f'SSIM_STFT: {out.get("ssim_stft", float("nan")):.5f}',
-        )
+        if is_main_rank:
+            print("\n".join((f"{k}: {v:.7f}" for k, v in out.items())))
+            print("\n")
+            print(limit_num)
+            print(
+                f'KL_Sigmoid: {out.get("kullback_leibler_divergence_sigmoid", float("nan")):8.5f};',
+                f'KL: {out.get("kullback_leibler_divergence_softmax", float("nan")):8.5f};',
+                f'PSNR: {out.get("psnr", float("nan")):.5f}',
+                f'SSIM: {out.get("ssim", float("nan")):.5f}',
+                f'ISc: {out.get("inception_score_mean", float("nan")):8.5f} ({out.get("inception_score_std", float("nan")):5f});',
+                f'KID: {out.get("kernel_inception_distance_mean", float("nan")):.5f}',
+                f'({out.get("kernel_inception_distance_std", float("nan")):.5f})',
+                f'FD: {out.get("frechet_distance", float("nan")):8.5f};',
+                f'FAD: {out.get("frechet_audio_distance", float("nan")):.5f}',
+                f'LSD: {out.get("lsd", float("nan")):.5f}',
+                # f'SSIM_STFT: {out.get("ssim_stft", float("nan")):.5f}',
+            )
 
         # Define a consistent column width for centering
         COL_WIDTH = 20
 
         # First, print the header row
-        print(
-            f'{"FAD":^{COL_WIDTH}}'  # Centered "FAD" within COL_WIDTH
-            f'{"FD":^{COL_WIDTH}}'  # Centered "FD" within COL_WIDTH
-            f'{"KL":^{COL_WIDTH}}'  # Centered "KL" within COL_WIDTH
-            f'{"IS":^{COL_WIDTH}}'  # Centered "IS (Std)" within COL_WIDTH
-        )
+        if is_main_rank:
+            print(
+                f'{"FAD":^{COL_WIDTH}}'  # Centered "FAD" within COL_WIDTH
+                f'{"FD":^{COL_WIDTH}}'  # Centered "FD" within COL_WIDTH
+                f'{"KL":^{COL_WIDTH}}'  # Centered "KL" within COL_WIDTH
+                f'{"IS":^{COL_WIDTH}}'  # Centered "IS (Std)" within COL_WIDTH
+            )
 
         # Then, print the values row
         # Extract values, using .get() with float('nan') for safety if a key is missing
@@ -434,13 +522,14 @@ class EvaluationHelper:
 
         # Format each value string, then center it within its column
         # Using .5f for 5 decimal places for consistency
-        print(
-            # Corrected f-string syntax: {value:alignment_character_width.precision_type}
-            f'{val_fad:^{COL_WIDTH}.5f}'  # Center val_fad, 5 decimal places, within COL_WIDTH
-            f'{val_fd:^{COL_WIDTH}.5f}'  # Center val_fd, 5 decimal places, within COL_WIDTH
-            f'{val_kl:^{COL_WIDTH}.5f}'  # Center val_kl, 5 decimal places, within COL_WIDTH
-            f'{val_is_mean:^{COL_WIDTH}}'  # Center the pre-formatted IS string within COL_WIDTH
-        )
+        if is_main_rank:
+            print(
+                # Corrected f-string syntax: {value:alignment_character_width.precision_type}
+                f'{val_fad:^{COL_WIDTH}.5f}'  # Center val_fad, 5 decimal places, within COL_WIDTH
+                f'{val_fd:^{COL_WIDTH}.5f}'  # Center val_fd, 5 decimal places, within COL_WIDTH
+                f'{val_kl:^{COL_WIDTH}.5f}'  # Center val_kl, 5 decimal places, within COL_WIDTH
+                f'{val_is_mean:^{COL_WIDTH}}'  # Center the pre-formatted IS string within COL_WIDTH
+            )
         result = {
             "frechet_distance":
                 out.get("frechet_distance", float("nan")),
@@ -467,7 +556,7 @@ class EvaluationHelper:
                 out.get("kernel_inception_distance_std", float("nan")),
         }
 
-        if isinstance(generate_files, str):
+        if isinstance(generate_files, str) and is_main_rank:
             json_path = os.path.join(
                 os.path.dirname(generate_files),
                 self.get_current_time() + "_" +
@@ -485,7 +574,12 @@ class EvaluationHelper:
         out_meta = None
 
         # transforms=StandardNormalizeAudio()
-        for waveform, audio_id in tqdm(dataloader):
+        for waveform, audio_id in tqdm(
+            dataloader,
+            disable=dist.is_initialized() and dist.get_rank() != 0,
+            desc="Calculating PANNs/PassT/MERT embeddings"
+        ):
+            audio_id = list(audio_id)
             try:
                 metadict = {
                     "file_path_": audio_id,
@@ -543,6 +637,18 @@ class EvaluationHelper:
                 continue
 
         out = {k: torch.cat(v, dim=0) for k, v in out.items()}
+        if dist.is_available() and dist.is_initialized():
+            featuresdict = {**out, **out_meta}
+            gathered = [None for _ in range(dist.get_world_size())]
+            dist.all_gather_object(gathered, featuresdict)
+            out = {
+                k: torch.cat([part[k] for part in gathered], dim=0)
+                for k in out.keys()
+            }
+            out_meta = {
+                k: sum([part[k] for part in gathered], [])
+                for k in out_meta.keys()
+            }
         return {**out, **out_meta}
 
     def sample_from(self, samples, number_to_use):

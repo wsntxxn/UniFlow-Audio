@@ -16,6 +16,8 @@ import numpy as np
 import librosa
 from tqdm import tqdm
 import torch
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
 from accel_hydra.utils.general import read_jsonl_to_mapping
 import laion_clap
 
@@ -26,6 +28,34 @@ from audioldm_eval import EvaluationHelper
 from utils.general import audio_dir_to_mapping
 
 torch.multiprocessing.set_sharing_strategy('file_system')
+
+
+def setup_distributed():
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+
+    if world_size > 1 and not dist.is_initialized():
+        backend = "nccl" if torch.cuda.is_available() else "gloo"
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
+        dist.init_process_group(backend=backend)
+
+    if torch.cuda.is_available():
+        device = f"cuda:{local_rank}" if world_size > 1 else "cuda"
+    else:
+        device = "cpu"
+    return rank, world_size, device
+
+
+def cleanup_distributed():
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def dist_barrier():
+    if dist.is_initialized():
+        dist.barrier()
 
 
 def compute_clap_metrics(batch: dict, model: laion_clap.CLAP_Module):
@@ -96,6 +126,9 @@ def get_common_folder_path(audio_dict):
 
 def evaluate(args):
     """Calculate FAD, FD, KL, etc. socres."""
+    rank, world_size, device = setup_distributed()
+    is_main_process = rank == 0
+
     ref_aid_to_audios = read_jsonl_to_mapping(
         args.ref_audio_jsonl,
         "audio_id",
@@ -113,8 +146,8 @@ def evaluate(args):
         if key not in gen_aid_to_audios:
             ref_aid_to_audios.pop(key)
     """Calculate ldm eval score: FAD, FD, KL score"""
-    args.device = "cuda" if torch.cuda.is_available() else "cpu"
-    backbone = "cnn14" if args.task == "tta" else "mert"
+    args.device = device
+    backbone = "cnn14" if args.task == "t2a" else "mert"
     evaluator = EvaluationHelper(16000, args.device, backbone=backbone)
 
     gen_folder_path, gen_is_same_folder = get_common_folder_path(
@@ -145,9 +178,17 @@ def evaluate(args):
     )
 
     dataset = AudioTextDataset(ref_aid_to_captions, gen_aid_to_audios)
+    sampler = DistributedSampler(
+        dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=False,
+        drop_last=False,
+    ) if dist.is_initialized() else None
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=1,
+        sampler=sampler,
         num_workers=args.num_workers,
         collate_fn=dataset.collate_fn
     )
@@ -157,26 +198,42 @@ def evaluate(args):
     assert clap_model_path is not None, "CLAP_MODEL_PATH environment variable not set."
     clap_scorer.load_ckpt(ckpt=clap_model_path, verbose=False)
     clap_scorer.eval()
-    for batch in tqdm(dataloader, desc="Computing CLAP score"):
+    clap_scores = {}
+    for batch in tqdm(
+        dataloader,
+        desc="Computing CLAP score",
+        disable=dist.is_initialized() and rank != 0,
+    ):
         scores = compute_clap_metrics(batch, clap_scorer)
         for audio_id, score in zip(batch["audio_id"], scores):
-            results["CLAP_score"][audio_id] = score.item()
+            clap_scores[audio_id] = score.item()
 
-    with open(args.output_file, "w") as writer:
-        for metric, values in results.items():
-            if metric == "CLAP_score":
-                print_msg = f"{metric}: {np.mean(list(values.values())):.3f}"
-                print(print_msg)
-                print(print_msg, file=writer)
-                if args.clap_per_audio:
-                    for audio_id, score in values.items():
-                        score_msg = f"{audio_id}: {score[0][0]:.3f}"
-                        print(score_msg, file=writer)
+    if dist.is_initialized():
+        gathered = [None for _ in range(world_size)]
+        dist.all_gather_object(gathered, clap_scores)
+        clap_scores = {}
+        for part in gathered:
+            clap_scores.update(part or {})
+    if is_main_process:
+        results["CLAP_score"].update(clap_scores)
+        with open(args.output_file, "w") as writer:
+            for metric, values in results.items():
+                if metric == "CLAP_score":
+                    print_msg = f"{metric}: {np.mean(list(values.values())):.3f}"
+                    print(print_msg)
+                    print(print_msg, file=writer)
+                    if args.clap_per_audio:
+                        for audio_id, score in values.items():
+                            score_msg = f"{audio_id}: {score:.3f}"
+                            print(score_msg, file=writer)
 
-            else:
-                print_msg = f"{metric}: {values:.3f}"
-                print(print_msg)
-                print(print_msg, file=writer)
+                else:
+                    print_msg = f"{metric}: {values:.3f}"
+                    print(print_msg)
+                    print(print_msg, file=writer)
+
+    dist_barrier()
+    cleanup_distributed()
 
 
 if __name__ == '__main__':
@@ -190,8 +247,8 @@ Examples:
     python evaluation/t2a.py \\
       --ref_audio_jsonl data/audiocaps_v2/test/audio.jsonl \\
       --rc data/audiocaps_v2/test/caption.jsonl \\
-      --gd xxxx/tta_infer \\
-      -o xxx/tta.txt
+      --gd xxxx/t2a_infer \\
+      -o xxx/t2a.txt
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -232,9 +289,9 @@ Examples:
         "--task",
         "-t",
         type=str,
-        default="tta",
-        help="task type, text-to-audio (tta) or text_to_music (ttm)",
-        choices=["tta", "ttm"]
+        default="t2a",
+        help="task type, text-to-audio (t2a) or text_to_music (t2m)",
+        choices=["t2a", "t2m"]
     )
     parser.add_argument(
         "--num_workers",

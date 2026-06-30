@@ -5,19 +5,14 @@ processes audio metadata and removes entries with NaN values from the correspond
 import multiprocessing as mp
 import os
 import shutil
-
-mp.set_start_method("spawn", force=True)
-
 import hydra
 import torch
 import json
 from omegaconf import OmegaConf
-from accelerate import Accelerator
-from utils.config import register_omegaconf_resolvers
-from models.common import CountParamsBase
-from trainer import Trainer
-from utils.torch_utilities import check_nan_in_batch
 from tqdm import tqdm
+
+from utils.config import register_omegaconf_resolvers
+from utils.torch_utilities import check_nan_in_batch
 
 register_omegaconf_resolvers()
 

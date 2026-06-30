@@ -2,8 +2,14 @@ import torch
 import numpy as np
 
 
-def calculate_isc(featuresdict, feat_layer_name, rng_seed, samples_shuffle, splits):
-    print("Computing Inception Score")
+def calculate_isc(
+    featuresdict, feat_layer_name, rng_seed, samples_shuffle, splits
+):
+    rank = torch.distributed.get_rank() if torch.distributed.is_initialized(
+    ) else 0
+    is_main_rank = rank == 0
+    if is_main_rank:
+        print("Computing Inception Score")
 
     features = featuresdict[feat_layer_name]
 
@@ -19,8 +25,9 @@ def calculate_isc(featuresdict, feat_layer_name, rng_seed, samples_shuffle, spli
 
     scores = []
     for i in range(splits):
-        p_chunk = p[(i * N // splits) : ((i + 1) * N // splits), :]  # 一部分的预测概率
-        log_p_chunk = log_p[(i * N // splits) : ((i + 1) * N // splits), :]  # log
+        p_chunk = p[(i * N // splits):((i + 1) * N // splits), :]  # 一部分的预测概率
+        log_p_chunk = log_p[(i * N // splits):((i + 1) * N // splits), :
+                           ]  # log
         q_chunk = p_chunk.mean(dim=0, keepdim=True)  # 概率的均值
         kl = p_chunk * (log_p_chunk - q_chunk.log())  #
         kl = kl.sum(dim=1).mean().exp().item()

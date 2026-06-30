@@ -1,42 +1,38 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
+import hydra
 import soundfile as sf
 import torch
-import hydra
 from accelerate import Accelerator
-
+from accel_hydra.utils.data import init_dataloader_from_config
+from accel_hydra.models.common import LoadPretrainedMixin
+from accel_hydra.utils.config import load_config_from_cli
 from omegaconf import OmegaConf
 from safetensors.torch import load_file
 from tqdm import tqdm
 
-from utils.config import register_omegaconf_resolvers
-from models.common import LoadPretrainedBase
+from utils.config import register_omegaconf_resolvers, resolve_dot_key
 from utils.general import sanitize_filename
-
-try:
-    import torch_npu
-    from torch_npu.contrib import transfer_to_npu
-except:
-    pass
 
 register_omegaconf_resolvers()
 
 
+def override_config_from_training(
+    config: dict, exp_config: dict, override_items: dict
+):
+    for target_key, source_key in override_items.items():
+        target_last_cfg, target_last_key = resolve_dot_key(config, target_key)
+        source_last_cfg, source_last_key = resolve_dot_key(
+            exp_config, source_key
+        )
+        target_last_cfg[target_last_key] = source_last_cfg[source_last_key]
+
+
 def main():
 
-    accelerator = Accelerator(mixed_precision="no")
-    configs = []
-
-    @hydra.main(
-        config_path="configs", config_name="inference", version_base=None
-    )
-    def parse_config_from_command_line(config):
-        config = OmegaConf.to_container(config, resolve=True)
-        configs.append(config)
-
-    parse_config_from_command_line()
-    config = configs[0]
+    config = load_config_from_cli()
+    accelerator = Accelerator()
 
     exp_dir, ckpt_dir = None, None
     if os.path.isdir(config["exp_dir"]):
@@ -78,28 +74,21 @@ def main():
         f'\n ckpt path: {ckpt_path}, model config path: {exp_config_path}\n '
     )
 
-    model: LoadPretrainedBase = hydra.utils.instantiate(exp_config["model"])
+    model: LoadPretrainedMixin = hydra.utils.instantiate(exp_config["model"])
     state_dict = load_file(ckpt_path)
     model.load_pretrained(state_dict)
     model.eval()
 
-    if "sampler" in config["test_dataloader"]:
-        data_source = hydra.utils.instantiate(
-            config["test_dataloader"]["dataset"], _convert_="all"
-        )
-        sampler = hydra.utils.instantiate(
-            config["test_dataloader"]["sampler"],
-            data_source=data_source,
-            _convert_="all"
-        )
-        test_dataloader = hydra.utils.instantiate(
-            config["test_dataloader"], sampler=sampler, _convert_="all"
-        )
-    else:
-        test_dataloader = hydra.utils.instantiate(
-            config["test_dataloader"], _convert_="all"
-        )
+    # TODO override test dataloader by train dataloader, not sure further validity
+    override_from_exp_items = {
+        "test_dataloader.collate_fn.time_aligned_tasks":
+            "train_dataloader.collate_fn.time_aligned_tasks",
+        "test_dataloader.collate_fn.non_time_aligned_tasks":
+            "train_dataloader.collate_fn.non_time_aligned_tasks"
+    }
+    override_config_from_training(config, exp_config, override_from_exp_items)
 
+    test_dataloader = init_dataloader_from_config(config["test_dataloader"])
     model, test_dataloader = accelerator.prepare(model, test_dataloader)
 
     scheduler = hydra.utils.instantiate(
@@ -116,7 +105,7 @@ def main():
     unwrapped_model = accelerator.unwrap_model(model)
     pbar_disable = not accelerator.is_main_process
 
-    with torch.no_grad():
+    with torch.no_grad(), accelerator.autocast():
 
         for batch in tqdm(test_dataloader, disable=pbar_disable):
             kwargs = config["infer_args"].copy()
@@ -126,6 +115,7 @@ def main():
                 scheduler=scheduler,
                 **kwargs,
             )
+            waveform = waveform.float().cpu().numpy()
 
             for name, wave, task in zip(
                 batch["item_name"], waveform, batch["task"]
@@ -134,7 +124,7 @@ def main():
                 safe_name = sanitize_filename(name)
                 sf.write(
                     audio_output_dir / task / f"{safe_name}.wav",
-                    wave[0].cpu().numpy(),
+                    wave[0],
                     samplerate=exp_config["sample_rate"],
                 )
 

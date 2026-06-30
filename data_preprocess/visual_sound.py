@@ -2,9 +2,7 @@ from pathlib import Path
 import json
 import argparse
 
-from tqdm import tqdm
-
-from utils.general import read_jsonl_to_mapping
+from accel_hydra.utils.general import read_jsonl_to_mapping
 
 
 def main(args):

@@ -44,10 +44,13 @@ def calculate_kl(
             None,
             None,
         )
-
-    print(
-        'KL: Assuming that `input2` is "pseudo" target and `input1` is prediction. KL(input2_i||input1_i)'
-    )
+    rank = torch.distributed.get_rank() if torch.distributed.is_initialized(
+    ) else 0
+    is_main_rank = rank == 0
+    if is_main_rank:
+        print(
+            'KL: Assuming that `input2` is "pseudo" target and `input1` is prediction. KL(input2_i||input1_i)'
+        )
     EPS = 1e-6
     features_1 = featuresdict_1[feat_layer_name]
     features_2 = featuresdict_2[feat_layer_name]

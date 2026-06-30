@@ -1,17 +1,17 @@
+from dataclasses import dataclass, field
 from typing import Any
 import numpy as np
 import torch
 import torch.nn as nn
 
 
+@dataclass(kw_only=True)
 class PaddingCollate:
-    def __init__(
-        self,
-        pad_keys: list[str] = ["waveform"],
-        torchify_keys: list[str] = []
-    ):
-        self.pad_keys = pad_keys
-        self.torchify_keys = torchify_keys
+
+    pad_keys: list[str] = field(default_factory=lambda: ["waveform"])
+    torchify_keys: list[str] = field(default_factory=list)
+    time_aligned_tasks: list[str] = field(default_factory=list)
+    non_time_aligned_tasks: list[str] = field(default_factory=list)
 
     def __call__(self, batch: list[dict[str, Any]]) -> dict[str, Any]:
         collate_samples: dict[str, list[Any]] = {
@@ -42,20 +42,32 @@ class PaddingCollate:
                     collate_samples[key] = np.array(collate_samples[key])
                 collate_samples[key] = torch.as_tensor(collate_samples[key])
 
+        if "task" in collate_samples:
+            batch_size = len(next(iter(collate_samples.values())))
+            time_aligned = torch.zeros(batch_size, 2).bool()
+            for i, task in enumerate(collate_samples["task"]):
+                if task in self.time_aligned_tasks:
+                    time_aligned[i, 0] = True
+                if task in self.non_time_aligned_tasks:
+                    time_aligned[i, 1] = True
+                if task not in self.time_aligned_tasks + self.non_time_aligned_tasks:
+                    raise Exception(
+                        f"Time align property of {task} is not defined!"
+                    )
+            collate_samples["time_aligned"] = time_aligned
+
         return collate_samples
 
 
+@dataclass(kw_only=True)
 class PaddingCollateWithAnyContent(PaddingCollate):
-    def __init__(
-        self,
-        pad_keys: list[str] = ["waveform"],
-        torchify_keys: list[str] = [],
-        content_pad_keys: list[str] = [],
-        content_torchify_keys: list[str] = []
-    ):
-        super().__init__(pad_keys, torchify_keys)
+    content_pad_keys: list[str] = field(default_factory=list)
+    content_torchify_keys: list[str] = field(default_factory=list)
+
+    def __post_init__(self):
         self.content_collate_fn = PaddingCollate(
-            content_pad_keys, content_torchify_keys
+            pad_keys=self.content_pad_keys,
+            torchify_keys=self.content_torchify_keys
         )
 
     def __call__(self, batch):

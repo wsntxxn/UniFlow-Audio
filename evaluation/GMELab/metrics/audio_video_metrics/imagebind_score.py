@@ -1,11 +1,14 @@
 from pathlib import Path
 from dataclasses import dataclass
+import os
 
 import torch
+import torch.distributed as dist
 import torchaudio
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import Dataset
+from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms
 import h5py
 from pytorchvideo.data.clip_sampling import ConstantClipsPerVideoSampler
@@ -101,30 +104,60 @@ def calculate_imagebind_score(
     verbose: bool = False,
     num_workers: int = 8,
 ):
+    distributed = dist.is_available() and dist.is_initialized()
+    rank = dist.get_rank() if distributed else 0
+    world_size = dist.get_world_size() if distributed else 1
 
     # load model
-    model = imagebind_model.imagebind_huge(pretrained=True)
+    if distributed and rank == 0:
+        model = imagebind_model.imagebind_huge(pretrained=True)
+        dist.barrier()
+    elif distributed:
+        dist.barrier()
+        model = imagebind_model.imagebind_huge(pretrained=True)
+    else:
+        model = imagebind_model.imagebind_huge(pretrained=True)
     model.eval()
     model.to(device)
+    if distributed:
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        if torch.device(device).type == "cuda":
+            model = torch.nn.parallel.DistributedDataParallel(
+                model, device_ids=[local_rank]
+            )
+        else:
+            model = torch.nn.parallel.DistributedDataParallel(model)
 
-    running_score = 0
     cos_sim = torch.nn.CosineSimilarity(dim=1)
 
     audio_dataset = AudioDataset(
         aid_to_audio,
         device,
     )
+    sampler = DistributedSampler(
+        audio_dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=False,
+        drop_last=False,
+    ) if distributed else None
     audio_loader = torch.utils.data.DataLoader(
         audio_dataset,
         batch_size=BATCH_SIZE,
         shuffle=False,
+        sampler=sampler,
         num_workers=num_workers,
     )
 
+    scores = {}
     # run model inference
     with h5py.File(vision_embeds, 'r') as f_vis:
         assert len(f_vis.keys()) == len(aid_to_audio)
-        for batch in tqdm(audio_loader, desc='Compute ImageBind_Score'):
+        for batch in tqdm(
+            audio_loader,
+            desc='Compute ImageBind score',
+            disable=distributed and rank != 0,
+        ):
             keys, audio_data = batch
             audio_data = audio_data.to(device)
 
@@ -140,9 +173,16 @@ def calculate_imagebind_score(
                 vis_emb = torch.as_tensor(f_vis[key][()]).to(device)
                 sim_score = cos_sim(vis_emb.unsqueeze(0), aud_emb.unsqueeze(0))
                 sim_score = sim_score.item()
-                running_score += sim_score
+                scores[key] = sim_score
 
-    score = running_score / len(aid_to_audio)
+    if distributed:
+        gathered = [None for _ in range(world_size)]
+        dist.all_gather_object(gathered, scores)
+        scores = {}
+        for part in gathered:
+            scores.update(part or {})
+
+    score = sum(scores.values()) / len(scores)
     if verbose:
         print("ImageBind score:", score)
     return float(score)

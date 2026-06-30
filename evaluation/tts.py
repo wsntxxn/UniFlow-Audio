@@ -1,25 +1,26 @@
-from pathlib import Path
-from typing import Sequence
 import os
 import json
 import argparse
 import string
 import numpy as np
+from pathlib import Path
+from typing import Sequence
 
 import librosa
-from zhon.hanzi import punctuation
-from jiwer import compute_measures
 import torch
 import torch.nn.functional as F
 import torchaudio
+import utmosv2
+from accel_hydra.utils.general import read_jsonl_to_mapping
+from jiwer import compute_measures
+from nemo.collections.asr.models import EncDecRNNTBPEModel, EncDecSpeakerLabelModel
 from tqdm import tqdm
 from whisper_normalizer.english import EnglishTextNormalizer
-from nemo.collections.asr.models import EncDecRNNTBPEModel, EncDecSpeakerLabelModel
+from zhon.hanzi import punctuation
+
 if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
     from nemo.core.connectors.save_restore_connector import SaveRestoreConnector
     from huggingface_hub import snapshot_download
-
-from accel_hydra.utils.general import read_jsonl_to_mapping
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -78,6 +79,8 @@ def get_generated_audio_mapping(directory: str, exts: Sequence = [".wav"]):
     for fpath in Path(directory).iterdir():
         if fpath.suffix.lower() in exts:
             audio_id = fpath.stem
+            if "_" in audio_id:
+                audio_id = audio_id.split("_")[0]
             audio_mapping[audio_id] = fpath.as_posix()
     return audio_mapping
 
@@ -180,6 +183,15 @@ def load_utmos_model():
     return model
 
 
+def load_utmos_v2_model():
+    assert "UTMOSV2_CKPT" in os.environ, "Please set UTMOSV2_CKPT environment variable to the checkpoint path"
+    model = utmosv2.create_model(
+        pretrained=True,
+        checkpoint_path=os.environ["UTMOSV2_CKPT"],
+    )
+    return model
+
+
 def evaluate_tts(
     audio_dir_or_jsonl: str,
     ref_transcript_path: str,
@@ -189,6 +201,7 @@ def evaluate_tts(
     speaker_model_name: str,
     lang: str = "en",
     asr_ckpt_path: str = "",
+    num_workers: int = 12,
 ) -> None:
     assert lang in ("zh", "en")
 
@@ -200,6 +213,9 @@ def evaluate_tts(
 
     print("Loading UTMOS model...")
     utmos_model = load_utmos_model()
+
+    print("Loading UTMOS v2 model...")
+    utmos_v2_model = load_utmos_v2_model()
 
     print("Building generated audio map...")
     if Path(audio_dir_or_jsonl).is_dir():
@@ -323,6 +339,14 @@ def evaluate_tts(
     avg_sim = np.mean(similarities) if similarities else 0.0
     avg_utmos = np.mean(utmos_scores) if utmos_scores else 0.0
 
+    assert Path(audio_dir_or_jsonl).is_dir()
+    utmosv2_res = utmos_v2_model.predict(
+        input_dir=audio_dir_or_jsonl, batch_size=1, num_workers=num_workers
+    )
+    avg_utmos_v2 = np.mean([
+        score_item["predicted_mos"] for score_item in utmosv2_res
+    ])
+
     output_path = Path(output_path)
 
     output_path.parent.mkdir(exist_ok=True, parents=True)
@@ -334,18 +358,15 @@ def evaluate_tts(
             "average_wer": avg_wer,
             "average_cosine_similarity": avg_sim,
             "average_utmos": avg_utmos,
+            "average_utmos_v2": avg_utmos_v2,
         }, f)
         f.write('\n')
 
-    print(
-        f"Evaluation done: {len(results)} samples, average WER (weighted): {avg_wer}"
-    )
-    print(
-        f"Evaluation done: {len(similarities)} samples, average Cosine similarity: {avg_sim}"
-    )
-    print(
-        f"Evaluation done: {len(utmos_scores)} samples, average UTMOS: {avg_utmos}"
-    )
+    print(f"Evaluation done: {len(results)} samples")
+    print(f"Average WER (weighted): {avg_wer}")
+    print(f"Average speaker similarity: {avg_sim}")
+    print(f"Average UTMOS: {avg_utmos}")
+    print(f"Average UTMOS v2: {avg_utmos_v2}")
     print(f"Results saved to {output_path}")
 
 
@@ -403,6 +424,12 @@ if __name__ == "__main__":
         choices=['zh', 'en'],
         help='Language of the TTS model'
     )
+    parser.add_argument(
+        '--num_workers',
+        type=int,
+        default=12,
+        help='Number of workers for UTMOS v2 evaluation'
+    )
 
     args = parser.parse_args()
 
@@ -415,4 +442,5 @@ if __name__ == "__main__":
         args.speaker_model_name,
         args.lang,
         args.asr_ckpt_path,
+        args.num_workers,
     )

@@ -6,8 +6,9 @@ from dataclasses import dataclass
 
 from omegaconf import OmegaConf, DictConfig
 import torch
+import torch.distributed as dist
 from tqdm import tqdm
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, DistributedSampler
 
 from submodules.Synchformer.utils.utils import check_if_file_exists_else_download
 from submodules.Synchformer.dataset.dataset_utils import get_video_and_audio
@@ -225,19 +226,38 @@ def calculate_sync(
     verbose: bool = False,
     num_workers: int = 8,
 ) -> Tuple[float, Dict[str, Dict[str, Union[int, float, None]]]]:
+    distributed = dist.is_available() and dist.is_initialized()
+    rank = dist.get_rank() if distributed else 0
+    world_size = dist.get_world_size() if distributed else 1
+
     cfg_path = f"{ckpt_parent_path}/{exp_name}/cfg-{exp_name}.yaml"
     ckpt_path = f"{ckpt_parent_path}/{exp_name}/{exp_name}.pt"
 
     # if the model does not exist try to download it from the server
-    check_if_file_exists_else_download(cfg_path)
-    check_if_file_exists_else_download(ckpt_path)
-    check_if_file_exists_else_download(
-        f"{ckpt_parent_path}/23-12-22T16-13-38/23-12-22T16-13-38.pt"
-    )
+    if distributed:
+        if rank == 0:
+            check_if_file_exists_else_download(cfg_path)
+            check_if_file_exists_else_download(ckpt_path)
+            check_if_file_exists_else_download(
+                f"{ckpt_parent_path}/23-12-22T16-13-38/23-12-22T16-13-38.pt"
+            )
+        dist.barrier()
+    else:
+        check_if_file_exists_else_download(cfg_path)
+        check_if_file_exists_else_download(ckpt_path)
+        check_if_file_exists_else_download(
+            f"{ckpt_parent_path}/23-12-22T16-13-38/23-12-22T16-13-38.pt"
+        )
 
     # load config
     model_cfg = OmegaConf.load(cfg_path)
     modify_model_cfg(model_cfg)
+    device = torch.device(device)
+    if distributed:
+        model_cfg.training.local_rank = (
+            device.index if device.type == "cuda" and device.index is not None
+            else int(os.environ.get("LOCAL_RANK", "0"))
+        )
 
     if model_cfg.data.vfps != vfps:
         print(
@@ -252,14 +272,12 @@ def calculate_sync(
             "WARNING: The model was trained with a different input_size than the provided one"
         )
 
-    device = torch.device(device)
-
-    # load the model
-    _, model = get_model(model_cfg, device)
+    # get_model returns a DDP-wrapped model when torch.distributed is initialized.
+    model, model_without_ddp = get_model(model_cfg, device)
     ckpt = torch.load(
         ckpt_path, map_location=torch.device("cpu"), weights_only=False
     )
-    model.load_state_dict(ckpt["model"])
+    model_without_ddp.load_state_dict(ckpt["model"])
 
     model.eval()
     transforms = get_transforms(model_cfg, ["test"])["test"]
@@ -284,11 +302,7 @@ def calculate_sync(
             else:
                 print(f"Audio for {aid} not found, skipping.")
 
-    insync_offsets = 0
-    original_video_dir = Path(all_videos[0]).parts[-2]
-    assert len(
-        all_videos
-    ), f"No videos found in {original_video_dir}... Problems with reencoding?"
+    assert len(all_videos), "No videos found... Problems with reencoding?"
 
     dataset = SyncDataset(
         video_paths=all_videos,
@@ -298,11 +312,19 @@ def calculate_sync(
         crop_len_sec=float(model_cfg.data.crop_len_sec),
         transforms=transforms,
     )
+    sampler = DistributedSampler(
+        dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=False,
+        drop_last=False,
+    ) if distributed else None
 
     loader = DataLoader(
         dataset,
         batch_size=BATCH_SIZE,
         shuffle=False,
+        sampler=sampler,
         num_workers=num_workers,
         prefetch_factor=2,
         pin_memory=True,
@@ -312,7 +334,11 @@ def calculate_sync(
     results = {}
     insync_offsets = 0.0
 
-    for batch in tqdm(loader, desc="Calculating InSync"):
+    for batch in tqdm(
+        loader,
+        desc=f"Calculating InSync",
+        disable=distributed and rank != 0,
+    ):
         aud, vid, targets = prepare_inputs(batch, device)
         # forward pass
         with torch.autocast(
@@ -335,6 +361,14 @@ def calculate_sync(
                 "prob": None,
             }
 
+    if distributed:
+        gathered = [None for _ in range(world_size)]
+        dist.all_gather_object(gathered, results)
+        results = {}
+        for part in gathered:
+            results.update(part or {})
+
+    insync_offsets = sum(abs(v["offset_sec"]) for v in results.values())
     score = float(insync_offsets / len(results))
     if verbose:
         print("InSync:", score)

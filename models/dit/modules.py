@@ -2,12 +2,8 @@ import warnings
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.checkpoint
-from torch.cuda.amp import autocast
 import math
 import einops
-from einops import rearrange, repeat
-from inspect import isfunction
 
 
 def trunc_normal_(tensor, mean, std, a, b):

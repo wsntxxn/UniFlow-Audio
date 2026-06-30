@@ -1,25 +1,22 @@
-from pathlib import Path
-import sys
-import os
-
-import hydra
-import omegaconf
 from omegaconf import OmegaConf
+
+# def get_pitch_downsample_ratio(
+#     autoencoder_config: dict, pitch_frame_resolution: float
+# ):
+#     latent_frame_resolution = autoencoder_config[
+#         "downsampling_ratio"] / autoencoder_config["sample_rate"]
+#     return round(latent_frame_resolution / pitch_frame_resolution)
 
 
 def multiply(*args):
-    result = 1
+    res = 1
     for arg in args:
-        result *= arg
-    return result
+        res *= arg
+    return res
 
 
-def get_pitch_downsample_ratio(
-    autoencoder_config: dict, pitch_frame_resolution: float
-):
-    latent_frame_resolution = autoencoder_config[
-        "downsampling_ratio"] / autoencoder_config["sample_rate"]
-    return round(latent_frame_resolution / pitch_frame_resolution)
+def get_latent_token_rate(sample_rate: int, downsampling_ratio: int):
+    return sample_rate // downsampling_ratio
 
 
 def register_omegaconf_resolvers() -> None:
@@ -31,23 +28,18 @@ def register_omegaconf_resolvers() -> None:
     OmegaConf.register_new_resolver("len", len, replace=True)
     OmegaConf.register_new_resolver("multiply", multiply, replace=True)
     OmegaConf.register_new_resolver(
-        "get_pitch_downsample_ratio", get_pitch_downsample_ratio, replace=True
+        "get_latent_token_rate", get_latent_token_rate, replace=True
     )
 
 
-def generate_config_from_command_line_overrides(
-    config_file: str | Path
-) -> omegaconf.DictConfig:
-    register_omegaconf_resolvers()
-
-    config_file = Path(config_file).resolve()
-    config_name = config_file.name.__str__()
-    config_path = config_file.parent.__str__()
-    config_path = os.path.relpath(config_path, Path(__file__).resolve().parent)
-
-    overrides = sys.argv[1:]
-    with hydra.initialize(version_base=None, config_path=config_path):
-        config = hydra.compose(config_name=config_name, overrides=overrides)
-    omegaconf.OmegaConf.resolve(config)
-
-    return config
+def resolve_dot_key(config: dict, dot_key: str):
+    keys = dot_key.split(".")
+    last_cfg = config
+    for key in keys[:-1]:
+        try:
+            last_cfg = last_cfg[key]
+        except KeyError:
+            raise KeyError(
+                f"Key {key} not found in config when resolving {dot_key}."
+            )
+    return last_cfg, keys[-1]

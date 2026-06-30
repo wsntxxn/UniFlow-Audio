@@ -10,6 +10,8 @@ import numpy as np
 import torch
 from pathlib import Path
 
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
 from torch import nn
 from scipy import linalg
 from tqdm import tqdm
@@ -23,10 +25,19 @@ class FrechetAudioDistance:
         use_pca=False,
         use_activation=False,
         verbose=False,
+        device="cuda",
         audio_load_worker=8
     ):
-        self.__get_model(use_pca=use_pca, use_activation=use_activation)
+        self.device = device
         self.verbose = verbose
+        if dist.is_initialized():
+            if dist.get_rank() == 0:
+                self.disable_progress = not self.verbose
+            else:
+                self.disable_progress = True
+        else:
+            self.disable_progress = not self.verbose
+        self.__get_model(use_pca=use_pca, use_activation=use_activation)
         self.audio_load_worker = audio_load_worker
 
     def __get_model(self, use_pca=False, use_activation=False):
@@ -54,21 +65,45 @@ class FrechetAudioDistance:
                 *list(self.model.embeddings.children())[:-1]
             )
         self.model.eval()
+        self.model.to(self.device)
+        if dist.is_initialized():
+            local_rank = int(os.environ.get("LOCAL_RANK", 0))
+            if torch.device(self.device).type == "cuda":
+                self.model = torch.nn.parallel.DistributedDataParallel(
+                    self.model, device_ids=[local_rank]
+                )
+            else:
+                self.model = torch.nn.parallel.DistributedDataParallel(
+                    self.model
+                )
 
     def load_audio_data(self, x):
+        dataset = WaveDataset(x, 16000, limit_num=None)
+        if dist.is_initialized():
+            world_size = dist.get_world_size()
+            rank = dist.get_rank()
+            sampler = DistributedSampler(
+                dataset=dataset,
+                num_replicas=world_size,
+                rank=rank,
+                shuffle=False,
+                drop_last=False
+            )
+        else:
+            sampler = None
         outputloader = DataLoader(
-            WaveDataset(
-                x,
-                16000,
-                limit_num=None,
-            ),
+            dataset,
             batch_size=1,
-            sampler=None,
+            sampler=sampler,
             num_workers=4,
+            drop_last=False
         )
         data_list = []
-        print("Loading data to RAM")
-        for batch in tqdm(outputloader):
+        for batch in tqdm(
+            outputloader,
+            disable=self.disable_progress,
+            desc="Loading data to RAM"
+        ):
             data_list.append((batch[0][0, 0], 16000))
         return data_list
 
@@ -85,12 +120,15 @@ class FrechetAudioDistance:
         x = self.load_audio_data(x)
         if isinstance(x, list):
             try:
-                for audio, sr in tqdm(x, disable=(not self.verbose)):
-                    embd = self.model.forward(audio.numpy(), sr)
-                    if self.model.device == torch.device("cuda"):
-                        embd = embd.cpu()
-                    embd = embd.detach().numpy()
-                    embd_lst.append(embd)
+                with torch.no_grad():
+                    for audio, sr in tqdm(
+                        x,
+                        disable=self.disable_progress,
+                        desc="Calculating VGGish embeddings"
+                    ):
+                        embd = self.model.forward(audio.numpy(), sr)
+                        embd = embd.cpu().numpy()
+                        embd_lst.append(embd)
             except Exception as e:
                 print(
                     "[Frechet Audio Distance] get_embeddings throw an exception: {}"
@@ -99,7 +137,12 @@ class FrechetAudioDistance:
         else:
             raise AttributeError
 
-        return np.concatenate(embd_lst, axis=0)
+        embds = np.concatenate(embd_lst, axis=0)
+        if dist.is_available() and dist.is_initialized():
+            gathered_embds = [None for _ in range(dist.get_world_size())]
+            dist.all_gather_object(gathered_embds, embds)
+            embds = np.concatenate(gathered_embds, axis=0)
+        return embds
 
     def calculate_embd_statistics(self, embd_lst):
         if isinstance(embd_lst, list):
@@ -179,6 +222,8 @@ class FrechetAudioDistance:
         # background_dir: generated samples
         # eval_dir: groundtruth samples
         try:
+            is_main_rank = (dist.is_initialized() and
+                            dist.get_rank() == 0) or not dist.is_initialized()
             if isinstance(background_files, str):
                 fad_generated_folder_cache = background_files + "_fad_feature_cache.npy"
             elif isinstance(background_files, dict):
@@ -192,12 +237,14 @@ class FrechetAudioDistance:
                 embds_background = self.get_embeddings(
                     background_files, limit_num=limit_num
                 )
-                np.save(fad_generated_folder_cache, embds_background)
+                if is_main_rank:
+                    np.save(fad_generated_folder_cache, embds_background)
             else:
-                print(
-                    "Reload fad_generated_folder_cache",
-                    fad_generated_folder_cache
-                )
+                if is_main_rank:
+                    print(
+                        "Reload fad_generated_folder_cache",
+                        fad_generated_folder_cache
+                    )
                 embds_background = np.load(fad_generated_folder_cache)
 
             if isinstance(eval_files, str):
@@ -213,27 +260,32 @@ class FrechetAudioDistance:
                 embds_eval = self.get_embeddings(
                     eval_files, limit_num=limit_num
                 )
-                np.save(fad_target_folder_cache, embds_eval)
+                if is_main_rank:
+                    np.save(fad_target_folder_cache, embds_eval)
             else:
-                print(
-                    "Reload fad_target_folder_cache", fad_target_folder_cache
-                )
+                if is_main_rank:
+                    print(
+                        "Reload fad_target_folder_cache",
+                        fad_target_folder_cache
+                    )
                 embds_eval = np.load(fad_target_folder_cache)
 
-            if store_embds:
+            if store_embds and is_main_rank:
                 np.save("embds_background.npy", embds_background)
                 np.save("embds_eval.npy", embds_eval)
 
             if len(embds_background) == 0:
-                print(
-                    "[Frechet Audio Distance] background set dir is empty, exitting..."
-                )
+                if is_main_rank:
+                    print(
+                        "[Frechet Audio Distance] background set dir is empty, exitting..."
+                    )
                 return -1
 
             if len(embds_eval) == 0:
-                print(
-                    "[Frechet Audio Distance] eval set dir is empty, exitting..."
-                )
+                if is_main_rank:
+                    print(
+                        "[Frechet Audio Distance] eval set dir is empty, exitting..."
+                    )
                 return -1
 
             mu_background, sigma_background = self.calculate_embd_statistics(
@@ -248,7 +300,10 @@ class FrechetAudioDistance:
             return {"frechet_audio_distance": fad_score}
 
         except Exception as e:
-            print(
-                "[Frechet Audio Distance] exception thrown, {}".format(str(e))
-            )
+            if is_main_rank:
+                print(
+                    "[Frechet Audio Distance] exception thrown, {}".format(
+                        str(e)
+                    )
+                )
             return -1

@@ -1,16 +1,17 @@
-from typing import Any, Literal, Callable
 import math
+from contextlib import nullcontext
 from pathlib import Path
+from typing import Literal, Callable
 
 import torch
 import torch.nn as nn
-from torch.nn.utils import weight_norm
 import torchaudio
+from accel_hydra.models import LoadPretrainedMixin
+from accel_hydra.utils.torch import remove_key_prefix_factory, create_mask_from_length
 from alias_free_torch import Activation1d
+from torch.nn.utils import weight_norm
 
-from models.common import LoadPretrainedBase
 from models.autoencoder.autoencoder_base import AutoEncoderBase
-from utils.torch_utilities import remove_key_prefix_factory, create_mask_from_length
 
 
 # jit script make it 1.4x faster and save GPU memory
@@ -438,7 +439,7 @@ class Pretransform(nn.Module):
         raise NotImplementedError
 
 
-class StableVAE(LoadPretrainedBase, AutoEncoderBase):
+class StableVAE(nn.Module, LoadPretrainedMixin, AutoEncoderBase):
     def __init__(
         self,
         encoder,
@@ -454,7 +455,7 @@ class StableVAE(LoadPretrainedBase, AutoEncoderBase):
         soft_clip=False,
         pretrained_ckpt: str | Path = None
     ):
-        LoadPretrainedBase.__init__(self)
+        super().__init__()
         AutoEncoderBase.__init__(
             self,
             downsampling_ratio=downsampling_ratio,
@@ -495,10 +496,15 @@ class StableVAE(LoadPretrainedBase, AutoEncoderBase):
     def encode(
         self, waveform: torch.Tensor, waveform_lengths: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        z = self.encoder(waveform)
-        z = self.bottleneck.encode(z)
-        z_length = waveform_lengths // self.downsampling_ratio
-        z_mask = create_mask_from_length(z_length)
+        if waveform.device.type == "cuda":
+            context_mgr = torch.amp.autocast(device_type="cuda", enabled=False)
+        else:
+            context_mgr = nullcontext()
+        with context_mgr:
+            z = self.encoder(waveform)
+            z = self.bottleneck.encode(z)
+            z_length = waveform_lengths // self.downsampling_ratio
+            z_mask = create_mask_from_length(z_length)
         return z, z_mask
 
     def decode(self, latents: torch.Tensor) -> torch.Tensor:

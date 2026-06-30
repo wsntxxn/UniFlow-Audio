@@ -5,15 +5,22 @@ import pickle
 import json
 from audioldm_eval.audio.audio_processing import griffin_lim
 
+if torch.distributed.is_initialized():
+    IS_MAIN_RANK = torch.distributed.get_rank() == 0
+else:
+    IS_MAIN_RANK = True
+
 
 def save_pickle(obj, fname):
-    print(f"Save pickle at {fname}")
+    if IS_MAIN_RANK:
+        print(f"Save pickle at {fname}")
     with open(fname, "wb") as f:
         pickle.dump(obj, f)
 
 
 def load_pickle(fname):
-    print(f"Load pickle at {fname}")
+    if IS_MAIN_RANK:
+        print(f"Load pickle at {fname}")
     with open(fname, "rb") as f:
         res = pickle.load(f)
     return res

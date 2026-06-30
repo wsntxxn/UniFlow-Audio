@@ -21,8 +21,11 @@ def calculate_fid(
         "mu": np.mean(features_2.numpy(), axis=0),
         "sigma": np.cov(features_2.numpy(), rowvar=False),
     }
-
-    print("Computing Frechet Distance")
+    rank = torch.distributed.get_rank() if torch.distributed.is_initialized(
+    ) else 0
+    is_main_rank = rank == 0
+    if is_main_rank:
+        print("Computing Frechet Distance")
 
     mu1, sigma1 = stat_1["mu"], stat_1["sigma"]
     mu2, sigma2 = stat_2["mu"], stat_2["sigma"]
@@ -39,17 +42,21 @@ def calculate_fid(
     eigvals1 = np.linalg.eigvals(sigma1)
     eigvals2 = np.linalg.eigvals(sigma2)
     if np.min(eigvals1) < 0:
-        print("Min eigval of sigma1:", np.min(eigvals1))
+        if is_main_rank:
+            print("Min eigval of sigma1:", np.min(eigvals1))
         # make covariance matrix strictly positive definite
         sigma1 = sigma1 + eps * np.eye(sigma1.shape[0])
         eigvals1 = np.linalg.eigvals(sigma1)
         # check the corrected eigenvalues
-        print("Corrected minimum eigenvalue (sigma1):", np.min(eigvals1))
+        if is_main_rank:
+            print("Corrected minimum eigenvalue (sigma1):", np.min(eigvals1))
     if np.min(eigvals2) < 0:
-        print("Min eigval of sigma2:", np.min(eigvals2))
+        if is_main_rank:
+            print("Min eigval of sigma2:", np.min(eigvals2))
         sigma2 = sigma2 + eps * np.eye(sigma2.shape[0])
         eigvals2 = np.linalg.eigvals(sigma2)
-        print("Corrected minimum eigenvalue (sigma2):", np.min(eigvals2))
+        if is_main_rank:
+            print("Corrected minimum eigenvalue (sigma2):", np.min(eigvals2))
 
     assert (
         mu1.shape == mu2.shape
@@ -63,9 +70,10 @@ def calculate_fid(
     # Product might be almost singular
     covmean, _ = scipy.linalg.sqrtm(sigma1.dot(sigma2), disp=False)
     if not np.isfinite(covmean).all():
-        print(
-            f"WARNING: fid calculation produces singular product; adding {eps} to diagonal of cov"
-        )
+        if is_main_rank:
+            print(
+                f"WARNING: fid calculation produces singular product; adding {eps} to diagonal of cov"
+            )
         offset = np.eye(sigma1.shape[0]) * eps
         covmean = scipy.linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
 

@@ -113,15 +113,19 @@ The object will be instantiated recursively.
 ### Launch Training
 Training is launched by `accelerate` command line tool:
 ```bash
-accelerate launch train.py
-# or
-accelerate launch train.py --config-path path/to/config/dir --config-name conf 
+accelerate launch -m accel_hydra.train_entry -l train_launcher.Launcher -c configs/train.yaml
 ```
-This will use `path/to/config/dir/conf.yaml` as the configuration entrypoint, and `${HF_HOME}/accelerate/default_config.yaml` for accelerate configuration.
+This will use `./configs/train.yaml` as the configuration entrypoint, and `${HF_HOME}/accelerate/default_config.yaml` for accelerate configuration.
+
+Here `train_launcher.Launcher` inherits most functions and features from the [`TrainerLauncher`](https://github.com/wsntxxn/AccelHydra/blob/main/src/accel_hydra/train_launcher.py#L110) base class. If you want to make modifications to the training loop, you can inherit this class and override specific functions.
 
 Command line overrides are stil supported:
 ```bash
-accelerate launch --config_file configs/accelerate/nvidia/8gpus.yaml train.py \
+accelerate launch --config_file configs/accelerate/nvidia/8gpus.yaml \
+    -m accel_hydra.train_entry \
+    -l train_launcher.Launcher \
+    -c configs/train.yaml \
+    -o \
     warmup_params.warmup_steps=500 \
     train_dataloader.batch_size=12 \
     val_dataloader.batch_size=12 \

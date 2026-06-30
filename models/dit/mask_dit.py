@@ -83,7 +83,8 @@ class DiTBlock(nn.Module):
         skip_norm=False,
         rope_mode='none',
         context_norm=False,
-        use_checkpoint=False
+        use_checkpoint=False,
+        attn_mode='flash_attn'
     ):
 
         super().__init__()
@@ -94,7 +95,8 @@ class DiTBlock(nn.Module):
             qkv_bias=qkv_bias,
             qk_scale=qk_scale,
             qk_norm=qk_norm,
-            rope_mode=rope_mode
+            rope_mode=rope_mode,
+            attn_mode=attn_mode
         )
 
         if context_dim is not None:
@@ -106,7 +108,8 @@ class DiTBlock(nn.Module):
                 qkv_bias=qkv_bias,
                 qk_scale=qk_scale,
                 qk_norm=qk_norm,
-                rope_mode='none'
+                rope_mode='none',
+                attn_mode=attn_mode
             )
             self.norm2 = norm_layer(dim)
             if context_norm:
@@ -197,11 +200,16 @@ class DiTBlock(nn.Module):
                 self.norm1(x), shift=shift_msa, scale=scale_msa
             )
             x = x + (1 - gate_msa) * self.attn(
-                x_norm, context=None, context_mask=x_mask, extras=extras
+                x_norm,
+                x_mask=x_mask,
+                context=None,
+                context_mask=x_mask,
+                extras=extras
             )
         else:
             x = x + self.attn(
                 self.norm1(x),
+                x_mask=x_mask,
                 context=None,
                 context_mask=x_mask,
                 extras=extras
@@ -212,6 +220,7 @@ class DiTBlock(nn.Module):
             assert context is not None
             x = x + self.cross_attn(
                 x=self.norm2(x),
+                x_mask=x_mask,
                 context=self.norm_context(context),
                 context_mask=context_mask,
                 extras=extras

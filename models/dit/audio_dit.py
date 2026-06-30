@@ -37,7 +37,8 @@ class LayerFusionDiTBlock(DiTBlock):
         skip_norm=False,
         rope_mode='none',
         context_norm=False,
-        use_checkpoint=False
+        use_checkpoint=False,
+        attn_mode='sdpa'
     ):
         super().__init__(
             dim=dim,
@@ -56,7 +57,8 @@ class LayerFusionDiTBlock(DiTBlock):
             skip_norm=skip_norm,
             rope_mode=rope_mode,
             context_norm=context_norm,
-            use_checkpoint=use_checkpoint
+            use_checkpoint=use_checkpoint,
+            attn_mode=attn_mode
         )
         self.ta_context_fusion = ta_context_fusion
         self.ta_context_norm = ta_context_norm
@@ -125,6 +127,7 @@ class LayerFusionDiTBlock(DiTBlock):
         extras=None
     ):
         B, T, C = x.shape
+        dtype = x.dtype
 
         # skip connection
         if self.skip_linear is not None:
@@ -143,6 +146,7 @@ class LayerFusionDiTBlock(DiTBlock):
             x_norm = film_modulate(
                 self.norm1(x), shift=shift_msa, scale=scale_msa
             )
+            x_norm = x_norm.to(dtype)
             tanh_gate_msa = torch.tanh(1 - gate_msa)
             x = x + tanh_gate_msa * self.attn(
                 x_norm, context=None, context_mask=x_mask, extras=extras
@@ -153,7 +157,7 @@ class LayerFusionDiTBlock(DiTBlock):
         else:
             # TODO diffusion timestep input is not fused here
             x = x + self.attn(
-                self.norm1(x),
+                self.norm1(x).to(dtype),
                 context=None,
                 context_mask=x_mask,
                 extras=extras
@@ -182,7 +186,7 @@ class LayerFusionDiTBlock(DiTBlock):
         if self.use_context:
             assert context is not None
             x = x + self.cross_attn(
-                x=self.norm2(x),
+                x=self.norm2(x).to(dtype),
                 context=self.norm_context(context),
                 context_mask=context_mask,
                 extras=extras
@@ -234,7 +238,8 @@ class LayerFusionAudioDiT(UDiT):
         rope_mode='none',
         use_conv=True,
         skip=True,
-        skip_norm=True
+        skip_norm=True,
+        attn_mode='sdpa'
     ):
         nn.Module.__init__(self)
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
@@ -365,7 +370,8 @@ class LayerFusionAudioDiT(UDiT):
                 skip_norm=False,
                 rope_mode=self.rope,
                 context_norm=context_norm,
-                use_checkpoint=use_checkpoint
+                use_checkpoint=use_checkpoint,
+                attn_mode=attn_mode
             ) for i in range(depth // 2)
         ])
 
@@ -389,7 +395,8 @@ class LayerFusionAudioDiT(UDiT):
             skip_norm=False,
             rope_mode=self.rope,
             context_norm=context_norm,
-            use_checkpoint=use_checkpoint
+            use_checkpoint=use_checkpoint,
+            attn_mode=attn_mode
         )
 
         self.out_blocks = nn.ModuleList([
@@ -413,7 +420,8 @@ class LayerFusionAudioDiT(UDiT):
                 skip_norm=skip_norm,
                 rope_mode=self.rope,
                 context_norm=context_norm,
-                use_checkpoint=use_checkpoint
+                use_checkpoint=use_checkpoint,
+                attn_mode=attn_mode
             ) for i in range(depth // 2)
         ])
 
@@ -450,11 +458,14 @@ class LayerFusionAudioDiT(UDiT):
         x = self.patch_embed(x)
         x = self.x_pe(x)
 
+        time_aligned_context = time_aligned_context.to(x.dtype)
+
         B, L, D = x.shape
 
         if self.use_context:
             context_token = self.context_embed(context)
             context_token = self.context_pe(context_token)
+            context_token = context_token.to(x.dtype)
             if self.context_fusion == 'concat' or self.context_fusion == 'joint':
                 x, x_mask = self._concat_x_context(
                     x=x,

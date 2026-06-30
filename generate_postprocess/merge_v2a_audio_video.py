@@ -1,14 +1,20 @@
 import argparse
 from pathlib import Path
+
 import pandas as pd
+from accel_hydra.utils.general import read_jsonl_to_mapping
 from tqdm import tqdm
 
 from utils.video import merge_audio_video
-from utils.general import read_jsonl_to_mapping
 
 
 def main(args):
-    output_dir = Path(args.output_dir)
+    if args.output_dir is None:
+        audio_path_name = Path(args.audio_path).name
+        output_dir = Path(args.audio_path
+                         ).with_name(f"{audio_path_name}_video")
+    else:
+        output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
 
     if args.aid_video_mapping.endswith('.csv'):
@@ -20,6 +26,11 @@ def main(args):
             args.aid_video_mapping, "audio_id", "audio"
         )
         aid_to_video = {Path(k).stem: v for k, v in aid_to_video.items()}
+
+    yid_to_video = {
+        Path(video_path).stem: video_path
+        for aid, video_path in aid_to_video.items()
+    }
     files = list(Path(args.audio_path).glob('*.wav'))
 
     if args.num_samples is not None:
@@ -29,10 +40,13 @@ def main(args):
         audio_id = audio_file.stem
         if audio_id.endswith('_dummy'):
             audio_id = audio_id[:-6]
-        if audio_id not in aid_to_video:
-            print(f"{audio_id} not found in aid_to_video")
+        if audio_id in aid_to_video:
+            video_file = aid_to_video[audio_id]
+        elif audio_id in yid_to_video:
+            video_file = yid_to_video[audio_id]
+        else:
+            print(f"{audio_id} not found in videos")
             continue
-        video_file = aid_to_video[audio_id]
         output_file = output_dir / f"{audio_id}.mp4"
         merge_audio_video(
             audio_file,
@@ -47,21 +61,28 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--aid_video_mapping",
+        "-m",
         type=str,
         required=True,
         help="mapping file between audio id and video files"
     )
     parser.add_argument(
         "--audio_path",
+        "-a",
         type=str,
         required=True,
         help="path to the audio directory"
     )
     parser.add_argument(
-        "--output_dir", type=str, required=True, help="output directory"
+        "--output_dir",
+        "-o",
+        type=str,
+        required=False,
+        help="output directory"
     )
     parser.add_argument(
         "--backend",
+        "-b",
         choices=["moviepy", "ffmpeg"],
         default="ffmpeg",
         help="backend for merging audio and video"

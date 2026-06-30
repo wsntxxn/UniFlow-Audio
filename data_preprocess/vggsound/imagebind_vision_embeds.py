@@ -8,6 +8,7 @@ from tqdm import tqdm
 from PIL import Image
 
 import torch
+from accel_hydra.utils.general import read_jsonl_to_mapping
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from pytorchvideo import transforms as pv_transforms
@@ -18,7 +19,6 @@ from torchvision.transforms._transforms_video import NormalizeVideo
 from evaluation.GMELab.submodules.ImageBind.imagebind.models import imagebind_model
 from evaluation.GMELab.submodules.ImageBind.imagebind.models.imagebind_model import ModalityType
 from evaluation.GMELab.submodules.ImageBind.imagebind.data import SpatialCrop, get_clip_timepoints
-from utils.general import read_jsonl_to_mapping
 
 
 class VideoBindDataset(Dataset):

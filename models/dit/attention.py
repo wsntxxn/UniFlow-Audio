@@ -1,3 +1,5 @@
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,14 +7,17 @@ import torch.utils.checkpoint
 import einops
 from einops import rearrange, repeat
 from inspect import isfunction
+
+try:
+    from flash_attn import flash_attn_func, flash_attn_varlen_func
+    from flash_attn.bert_padding import pad_input, unpad_input
+except ImportError:
+    flash_attn_func = flash_attn_varlen_func = None
+    pad_input = unpad_input = None
+    print("flash attention is not installed, falling back to sdpa")
+
 from .rotary import RotaryEmbedding
 from .modules import RMSNorm
-
-if hasattr(nn.functional, 'scaled_dot_product_attention'):
-    ATTENTION_MODE = 'flash'
-else:
-    ATTENTION_MODE = 'math'
-print(f'attention mode is {ATTENTION_MODE}')
 
 
 def add_mask(sim, mask):
@@ -53,12 +58,17 @@ class Attention(nn.Module):
         qk_norm=None,
         attn_drop=0.,
         proj_drop=0.,
-        rope_mode='none'
+        rope_mode='none',
+        attn_mode='sdpa'
     ):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim**-0.5
+        self.attn_mode = attn_mode
+
+        if attn_mode == "flash_attn":
+            assert flash_attn_varlen_func is not None
 
         if context_dim is None:
             self.cross_attn = False
@@ -122,13 +132,25 @@ class Attention(nn.Module):
             raise NotImplementedError
         return q, k
 
-    def _attn(self, q, k, v, mask_binary):
-        if ATTENTION_MODE == 'flash':
+    def _attn(self, q, k, v, k_mask):
+        attn_mode = self.attn_mode
+        if "ATTN_MODE" in os.environ:
+            attn_mode = os.environ["ATTN_MODE"]
+
+        if attn_mode != "flash_attn":
+            if k_mask is not None:
+                mask_binary = create_mask(
+                    q.shape, k.shape, q.device, None, k_mask
+                )
+            else:
+                mask_binary = None
+
+        if attn_mode == 'sdpa':
             x = F.scaled_dot_product_attention(
                 q, k, v, dropout_p=self.attn_drop_p, attn_mask=mask_binary
             )
             x = einops.rearrange(x, 'B H L D -> B L (H D)')
-        elif ATTENTION_MODE == 'math':
+        elif attn_mode == 'math':
             attn = (q @ k.transpose(-2, -1)) * self.scale
             attn = add_mask(
                 attn, mask_binary
@@ -137,12 +159,56 @@ class Attention(nn.Module):
             attn = self.attn_drop(attn)
             x = (attn @ v).transpose(1, 2)
             x = einops.rearrange(x, 'B H L D -> B L (H D)')
+        elif attn_mode == 'flash_attn':
+            batch_size = q.shape[0]
+            query = einops.rearrange(q, 'B H L D -> B L H D')
+            key = einops.rearrange(k, 'B H L D -> B L H D')
+            value = einops.rearrange(v, 'B H L D -> B L H D')
+
+            q_len = query.shape[1]
+            dropout_p = self.attn_drop_p if self.training else 0.0
+            if k_mask is not None:
+                query = query.reshape(batch_size * q_len, self.num_heads, -1)
+                q_cu_seqlens = torch.arange(
+                    0, (batch_size + 1) * q_len,
+                    step=q_len,
+                    device=q.device,
+                    dtype=torch.int32
+                )
+                key, _, k_cu_seqlens, k_max_seqlen_in_batch, _ = unpad_input(
+                    key, k_mask
+                )
+                value, _, _, _, _ = unpad_input(value, k_mask)
+                x = flash_attn_varlen_func(
+                    query,
+                    key,
+                    value,
+                    q_cu_seqlens,
+                    k_cu_seqlens,
+                    q_len,
+                    k_max_seqlen_in_batch,
+                    dropout_p=dropout_p,
+                    softmax_scale=self.scale,
+                    causal=False,
+                )
+                x = x.reshape(batch_size, q_len, self.num_heads, -1)
+            else:
+                x = flash_attn_func(
+                    query,
+                    key,
+                    value,
+                    dropout_p=dropout_p,
+                    softmax_scale=self.scale,
+                    causal=False
+                )
+            x = einops.rearrange(x, 'B L H D -> B L (H D)')
         else:
             raise NotImplementedError
         return x
 
     def forward(self, x, context=None, context_mask=None, extras=0):
         B, L, C = x.shape
+        dtype = x.dtype
         if context is None:
             context = x
 
@@ -150,12 +216,12 @@ class Attention(nn.Module):
         k = self.to_k(context)
         v = self.to_v(context)
 
-        if context_mask is not None:
-            mask_binary = create_mask(
-                x.shape, context.shape, x.device, None, context_mask
-            )
-        else:
-            mask_binary = None
+        # if context_mask is not None:
+        #     mask_binary = create_mask(
+        #         x.shape, context.shape, x.device, None, context_mask
+        #     )
+        # else:
+        #     mask_binary = None
 
         q = einops.rearrange(q, 'B L (H D) -> B H L D', H=self.num_heads)
         k = einops.rearrange(k, 'B L (H D) -> B H L D', H=self.num_heads)
@@ -164,9 +230,13 @@ class Attention(nn.Module):
         q = self.norm_q(q)
         k = self.norm_k(k)
 
+        if self.attn_mode == "flash_attn":
+            q = q.to(dtype)
+            k = k.to(dtype)
+
         q, k = self._rotary(q, k, extras)
 
-        x = self._attn(q, k, v, mask_binary)
+        x = self._attn(q, k, v, k_mask=context_mask)
 
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -183,12 +253,14 @@ class JointAttention(nn.Module):
         qk_norm=None,
         attn_drop=0.,
         proj_drop=0.,
-        rope_mode='none'
+        rope_mode='none',
+        attn_mode='sdpa'
     ):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim**-0.5
+        self.attn_mode = attn_mode
 
         self.to_qx, self.to_kx, self.to_vx = self._make_qkv_layers(
             dim, qkv_bias
@@ -263,12 +335,12 @@ class JointAttention(nn.Module):
         return q, k
 
     def _attn(self, q, k, v, mask_binary):
-        if ATTENTION_MODE == 'flash':
+        if self.attn_mode == 'sdpa':
             x = F.scaled_dot_product_attention(
                 q, k, v, dropout_p=self.attn_drop_p, attn_mask=mask_binary
             )
             x = einops.rearrange(x, 'B H L D -> B L (H D)')
-        elif ATTENTION_MODE == 'math':
+        elif self.attn_mode == 'math':
             attn = (q @ k.transpose(-2, -1)) * self.scale
             attn = add_mask(
                 attn, mask_binary

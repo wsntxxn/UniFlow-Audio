@@ -172,6 +172,8 @@ cython_debug/
 
 # Experiment logs and checkpoints
 experiments/
+brainllm2_exp
+speechllm_exp
 checkpoints/
 ckpts/
 evaluation/result/
@@ -209,6 +211,9 @@ demo/
 
 start.sh
 
+# Archive files
+archive
+
 # macOS sys files
 .DS_Store
 .AppleDouble
@@ -218,3 +223,6 @@ start.sh
 .Trashes
 .DocumentRevisions-V100
 .fseventsd
+
+# Coding agent files
+.github/agents

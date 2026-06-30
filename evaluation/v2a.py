@@ -10,6 +10,7 @@ from pathlib import Path
 import argparse
 
 import torch
+import torch.distributed as dist
 from accel_hydra.utils.general import read_jsonl_to_mapping
 
 from audioldm_eval import EvaluationHelper
@@ -21,6 +22,34 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 GMELAB_CACHE = os.environ.get(
     "GMELAB_CACHE", os.path.expanduser("~/.cache/gmelab")
 )
+
+
+def setup_distributed():
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+
+    if world_size > 1 and not dist.is_initialized():
+        backend = "nccl" if torch.cuda.is_available() else "gloo"
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
+        dist.init_process_group(backend=backend)
+
+    if torch.cuda.is_available():
+        device = f"cuda:{local_rank}" if world_size > 1 else "cuda"
+    else:
+        device = "cpu"
+    return rank, world_size, device
+
+
+def cleanup_distributed():
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def dist_barrier():
+    if dist.is_initialized():
+        dist.barrier()
 
 
 def get_common_folder_path(audio_dict):
@@ -49,6 +78,8 @@ def get_common_folder_path(audio_dict):
 
 
 def evaluate(args):
+    rank, world_size, device = setup_distributed()
+    is_main_process = rank == 0
 
     results = defaultdict(dict)
 
@@ -73,7 +104,6 @@ def evaluate(args):
         if key not in gen_aid_to_audios:
             ref_aid_to_audios.pop(key)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     ref_sync_aid_to_videos = read_jsonl_to_mapping(
         args.sync_ref_video_jsonl, "audio_id", "video"
     )
@@ -84,7 +114,10 @@ def evaluate(args):
         vision_embeds=args.ib_vision_embed,
         num_workers=args.num_workers,
     )
-    results["image_bind_score"] = image_bind_score
+    if is_main_process:
+        print("image bind: ", image_bind_score)
+        results["image_bind_score"] = image_bind_score
+    dist_barrier()
     """Calculate Sync """
     overall_sync_score, score_per_video = calculate_sync(
         aid_to_video=ref_sync_aid_to_videos,
@@ -97,10 +130,9 @@ def evaluate(args):
         ckpt_parent_path=f"{GMELAB_CACHE}/sync_models",
         num_workers=args.num_workers,
     )
-    results["synchformer_score"] = overall_sync_score
-
-    # print("results: ", results)
-    # return
+    if is_main_process:
+        results["synchformer_score"] = overall_sync_score
+        print("sync: ", overall_sync_score)
     """Calculate FAD, FD, KL """
     gen_folder_path, gen_is_same_folder = get_common_folder_path(
         gen_aid_to_audios
@@ -123,13 +155,17 @@ def evaluate(args):
 
     results.update(eval_result)
 
-    os.makedirs(Path(args.output_file).parent, exist_ok=True)
+    if is_main_process:
+        os.makedirs(Path(args.output_file).parent, exist_ok=True)
 
-    with open(args.output_file, "w") as writer:
-        for metric, values in results.items():
-            print_msg = f"{metric}: {values:.3f}"
-            print(print_msg)
-            print(print_msg, file=writer)
+        with open(args.output_file, "w") as writer:
+            for metric, values in results.items():
+                print_msg = f"{metric}: {values:.3f}"
+                print(print_msg)
+                print(print_msg, file=writer)
+
+    dist_barrier()
+    cleanup_distributed()
 
 
 if __name__ == '__main__':
