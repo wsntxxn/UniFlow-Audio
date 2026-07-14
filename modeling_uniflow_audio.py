@@ -16,15 +16,20 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 
 class UniFlowAudioModel(nn.Module):
-    def __init__(self, model_name: str = "wsntxxn/UniFlow-Audio-large"):
-        assert model_name in (
-            "wsntxxn/UniFlow-Audio-large",
-            "wsntxxn/UniFlow-Audio-medium",
-            "wsntxxn/UniFlow-Audio-small",
-        )
+    def __init__(
+        self, model_name_or_path: str = "wsntxxn/UniFlow-Audio-large"
+    ):
         super().__init__()
-        model_dir = snapshot_download(repo_id=model_name)
-        model_dir = Path(model_dir)
+        if not Path(model_name_or_path).exists():
+            assert model_name_or_path in (
+                "wsntxxn/UniFlow-Audio-large",
+                "wsntxxn/UniFlow-Audio-medium",
+                "wsntxxn/UniFlow-Audio-small",
+            )
+            model_dir = snapshot_download(repo_id=model_name_or_path)
+            model_dir = Path(model_dir)
+        else:
+            model_dir = Path(model_name_or_path)
         self.config = OmegaConf.load(model_dir / "config.yaml")
         self.config["model"]["autoencoder"]["pretrained_ckpt"] = str(
             model_dir / self.config["model"]["autoencoder"]["pretrained_ckpt"]
@@ -56,6 +61,7 @@ class UniFlowAudioModel(nn.Module):
         self.tts_phone_set_path = model_dir / "mfa_g2p" / "phone_set.json"
         self.tts_word2phone_dict_path = model_dir / "mfa_g2p" / "word2phone.json"
         self.build_tts_phone_mapping()
+        self.tts_prompt_sr = 16000
         self.svs_phone_set_path = model_dir / "svs" / "phone_set.json"
         singers = json.load(open(model_dir / "svs" / "spk_set.json", "r"))
         self.svs_singer_mapping = {
@@ -75,7 +81,7 @@ class UniFlowAudioModel(nn.Module):
         with open(self.tts_phone_set_path, "r", encoding="utf-8") as f:
             phone_set = json.load(f)
 
-        self.tts_phone2id = {p: i for i, p in enumerate(phone_set)}
+        self.tts_phone2id = {p: i + 1 for i, p in enumerate(phone_set)}
 
     def init_instruction_encoder(self):
         flan_t5_path = os.environ.get("FLAN_T5_PATH", "google/flan-t5-large")
@@ -118,7 +124,7 @@ class UniFlowAudioModel(nn.Module):
         self,
         content: list[Any],
         task: list[str],
-        is_time_aligned: Sequence[bool],
+        time_aligned: torch.Tensor,
         instruction: list[str] | None = None,
         instruction_idx: list[int] | None = None,
         num_steps: int = 20,
@@ -149,7 +155,15 @@ class UniFlowAudioModel(nn.Module):
                 instruction, device
             )
 
+        time_aligned = time_aligned.to(device)
         return self.model.inference(
-            content, task, is_time_aligned, instructions, instruction_lengths,
-            num_steps, sway_sampling_coef, guidance_scale, disable_progress
+            content=content,
+            task=task,
+            time_aligned=time_aligned,
+            instruction=instructions,
+            instruction_lengths=instruction_lengths,
+            num_steps=num_steps,
+            sway_sampling_coef=sway_sampling_coef,
+            guidance_scale=guidance_scale,
+            disable_progress=disable_progress
         )

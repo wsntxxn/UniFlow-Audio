@@ -55,6 +55,7 @@ class DurationAdapterMixin:
         pred = torch.exp(pred) * mask
         pred = torch.ceil(pred) - self.offset
         pred *= self.frame_resolution
+        pred = torch.round(pred * self.latent_token_rate)
         return pred
 
     def prepare_global_duration(
@@ -69,13 +70,13 @@ class DurationAdapterMixin:
         local_pred: predicted latent length 
         """
         global_pred = torch.exp(global_pred) - self.offset
-        result = global_pred
+        result = torch.round(global_pred * self.latent_token_rate)
         # avoid error accumulation for each frame
         if use_local:
-            pred_from_local = torch.round(local_pred * self.latent_token_rate)
-            pred_from_local = pred_from_local.sum(1) / self.latent_token_rate
+            pred_from_local = local_pred.sum(1)
             result[is_time_aligned] = pred_from_local[is_time_aligned]
 
+        result = result.long()
         return result
 
     def expand_by_duration(
@@ -83,19 +84,17 @@ class DurationAdapterMixin:
         x: torch.Tensor,
         content_mask: torch.Tensor,
         local_duration: torch.Tensor,
-        global_duration: torch.Tensor | None = None,
+        global_duration: torch.Tensor,
     ):
-        n_latents = torch.round(local_duration * self.latent_token_rate)
-        if global_duration is not None:
-            latent_length = torch.round(
-                global_duration * self.latent_token_rate
-            )
-        else:
-            latent_length = n_latents.sum(1)
+        training = getattr(self, 'training', False)
+        if not training:  # inference mode
+            latent_length = global_duration
+        else:  # training mode
+            latent_length = local_duration.sum(1)
         latent_mask = create_mask_from_length(latent_length).to(
             content_mask.device
         )
         attn_mask = content_mask.unsqueeze(-1) * latent_mask.unsqueeze(1)
-        align_path = create_alignment_path(n_latents, attn_mask)
+        align_path = create_alignment_path(local_duration, attn_mask)
         expanded_x = torch.matmul(align_path.transpose(1, 2).to(x.dtype), x)
         return expanded_x, latent_mask

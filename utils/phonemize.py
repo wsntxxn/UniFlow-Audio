@@ -48,13 +48,13 @@ def sentence_to_phones(sentence, word2phones, g2p_model):
     """
     Convert sentence to phones:
     1. Split the original sentence and keep punctuation positions to insert sil later
-    2. Insert sil at punctuation positions
-    3. Add sil at the beginning and end of the sentence
+    2. Insert <eps> at punctuation positions
+    3. Add <eps> at the beginning and end of the sentence
     """
     original_sentence = sentence  # Save the original sentence
     sentence = text_norm(sentence)
 
-    phone_sequence = ["sil"]  # Initial silence
+    phone_sequence = ["<eps>"]  # Initial silence
     oov_list = []
 
     # Split the original sentence to locate punctuation positions
@@ -63,7 +63,7 @@ def sentence_to_phones(sentence, word2phones, g2p_model):
 
     for token in tokens:
         if re.match(r"[.,;!?]", token):  # Punctuation
-            phone_sequence.append("sil")
+            phone_sequence.append("<eps>")
         else:
             word = text_norm(token)  # Normalize word
 
@@ -82,6 +82,6 @@ def sentence_to_phones(sentence, word2phones, g2p_model):
                 pron, _ = max(word2phones[word].items(), key=lambda x: x[1])
                 phone_sequence.extend(pron.split())
 
-    if phone_sequence[-1] != 'sil':
-        phone_sequence.append("sil")  # Ending silence
+    if phone_sequence[-1] != '<eps>':
+        phone_sequence.append("<eps>")  # Ending silence
     return phone_sequence, oov_list

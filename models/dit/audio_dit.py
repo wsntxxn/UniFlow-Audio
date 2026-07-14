@@ -1023,38 +1023,16 @@ class InputFusionAudioDiT(UDiT):
         rope_mode='none',
         use_conv=True,
         skip=True,
-        skip_norm=True
+        skip_norm=True,
+        attn_mode='sdpa'
     ):
         super().__init__(
-            img_size,
-            patch_size,
-            in_chans,
-            input_type,
-            out_chans,
-            embed_dim,
-            depth,
-            num_heads,
-            mlp_ratio,
-            qkv_bias,
-            qk_scale,
-            qk_norm,
-            act_layer,
-            norm_layer,
-            context_norm,
-            use_checkpoint,
-            time_fusion,
-            ada_sola_rank,
-            ada_sola_alpha,
-            cls_dim,
-            context_dim,
-            context_fusion,
-            context_max_length,
-            context_pe_method,
-            pe_method,
-            rope_mode,
-            use_conv,
-            skip,
-            skip_norm,
+            img_size, patch_size, in_chans, input_type, out_chans, embed_dim,
+            depth, num_heads, mlp_ratio, qkv_bias, qk_scale, qk_norm,
+            act_layer, norm_layer, context_norm, use_checkpoint, time_fusion,
+            ada_sola_rank, ada_sola_alpha, cls_dim, context_dim,
+            context_fusion, context_max_length, context_pe_method, pe_method,
+            rope_mode, use_conv, skip, skip_norm, attn_mode
         )
         self.input_proj = nn.Linear(in_chans + ta_context_dim, in_chans)
         nn.init.xavier_uniform_(self.input_proj.weight)

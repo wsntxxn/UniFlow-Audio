@@ -154,8 +154,13 @@ class CLIPSyncEncoder(nn.Module):
         clip = F.normalize(clip, p=2, dim=-1)
         sync = F.normalize(sync, p=2, dim=-1)
 
+        latent_length = (torch.as_tensor(duration) *
+                         self.latent_token_rate).int()
+        ta_mask = create_mask_from_length(latent_length).to(sync.device)
+
         bs = clip.shape[0]
-        target_len = int(max(duration) * self.latent_token_rate)
+        # target_len = int(max(duration) * self.latent_token_rate)
+        target_len = latent_length.max()
         sync_seq_len = self.get_sync_seq_len(max(duration))
         # B * num_segments (24) * 8 * 768
         num_sync_segments = sync_seq_len // 8
@@ -170,9 +175,6 @@ class CLIPSyncEncoder(nn.Module):
         sync = sync.transpose(1, 2)  # (B, D, VN)
         sync = F.interpolate(sync, size=target_len, mode='nearest-exact')
         sync = sync.transpose(1, 2)  # (B, N, D)
-
-        latent_length = torch.as_tensor(duration) * self.latent_token_rate
-        ta_mask = create_mask_from_length(latent_length).to(sync.device)
 
         if self.training:
             if self.sync_drop_ratio > 0:

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-from typing import Any, Callable
 import json
+from pathlib import Path
+from typing import Any, Callable
 
 import fire
 import torch
@@ -10,13 +11,13 @@ import soundfile as sf
 import numpy as np
 
 from modeling_uniflow_audio import UniFlowAudioModel
-from constants import TIME_ALIGNED_TASKS
+from constants import TIME_ALIGNED_TASKS, NON_TIME_ALIGNED_TASKS
 from utils.phonemize import sentence_to_phones
 
 
 class InferenceCLI:
     def __init__(self):
-        self.model_name = None
+        self.model_name_or_path = None
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
@@ -30,9 +31,12 @@ class InferenceCLI:
         self.video_size = (256, 256)
         self.video_fps = 10
 
-    def init_model(self, model_name):
-        self.model_name = model_name
-        self.model = UniFlowAudioModel(f"wsntxxn/{model_name}")
+    def init_model(self, model_name_or_path):
+        self.model_name_or_path = model_name_or_path
+        if Path(self.model_name_or_path).exists():
+            self.model = UniFlowAudioModel(model_name_or_path)
+        else:
+            self.model = UniFlowAudioModel(f"wsntxxn/{model_name_or_path}")
         self.model.to(self.device)
         self.sample_rate = self.model.config["sample_rate"]
 
@@ -61,30 +65,20 @@ class InferenceCLI:
 
     def init_video_preprocessor(self, ):
         if self.video_preprocessor is None:
-            from transformers import CLIPImageProcessor, CLIPVisionModel
-            import torchvision
-            self.video_preprocessor = {
-                "transform":
-                    torchvision.transforms.Resize(self.video_size),
-                "processor":
-                    CLIPImageProcessor.
-                    from_pretrained("openai/clip-vit-large-patch14"),
-                "encoder":
-                    CLIPVisionModel.
-                    from_pretrained("openai/clip-vit-large-patch14")
-            }
-            self.video_preprocessor["encoder"].to(self.device)
-            self.video_preprocessor["encoder"].eval()
+            from third_party.mmaudio.feature_extractor import init_feature_extractor
+            self.video_preprocessor = init_feature_extractor()
 
-    def on_inference_start(self, model_name):
-        if self.model_name is None or model_name != self.model_name:
-            self.init_model(model_name)
+    def on_inference_start(self, model_name_or_path):
+        if self.model_name_or_path is None or model_name_or_path != self.model_name_or_path:
+            self.init_model(model_name_or_path)
 
     @staticmethod
     def add_prehook(func: Callable, ):
         def wrapper(self, *args, **kwargs):
-            model_name = kwargs.get("model_name", "UniFlow-Audio-large")
-            self.on_inference_start(model_name)
+            model_name_or_path = kwargs.get(
+                "model_name_or_path", "UniFlow-Audio-large"
+            )
+            self.on_inference_start(model_name_or_path)
             return func(self, *args, **kwargs)
 
         return wrapper
@@ -93,7 +87,7 @@ class InferenceCLI:
     def t2a(
         self,
         caption: str,
-        model_name: str = "UniFlow-Audio-large",
+        model_name_or_path: str = "UniFlow-Audio-large",
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 5.0,
@@ -105,7 +99,7 @@ class InferenceCLI:
             task="text_to_audio",
             instruction=instruction,
             instruction_idx=instruction_idx,
-            model_name=model_name,
+            model_name_or_path=model_name_or_path,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -115,7 +109,7 @@ class InferenceCLI:
     def t2m(
         self,
         caption: str,
-        model_name: str,
+        model_name_or_path: str,
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 5.0,
@@ -125,7 +119,7 @@ class InferenceCLI:
         self._run_inference(
             content=caption,
             task="text_to_music",
-            model_name=model_name,
+            model_name_or_path=model_name_or_path,
             instruction=instruction,
             instruction_idx=instruction_idx,
             guidance_scale=guidance_scale,
@@ -138,7 +132,7 @@ class InferenceCLI:
         self,
         transcript: str,
         ref_speaker_speech: str,
-        model_name: str = "UniFlow-Audio-large",
+        model_name_or_path: str = "UniFlow-Audio-large",
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 5.0,
@@ -171,22 +165,28 @@ class InferenceCLI:
             transcript, self.word2phone, self.g2p
         )
 
-        # print(phonemes)
+        print(phonemes)
         phone_indices = [
             self.model.tts_phone2id.get(
                 p, self.model.tts_phone2id.get("spn", 0)
             ) for p in phonemes
         ]
-        xvector = self.speaker_model.extract_embedding(ref_speaker_speech)
 
+        prompt_waveform, orig_sr = torchaudio.load(ref_speaker_speech)
+        prompt_waveform = prompt_waveform.mean(0)
+        prompt_waveform = torchaudio.functional.resample(
+            prompt_waveform,
+            orig_freq=orig_sr,
+            new_freq=self.model.tts_prompt_sr
+        )
         content = {
             "phoneme": np.array(phone_indices, dtype=np.int64),
-            "spk": np.array(xvector, dtype=np.float32),
+            "prompt_waveform": prompt_waveform,
         }
         self._run_inference(
             content=content,
             task="text_to_speech",
-            model_name=model_name,
+            model_name_or_path=model_name_or_path,
             instruction=instruction,
             instruction_idx=instruction_idx,
             guidance_scale=guidance_scale,
@@ -199,7 +199,7 @@ class InferenceCLI:
         self,
         input_audio: str,
         task: str,
-        model_name: str,
+        model_name_or_path: str,
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 5.0,
@@ -216,7 +216,7 @@ class InferenceCLI:
             task=task,
             instruction=instruction,
             instruction_idx=instruction_idx,
-            model_name=model_name,
+            model_name_or_path=model_name_or_path,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -225,7 +225,7 @@ class InferenceCLI:
     def se(
         self,
         noisy_speech: str,
-        model_name: str,
+        model_name_or_path: str,
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 1.0,
@@ -237,7 +237,7 @@ class InferenceCLI:
             task="speech_enhancement",
             instruction=instruction,
             instruction_idx=instruction_idx,
-            model_name=model_name,
+            model_name_or_path=model_name_or_path,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -246,7 +246,7 @@ class InferenceCLI:
     def sr(
         self,
         low_sr_audio: str,
-        model_name: str,
+        model_name_or_path: str,
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 1.0,
@@ -258,7 +258,7 @@ class InferenceCLI:
             task="audio_super_resolution",
             instruction=instruction,
             instruction_idx=instruction_idx,
-            model_name=model_name,
+            model_name_or_path=model_name_or_path,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -268,36 +268,23 @@ class InferenceCLI:
     def v2a(
         self,
         video: str,
-        model_name: str,
+        model_name_or_path: str,
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 5.0,
         num_steps: int = 25,
         output_path: str = "./output.mp4",
     ):
-        from utils.video import read_video_frames, merge_audio_video
+        from utils.video import merge_audio_video
+        from third_party.mmaudio.feature_extractor import get_video_feature
 
         self.init_video_preprocessor()
-        video_path = video
-        video = read_video_frames(
-            video,
-            duration=None,
-            fps=self.video_fps,
-            video_size=self.video_size,
-            resize_transform=self.video_preprocessor["transform"]
-        )
-        pixel_values = self.video_preprocessor["processor"](
-            images=video, return_tensors="pt"
-        ).pixel_values.to(self.device)
-
-        with torch.no_grad():
-            output = self.video_preprocessor["encoder"](pixel_values)
-            video_feature = output.pooler_output
+        video_feature = get_video_feature(video, self.video_preprocessor)
 
         waveform = self._run_inference(
             content=video_feature,
             task="video_to_audio",
-            model_name=model_name,
+            model_name_or_path=model_name_or_path,
             instruction=instruction,
             instruction_idx=instruction_idx,
             guidance_scale=guidance_scale,
@@ -306,7 +293,7 @@ class InferenceCLI:
         )
 
         merge_audio_video(
-            waveform, video_path, output_path, audio_fps=self.sample_rate
+            waveform, video, output_path, audio_fps=self.sample_rate
         )
 
     @add_prehook
@@ -314,7 +301,7 @@ class InferenceCLI:
         self,
         singer: str,
         music_score: str,
-        model_name: str,
+        model_name_or_path: str,
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 5.0,
@@ -340,7 +327,7 @@ class InferenceCLI:
         self._run_inference(
             content=midi,
             task="singing_voice_synthesis",
-            model_name=model_name,
+            model_name_or_path=model_name_or_path,
             instruction=instruction,
             instruction_idx=instruction_idx,
             guidance_scale=guidance_scale,
@@ -352,19 +339,20 @@ class InferenceCLI:
         self,
         content: Any,
         task: str,
-        model_name: str,
+        model_name_or_path: str,
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 5.0,
         num_steps: int = 25,
         output_path: str = "./output.wav",
     ):
-        if self.model_name is None or model_name != self.model_name:
-            self.init_model(model_name)
+        if self.model_name_or_path is None or model_name_or_path != self.model_name_or_path:
+            self.init_model(model_name_or_path)
+        time_aligned = torch.zeros(1, 2).bool()
         if task in TIME_ALIGNED_TASKS:
-            is_time_aligned = True
-        else:
-            is_time_aligned = False
+            time_aligned[0, 0] = True
+        if task in NON_TIME_ALIGNED_TASKS:
+            time_aligned[0, 1] = True
         if instruction:
             instruction = [instruction]
         if instruction_idx:
@@ -373,7 +361,7 @@ class InferenceCLI:
         waveform = self.model.sample(
             content=[content],
             task=[task],
-            is_time_aligned=[is_time_aligned],
+            time_aligned=time_aligned,
             instruction=instruction,
             instruction_idx=instruction_idx,
             num_steps=num_steps,
