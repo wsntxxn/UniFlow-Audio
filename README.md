@@ -15,22 +15,10 @@ First, please install dependencies required for training and inference.
 ```bash
 conda create -n uniflow-audio python=3.10
 ```
-If you want to perform text-to-speech (TTS) synthesis inference, you also need to install `montreal-forced-aligner`, so executing the following command instead:
-```bash
-conda create -n uniflow-audio -c conda-forge python=3.10 montreal-forced-aligner
-```
 Then install python dependencies:
 ```bash
 conda activate uniflow-audio
 pip install -r requirements.txt
-```
-
-**Optional Dependencies for TTS Inference**
-
-To extract speaker embedding for TTS inference, you need to install `wespeaker`: 
-
-```bash
-pip install git+https://github.com/wenet-e2e/wespeaker.git
 ```
 
 **Optional Dependencies for V2A Inference**

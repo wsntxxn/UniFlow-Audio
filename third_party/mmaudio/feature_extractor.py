@@ -1,6 +1,4 @@
 import logging
-import json
-import sys
 import os
 from dataclasses import dataclass
 from fractions import Fraction
@@ -18,7 +16,6 @@ from huggingface_hub import snapshot_download
 from open_clip import create_model_from_pretrained
 from torchvision.transforms import v2
 from torchvision.transforms import Normalize
-from tqdm import tqdm
 
 from .synchformer import Synchformer
 

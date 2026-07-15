@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -23,7 +24,6 @@ class InferenceCLI:
         )
         self.g2p = None
         self.word2phone = None
-        self.speaker_model = None
         self.svs_processor = None
         self.singer_mapping = None
 
@@ -39,13 +39,6 @@ class InferenceCLI:
             self.model = UniFlowAudioModel(f"wsntxxn/{model_name_or_path}")
         self.model.to(self.device)
         self.sample_rate = self.model.config["sample_rate"]
-
-    def init_speaker_model(self, ):
-        import wespeaker
-
-        if self.speaker_model is None:
-            self.speaker_model = wespeaker.load_model("english")
-            self.speaker_model.set_device(self.device)
 
     def init_svs_processor(self, ):
         from utils.diffsinger_utilities import SVSInputConverter, TokenTextEncoder
@@ -76,7 +69,7 @@ class InferenceCLI:
     def add_prehook(func: Callable, ):
         def wrapper(self, *args, **kwargs):
             model_name_or_path = kwargs.get(
-                "model_name_or_path", "UniFlow-Audio-large"
+                "model_name_or_path", "UniFlow-Audio-v1.1-XLarge"
             )
             self.on_inference_start(model_name_or_path)
             return func(self, *args, **kwargs)
@@ -87,7 +80,7 @@ class InferenceCLI:
     def t2a(
         self,
         caption: str,
-        model_name_or_path: str = "UniFlow-Audio-large",
+        model_name_or_path: str = "UniFlow-Audio-v1.1-XLarge",
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 5.0,
@@ -132,7 +125,7 @@ class InferenceCLI:
         self,
         transcript: str,
         ref_speaker_speech: str,
-        model_name_or_path: str = "UniFlow-Audio-large",
+        model_name_or_path: str = "UniFlow-Audio-v1.1-XLarge",
         instruction: str | None = None,
         instruction_idx: int | None = None,
         guidance_scale: float = 5.0,
@@ -140,18 +133,17 @@ class InferenceCLI:
         output_path: str = "./output.wav",
     ):
 
-        from montreal_forced_aligner.g2p.generator import PyniniConsoleGenerator
-
-        self.init_speaker_model()
+        from g2p_en import G2p
+        import nltk
 
         if not self.g2p:
-            self.g2p = PyniniConsoleGenerator(
-                g2p_model_path=self.model.g2p_model_path,
-                strict_graphemes=False,
-                num_pronunciations=1,
-                include_bracketed=False
-            )
-            self.g2p.setup()
+            if not Path(
+                os.environ.
+                get("NLTK_DATA", os.path.expanduser("~/nltk_data/")) /
+                "taggers/averaged_perceptron_tagger_eng"
+            ).exists():
+                nltk.download("averaged_perceptron_tagger_eng")
+            self.g2p = G2p()
 
         if not self.word2phone:
             self.word2phone = json.load(

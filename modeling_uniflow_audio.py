@@ -17,14 +17,15 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 class UniFlowAudioModel(nn.Module):
     def __init__(
-        self, model_name_or_path: str = "wsntxxn/UniFlow-Audio-large"
+        self, model_name_or_path: str = "wsntxxn/UniFlow-Audio-v1.1-XLarge"
     ):
         super().__init__()
         if not Path(model_name_or_path).exists():
             assert model_name_or_path in (
-                "wsntxxn/UniFlow-Audio-large",
-                "wsntxxn/UniFlow-Audio-medium",
-                "wsntxxn/UniFlow-Audio-small",
+                "wsntxxn/UniFlow-Audio-v1.1-XLarge",
+                "wsntxxn/UniFlow-Audio-v1.1-Large",
+                "wsntxxn/UniFlow-Audio-v1.1-Base",
+                "wsntxxn/UniFlow-Audio-v1.1-Small"
             )
             model_dir = snapshot_download(repo_id=model_name_or_path)
             model_dir = Path(model_dir)

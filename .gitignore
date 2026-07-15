@@ -226,3 +226,4 @@ archive
 
 # Coding agent files
 .github/agents
+AGENTS.md

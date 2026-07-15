@@ -9,30 +9,17 @@ cli = InferenceCLI()
 
 # Available model choices
 MODEL_CHOICES = [
-    "UniFlow-Audio-large", "UniFlow-Audio-medium", "UniFlow-Audio-small"
+    "UniFlow-Audio-v1.1-XLarge", "UniFlow-Audio-v1.1-Large",
+    "UniFlow-Audio-v1.1-Base", "UniFlow-Audio-v1.1-Small"
 ]
 
 # Default model name
-DEFAULT_MODEL = "UniFlow-Audio-large"
+DEFAULT_MODEL = "UniFlow-Audio-v1.1-XLarge"
 
 # Pre-initialize models
 print("Initializing models, please wait...")
 print(f"Loading main model: {DEFAULT_MODEL}")
 cli.init_model(DEFAULT_MODEL)
-
-print("Loading speaker model for TTS...")
-cli.init_speaker_model()
-
-print("Loading G2P model for TTS...")
-from montreal_forced_aligner.g2p.generator import PyniniConsoleGenerator
-if not cli.g2p:
-    cli.g2p = PyniniConsoleGenerator(
-        g2p_model_path=cli.model.g2p_model_path,
-        strict_graphemes=False,
-        num_pronunciations=1,
-        include_bracketed=False
-    )
-    cli.g2p.setup()
 
 print("Loading SVS processor for singing voice synthesis...")
 cli.init_svs_processor()
@@ -57,7 +44,7 @@ def text_to_audio(
     try:
         cli.t2a(
             caption=caption,
-            model_name=model_name,
+            model_name_or_path=model_name,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -81,7 +68,7 @@ def text_to_music(
     try:
         cli.t2m(
             caption=caption,
-            model_name=model_name,
+            model_name_or_path=model_name,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -107,7 +94,7 @@ def text_to_speech(
         cli.tts(
             transcript=transcript,
             ref_speaker_speech=ref_speaker_audio,
-            model_name=model_name,
+            model_name_or_path=model_name,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -136,7 +123,7 @@ def singing_voice_synthesis(
         cli.svs(
             singer=singer,
             music_score=music_score,
-            model_name=model_name,
+            model_name_or_path=model_name,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -160,7 +147,7 @@ def speech_enhancement(
     try:
         cli.se(
             noisy_speech=noisy_audio,
-            model_name=model_name,
+            model_name_or_path=model_name,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -184,7 +171,7 @@ def audio_super_resolution(
     try:
         cli.sr(
             low_sr_audio=low_sr_audio,
-            model_name=model_name,
+            model_name_or_path=model_name,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path
@@ -208,7 +195,7 @@ def video_to_audio(
     try:
         cli.v2a(
             video=video,
-            model_name=model_name,
+            model_name_or_path=model_name,
             guidance_scale=guidance_scale,
             num_steps=num_steps,
             output_path=output_path

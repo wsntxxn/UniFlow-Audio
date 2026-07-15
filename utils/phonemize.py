@@ -4,12 +4,10 @@ import re
 def g2p_resolve(word, g2p_model):
     """Call G2P to generate pronunciation (used for handling OOV words)."""
     try:
-        result = g2p_model.rewriter(word.lower())
-        if result and result[0][0]:
-            return result[0][0].split()
+        result = g2p_model(word)
+        return result
     except Exception:
         return None
-    return None
 
 
 def text_norm(s):
