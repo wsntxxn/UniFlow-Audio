@@ -14,8 +14,8 @@ conda activate uniflow-audio-eval
 Then, install the dependencies:
 
 ```bash
-pip install torch torchaudio torchvision
-pip install nemo_toolkit['all']
+pip install torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0
+pip install nemo_toolkit['all']==2.3.1
 pip install -r requirements_eval.txt
 ```
 
