@@ -41,6 +41,14 @@ PLOT_METRICS = OrderedDict((
     ("V2A", (("IB", "up"), ("Sync", "down"))),
 ))
 
+DISPLAY_METRIC_NAMES = {
+    "Semitone Accuracy": "SA",
+    "IB": "ImageBind",
+    "Sync": "SYNC",
+}
+
+METRIC_COLORS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728")
+
 
 @dataclass
 class ResultRow:
@@ -282,10 +290,12 @@ def normalize_values(values, direction):
 
 
 def metric_label(metric):
-    label = metric
-    if metric in DISPLAY_PERCENT_METRICS:
-        label += ", %"
-    return label
+    return DISPLAY_METRIC_NAMES.get(metric, metric)
+
+
+def legend_label(metric, direction):
+    arrow = r"$\downarrow$" if direction == "down" else r"$\uparrow$"
+    return f"{metric_label(metric)} ({arrow})"
 
 
 def build_task_series(rows, task, metric):
@@ -324,14 +334,13 @@ def plot_progress(rows, out_path, title, tasks, width, height_per_task):
     axes = axes.flatten()
 
     for axis, task in zip(axes, selected_tasks):
-        axis.set_title(task, fontsize=12, loc="left")
         axis.grid(True, alpha=0.3)
 
         plotted = False
         metric_specs = PLOT_METRICS[task]
 
         if len(metric_specs) == 1:
-            metric, _direction = metric_specs[0]
+            metric, direction = metric_specs[0]
             values = build_task_series(rows, task, metric)
             label = metric_label(metric)
 
@@ -344,7 +353,7 @@ def plot_progress(rows, out_path, title, tasks, width, height_per_task):
                     linewidth=2,
                     markersize=5,
                     color="#1f77b4",
-                    label=label,
+                    label=legend_label(metric, direction),
                 )
                 axis.set_ylabel(label, fontsize=10, color="#1f77b4")
                 axis.tick_params(axis="y", labelcolor="#1f77b4")
@@ -367,48 +376,35 @@ def plot_progress(rows, out_path, title, tasks, width, height_per_task):
                 )
             continue
 
-        left_metric, _left_direction = metric_specs[0]
-        right_metric, _right_direction = metric_specs[1]
-        left_values = build_task_series(rows, task, left_metric)
-        right_values = build_task_series(rows, task, right_metric)
+        lines = []
+        markers = ("o", "s", "^")
+        for metric_index, (metric, direction) in enumerate(metric_specs):
+            metric_axis = axis if metric_index == 0 else axis.twinx()
+            if metric_index > 1:
+                metric_axis.spines["right"].set_position(
+                    ("outward", 60 * (metric_index - 1))
+                )
+            values = build_task_series(rows, task, metric)
+            if not finite_values(values):
+                continue
 
-        left_lines = []
-        right_lines = []
-        left_label = metric_label(left_metric)
-        right_label = metric_label(right_metric)
-
-        if finite_values(left_values):
-            left_lines = axis.plot(
+            color = METRIC_COLORS[metric_index % len(METRIC_COLORS)]
+            label = metric_label(metric)
+            metric_lines = metric_axis.plot(
                 x_values,
-                left_values,
-                marker="o",
+                values,
+                marker=markers[metric_index % len(markers)],
                 linewidth=2,
                 markersize=5,
-                color="#1f77b4",
-                label=left_label,
+                color=color,
+                label=legend_label(metric, direction),
             )
-            axis.set_ylabel(left_label, fontsize=10, color="#1f77b4")
-            axis.tick_params(axis="y", labelcolor="#1f77b4")
-            set_axis_limits(axis, left_values)
+            metric_axis.set_ylabel(label, fontsize=10, color=color)
+            metric_axis.tick_params(axis="y", labelcolor=color)
+            set_axis_limits(metric_axis, values)
+            lines.extend(metric_lines)
             plotted = True
 
-        right_axis = axis.twinx()
-        if finite_values(right_values):
-            right_lines = right_axis.plot(
-                x_values,
-                right_values,
-                marker="s",
-                linewidth=2,
-                markersize=5,
-                color="#ff7f0e",
-                label=right_label,
-            )
-            right_axis.set_ylabel(right_label, fontsize=10, color="#ff7f0e")
-            right_axis.tick_params(axis="y", labelcolor="#ff7f0e")
-            set_axis_limits(right_axis, right_values)
-            plotted = True
-
-        lines = left_lines + right_lines
         if lines:
             axis.legend(
                 lines, [line.get_label() for line in lines],

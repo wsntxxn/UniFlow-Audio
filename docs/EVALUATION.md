@@ -86,11 +86,10 @@ export CLAP_MODEL_PATH="/path/to/laion_clap/630k-audioset-best.pt"
 ```bash
 python evaluation/tts.py \
   --audio_dir_or_jsonl /path/to/tts_inference \
-  --exp_name "your_exp_name" \
   --ref_transcript_path data/librispeech_pc/test/ref_transcription.json
   --ref_audio_path data/librispeech_pc/test/prompt_audio.json \
   --output_path /path/to/tts_result.txt \
-  --speaker_model_name ecapa_tdnn
+  --speaker_model ecapa_tdnn
 ```
 
 where `ref_audio_path` is a simple JSON file like:
@@ -102,6 +101,18 @@ where `ref_audio_path` is a simple JSON file like:
   "5290_26685_000052_000001": "/path/to/LibriTTS/train-clean-360/5290/26685/5290_26685_000052_000001.wav",
   // ...
 }
+```
+
+We recommend these settings to accelerate UTMOSv2 calculation:
+```bash
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+export BLIS_NUM_THREADS=1
+export TOKENIZERS_PARALLELISM=false
+export TORCH_NUM_THREADS=1
 ```
 
 ### SVS
@@ -116,12 +127,16 @@ python evaluation/svs.py \
 ### T2A & T2M
 
 ```bash
-python evaluation/t2a.py \
+torchrun \
+    --nproc_per_node ${GPU_NUM} \
+    evaluation/t2a.py \
     --ref_audio_jsonl /path/to/t2a_or_t2m/audio.jsonl \
     -rc /path/to/t2a_or_t2m/caption.jsonl \
     -gd /path/to/t2a_or_t2m_inference \
     -o /path/to/t2a_or_t2m_results.txt
 ```
+
+You can run evaluation on multi-gpu nodes to accelerate the process.
 
 ### SE
 
@@ -153,7 +168,9 @@ The reference base directory argument `-rb` should be set properly.
 ### V2A
 
 ```bash
-python evaluation/v2a.py \
+torchrun \
+    --nproc_per_node ${GPU_NUM} \
+    evaluation/v2a.py \
     -ra data/visual_sound/test_audio_16000Hz_0s_to_10.0s.jsonl \
     -ibv data/visual_sound/ib_visual_embed.h5 \
     -syncv data/visual_sound/test_videos_fps_25_sr_16000.jsonl \
